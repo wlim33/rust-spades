@@ -5,8 +5,13 @@ authors = ["William <limwilliam23@gmail.com>"]
 repository = "https://github.com/wlim33/rust-spades"
 categories = ["games", "game-engines", "simulation"]
 keywords = ["spades", "cards", "state", "machine"]
+readme = "./README.md"
 license = "MIT"
 description = "A popular four person card game implemented in Rust."
+
+[badges]
+travis-ci = { repository = "https://github.com/wlim33/rust-spades", branch = "master" }
+
 [dependencies]
 rand = "0.5"
 uuid = { version = "0.6", features = ["v4"] }
