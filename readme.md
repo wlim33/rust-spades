@@ -7,6 +7,7 @@ To learn the rules of spades, click [here](http://www.hoylegaming.com/rules/show
 ## How to use
 ```rust
 extern crate spades;
+extern crate uuid;
 
 use spades::{Game, GameTransition};
 
