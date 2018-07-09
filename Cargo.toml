@@ -6,7 +6,6 @@ repository = "https://github.com/wlim33/rust-spades"
 categories = ["games", "game-engines", "simulation"]
 keywords = ["spades", "cards", "state", "machine"]
 license = "MIT"
-license-file = "./LICENSE.txt"
 
 [dependencies]
 rand = "0.5"
