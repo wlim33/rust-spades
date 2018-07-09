@@ -1,0 +1,8 @@
+[package]
+name = "spades"
+version = "0.1.0"
+authors = ["William <limwilliam23@gmail.com>"]
+
+[dependencies]
+rand = "0.5"
+uuid = { version = "0.6", features = ["v4"] }
