@@ -1,11 +1,11 @@
 extern crate uuid;
 
 use uuid::Uuid;
-use error::*;
+use error::{TransitionError, Success, GetError};
 use deck::*;
 
-mod deck;
 mod scoring;
+pub mod deck;
 pub mod error;
 
 #[cfg(test)]
@@ -68,7 +68,34 @@ impl Game {
         }
     }
 
-    
+    pub fn get_current_player_id(&self) -> &Uuid {
+        match self.current_player {
+            0 => & self.player_a.id,
+            1 => & self.player_b.id,
+            2 => & self.player_c.id,
+            3 => & self.player_d.id,
+            _ => & self.player_d.id,
+        }
+    }
+
+    pub fn get_hand_by_player_id(&self, player_id: Uuid) -> Result<&Vec<Card>, GetError> {
+        if player_id == self.player_a.id {
+            return Ok(&self.player_a.hand);
+        }
+        if player_id == self.player_a.id {
+            return Ok(&self.player_a.hand);
+        }        
+        if player_id == self.player_a.id {
+            return Ok(&self.player_a.hand);
+        }        
+        if player_id == self.player_a.id {
+            return Ok(&self.player_a.hand);
+        }
+
+        return Err(GetError::InvalidUuid);
+        
+    }
+
     pub fn get_hand(&self, player: usize) -> &Vec<Card> {
         match player {
             0 => & self.player_a.hand,
@@ -82,30 +109,8 @@ impl Game {
 
     /// The primary function used to progress the game state. The first GameTransition argument must always be 
     /// [GameTransition::Start](enum.GameTransition.html#variant.Start). The stages and player rotations are managed
-    /// internally. The order of GameTransition arguments should be as follows:
-    /// 
-    /// ```
-    /// let mut g = spades::new();
-    /// //Four bets are played
-    /// g.play(GameTransition::Bet(3));
-    /// g.play(GameTransition::Bet(3));
-    /// g.play(GameTransition::Bet(3));
-    /// g.play(GameTransition::Bet(3));
-    /// 
-    /// // 4 cards per trick, 13 tricks (52 cards played total)
-    /// g.play(GameTransition::Card(Card {suit: Suit::Spade , rank: Rank::Ten }));
-    /// g.play(GameTransition::Card(Card {suit: Suit::Spade , rank: Rank::Queen }));
-    /// g.play(GameTransition::Card(Card {suit: Suit::Spade , rank: Rank::King }));
-    /// g.play(GameTransition::Card(Card {suit: Suit::Spade , rank: Rank::Ace }));
-    /// //... 
-    /// 
-    /// 
-    /// g.play(GameTransition::Bet(3));
-    /// g.play(GameTransition::Bet(3));
-    /// g.play(GameTransition::Bet(3));
-    /// g.play(GameTransition::Bet(3));
-    /// //...
-    /// ```
+    /// internally. The order of GameTransition arguments should be:
+    /// Start -> Bet * 4 -> Card * 13 -> Bet * 4 -> Card * 13 -> Bet * 4 -> ...
     pub fn play(&mut self, entry: GameTransition) -> Result<Success, TransitionError> {
         match entry {
             GameTransition::Bet(bet) => {

@@ -2,6 +2,11 @@ use std::error::Error;
 use std::fmt;
 
 #[derive(Debug, PartialEq)]
+pub enum GetError {
+    InvalidUuid
+}
+
+#[derive(Debug, PartialEq)]
 pub enum TransitionError {
     AlreadyStarted,
     NotStarted,
