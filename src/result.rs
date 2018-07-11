@@ -1,9 +1,29 @@
 use std::error::Error;
 use std::fmt;
 
+
+#[derive(Debug, PartialEq)]
+pub enum TransitionSuccess {
+    Bet,
+    BetComplete,
+    Trick,
+    PlayCard,
+    GameOver,
+    Start
+}
+
 #[derive(Debug, PartialEq)]
 pub enum GetError {
     InvalidUuid
+}
+
+impl fmt::Display for GetError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            GetError::InvalidUuid => {
+                write!(f, "Error: Attempted to retrieve by an invalid Uuid")},
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -43,14 +63,3 @@ impl Error for TransitionError {
         Some(self)
     }
 }
-
-#[derive(Debug, PartialEq)]
-pub enum Success {
-    Bet,
-    BetComplete,
-    Trick,
-    PlayCard,
-    GameOver,
-    Start
-}
-

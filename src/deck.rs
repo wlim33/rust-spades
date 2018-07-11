@@ -1,8 +1,9 @@
 extern crate rand;
 
+use num_traits::{FromPrimitive, ToPrimitive};
 use self::rand::{thread_rng, Rng};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Primitive)]
 pub enum Suit {
     Blank = 0,
     Club = 1,
@@ -11,7 +12,7 @@ pub enum Suit {
     Spade = 4,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Primitive)]
 pub enum Rank {
     Blank = 1,
     Two = 2,

@@ -1,12 +1,16 @@
+#[macro_use]
+extern crate enum_primitive_derive;
+extern crate num_traits;
+
 extern crate uuid;
 
 use uuid::Uuid;
-use error::{TransitionError, Success, GetError};
+use result::{TransitionError, TransitionSuccess, GetError};
 use deck::*;
 
 mod scoring;
 pub mod deck;
-pub mod error;
+pub mod result;
 
 #[cfg(test)]
 mod tests;
@@ -93,7 +97,6 @@ impl Game {
         }
 
         return Err(GetError::InvalidUuid);
-        
     }
 
     pub fn get_hand(&self, player: usize) -> &Vec<Card> {
@@ -111,7 +114,7 @@ impl Game {
     /// [GameTransition::Start](enum.GameTransition.html#variant.Start). The stages and player rotations are managed
     /// internally. The order of GameTransition arguments should be:
     /// Start -> Bet * 4 -> Card * 13 -> Bet * 4 -> Card * 13 -> Bet * 4 -> ...
-    pub fn play(&mut self, entry: GameTransition) -> Result<Success, TransitionError> {
+    pub fn play(&mut self, entry: GameTransition) -> Result<TransitionSuccess, TransitionError> {
         match entry {
             GameTransition::Bet(bet) => {
                 if !self.game_started {
@@ -131,10 +134,10 @@ impl Game {
                 if self.rotation_status == 0 {
                     self.scoring.bet(*self.bets_placed.last().unwrap());
                     self.bets_placed.push([0;4]);
-                    return Ok(Success::BetComplete);
+                    return Ok(TransitionSuccess::BetComplete);
                 }
 
-                return Ok(Success::Bet);
+                return Ok(TransitionSuccess::Bet);
             },
             GameTransition::Card(card) => {
                 if !self.game_started {
@@ -150,7 +153,7 @@ impl Game {
 
                 let play_card_result = self.play_card(&card);
 
-                if let Ok(Success::PlayCard) = play_card_result {
+                if let Ok(TransitionSuccess::PlayCard) = play_card_result {
                     self.hands_played.last_mut().unwrap()[self.current_player] = card;
                     self.current_player = (self.current_player + 1) % 4;
                     self.rotation_status = (self.rotation_status + 1) % 4;
@@ -158,7 +161,7 @@ impl Game {
                     if self.rotation_status == 0 {
                         let winner = self.scoring.trick(self.current_player, self.hands_played.last().unwrap());
                         if self.scoring.is_over { 
-                            return Ok(Success::GameOver);
+                            return Ok(TransitionSuccess::GameOver);
                         }
                         if self.scoring.in_betting_stage {
                             self.deal_cards();
@@ -166,9 +169,9 @@ impl Game {
                             self.current_player = winner;
                             self.hands_played.push(new_pot());
                         }
-                        return Ok(Success::Trick);
+                        return Ok(TransitionSuccess::Trick);
                     }
-                    return Ok(Success::PlayCard);
+                    return Ok(TransitionSuccess::PlayCard);
                 };
                 return play_card_result;
             },
@@ -178,7 +181,7 @@ impl Game {
                 }
                 self.deal_cards();
                 self.game_started = true;
-                return Ok(Success::Start);
+                return Ok(TransitionSuccess::Start);
             }
         }
     }
@@ -193,7 +196,7 @@ impl Game {
         self.player_d.hand = hands.pop().unwrap();
     }
 
-    fn play_card(&mut self, card: &Card) -> Result<Success, TransitionError> {
+    fn play_card(&mut self, card: &Card) -> Result<TransitionSuccess, TransitionError> {
         let player_hand = &mut match self.current_player {
             0 => &mut self.player_a,
             1 => &mut self.player_b,
@@ -209,6 +212,6 @@ impl Game {
         let card_index = player_hand.iter().position(|x| x == card).unwrap();
         self.deck.push(player_hand.remove(card_index));
 
-        return Ok(Success::PlayCard);
+        return Ok(TransitionSuccess::PlayCard);
     }
 }
