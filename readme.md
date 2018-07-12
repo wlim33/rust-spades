@@ -35,6 +35,7 @@ g.play(GameTransition::Bet(4));
 g.play(GameTransition::Bet(4));
 g.play(GameTransition::Bet(2));
 
+//The game is now in the card playing stage
 assert_eq!(g.play(GameTransition::Bet(3)), TransitionFailure::Bet);
 
 
