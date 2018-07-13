@@ -8,7 +8,7 @@ Spades is a four person [trick-taking](https://en.wikipedia.org/wiki/Trick-takin
 Add this line to your `Cargo.toml`:
 ```
 [dependencies]
-spades = "1.0.0"
+spades = "0.1.2"
 ```
 
 ## How to use
