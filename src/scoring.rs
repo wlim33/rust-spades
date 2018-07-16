@@ -1,4 +1,4 @@
-use deck::{Card, get_trick_winner};
+use cards::{Card, get_trick_winner};
 
 #[derive(Debug)]
 pub struct GameConfig {
@@ -10,7 +10,7 @@ pub struct TeamState {
     pub bets: Vec<i32>,
     pub current_round_tricks_won: [i32 ; 13],
     bags: i32,
-    cumulative_points: i32
+    pub cumulative_points: i32
 }
 
 impl TeamState {
@@ -40,7 +40,7 @@ impl TeamState {
 }
 
 #[derive(Debug)]
-pub struct ScoringState {
+pub struct Scoring {
     pub config: GameConfig,
     pub team_a: TeamState,
     pub team_b: TeamState,
@@ -51,9 +51,9 @@ pub struct ScoringState {
     pub trick: usize,
 }
 
-impl ScoringState {
-    pub fn new(max_points: i32) -> ScoringState {
-        ScoringState {
+impl Scoring {
+    pub fn new(max_points: i32) -> Scoring {
+        Scoring {
             team_a: TeamState::new(),
             team_b: TeamState::new(),
             in_betting_stage: true,

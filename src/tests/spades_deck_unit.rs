@@ -1,15 +1,15 @@
-use super::super::deck::{Card, Suit, Rank, get_trick_winner, deal_four_players};
-use super::super::deck;
+use super::super::cards::{Card, Suit, Rank, get_trick_winner, deal_four_players};
+use super::super::cards;
 #[test]
 fn new_deck() {
-    let x = deck::new();
+    let x = cards::new_deck();
     assert_eq!(x.len(), 52);
 }
 
 #[test]
 fn deal_deck_four_players() {
 
-    let mut x = deck::new();
+    let mut x = cards::new_deck();
     let y = x[0].suit.clone();
 
     println!("{:?}", y as u8);

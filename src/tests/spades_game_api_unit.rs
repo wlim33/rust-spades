@@ -1,8 +1,9 @@
 extern crate uuid;
 
-use super::super::deck::{Card, Suit, Rank};
+use super::super::cards::{Card, Suit, Rank};
 use super::super::result::{TransitionSuccess, TransitionError};
 use super::super::{Game, GameTransition};
+use super::super::game_state::State;
 
 #[test]
 pub fn api_main_unit() {
@@ -85,7 +86,7 @@ pub fn api_main_unit() {
     g.player_b.hand = hand_b;
     g.player_c.hand = hand_c;
     g.player_d.hand = hand_d;
-    assert_eq!(g.current_player, 0);
+    assert_eq!(g.state, State::Betting(0));
     assert_eq!(g.rotation_status, 0);
 
     assert_eq!(g.play(GameTransition::Card(Card { suit: Suit::Heart, rank: Rank::Five })), Err(TransitionError::CardInBettingStage));

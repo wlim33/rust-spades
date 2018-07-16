@@ -1,9 +1,8 @@
 extern crate rand;
 
-use num_traits::{FromPrimitive, ToPrimitive};
 use self::rand::{thread_rng, Rng};
 
-#[derive(Debug, Clone, Copy, PartialEq, Primitive)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Suit {
     Blank = 0,
     Club = 1,
@@ -12,9 +11,9 @@ pub enum Suit {
     Spade = 4,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Primitive)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Rank {
-    Blank = 1,
+    Blank = 0,
     Two = 2,
     Three = 3,
     Four = 4,
@@ -30,26 +29,34 @@ pub enum Rank {
     Ace = 14
 }
 
+/// The 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Card {
     pub suit: Suit,
     pub rank: Rank
 }
 
+
+/// Given four cards and a starting card, returns the winner of a trick.
+/// 
+/// The rules used to determine the winner of a trick are as follows: 
+/// * Spades trump all other suits
+/// * The suit the first player (given by index) plays sets the suit of the trick
+/// * The highest ranking spades card or card of suit of first player's card wins the trick.
 pub fn get_trick_winner(index: usize, others: &[Card ; 4]) -> usize {
     let mut winning_index = index;
     let mut max_card = &others[index];
 
-    for index in 0..4 {
-        let other = &others[index];
+    for i in 0..4 {
+        let other = &others[i];
         if other.suit == max_card.suit {
             if other.rank as u8  > max_card.rank as u8 {
                 max_card = &other;
-                winning_index = index;
+                winning_index = i;
             }
         } else if other.suit == Suit::Spade {
             max_card = &other;
-            winning_index = index;
+            winning_index = i;
         }
     }
     return winning_index;
@@ -57,8 +64,8 @@ pub fn get_trick_winner(index: usize, others: &[Card ; 4]) -> usize {
 
 
 
-
-pub fn new() -> Vec<Card> {
+/// Returns a shuffled deck of [`deck::Card`](struct.Card.html)'s, with 52 elements.
+pub fn new_deck() -> Vec<Card> {
     let ranks: Vec<Rank> = vec![
         Rank::Two,
         Rank::Three,
@@ -92,6 +99,7 @@ pub fn new() -> Vec<Card> {
     return cards;
 }
 
+/// Returns an array of `Blank` suited and ranked cards.
 pub fn new_pot() -> [Card; 4] {
     [
         Card { suit: Suit::Blank, rank: Rank::Blank}, 
@@ -101,12 +109,15 @@ pub fn new_pot() -> [Card; 4] {
     ]
 }
 
+/// Shuffles a `Vector` of cards in place, see [`rand::thread_rng::shuffle`](https://docs.rs/rand/0.5.4/rand/trait.Rng.html#method.shuffle).
 pub fn shuffle(cards: &mut Vec<Card>) {
     let mut rng = thread_rng();
     rng.shuffle(cards);
 }
 
+/// Used to reshuffle a deck of cards, panics if the `cards` does not have 52 elements (should only be used on a "full" deck).
 pub fn deal_four_players(cards: &mut Vec<Card>) -> Vec<Vec<Card>> {
+    assert_eq!(cards.len(), 52);
     shuffle(cards);
     let mut hands = vec![vec![], vec![], vec![], vec![]];
 

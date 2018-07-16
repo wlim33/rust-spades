@@ -15,5 +15,3 @@ travis-ci = { repository = "wlim33/rust-spades", branch = "master" }
 [dependencies]
 rand = "0.5"
 uuid = { version = "0.6", features = ["v4"] }
-enum-primitive-derive = "^0.1"
-num-traits = "^0.1"

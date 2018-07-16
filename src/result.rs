@@ -1,7 +1,6 @@
 use std::error::Error;
 use std::fmt;
 
-
 #[derive(Debug, PartialEq)]
 pub enum TransitionSuccess {
     Bet,
@@ -14,7 +13,11 @@ pub enum TransitionSuccess {
 
 #[derive(Debug, PartialEq)]
 pub enum GetError {
-    InvalidUuid
+    InvalidUuid,
+    GameNotStarted,
+    GameCompleted,
+    GameNotCompleted,
+    Unknown
 }
 
 impl fmt::Display for GetError {
@@ -22,6 +25,14 @@ impl fmt::Display for GetError {
         match &self {
             GetError::InvalidUuid => {
                 write!(f, "Error: Attempted to retrieve by an invalid Uuid")},
+            GetError::GameNotStarted => {
+                write!(f, "Error: Game not started yet.")},
+            GetError::GameCompleted => {
+                write!(f, "Error: Game is completed.")},
+            GetError::GameNotCompleted => {
+                write!(f, "Error: Game is still ongoing.")},
+            GetError::Unknown => {
+                write!(f, "Error: Unknown get error occurred.")},
         }
     }
 }
