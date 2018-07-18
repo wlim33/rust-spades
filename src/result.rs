@@ -44,7 +44,8 @@ pub enum TransitionError {
     CardInBettingStage,
     BetInTrickStage,
     CompletedGame,
-    CardNotInHand
+    CardNotInHand,
+    CardIncorrectSuit
 }
 
 impl fmt::Display for TransitionError {
@@ -61,7 +62,9 @@ impl fmt::Display for TransitionError {
             TransitionError::CompletedGame => {
                 write!(f, "Error: Attempted to play a completed game.")},
             TransitionError::CardNotInHand => {
-                write!(f, "Error: Attempted to play a card not in hand")},
+                write!(f, "Error: Attempted to play a card not in hand.")},
+            TransitionError::CardIncorrectSuit => {
+                write!(f, "Error: Attempted to play a of the wrong suit.")},
         }
     }
 }

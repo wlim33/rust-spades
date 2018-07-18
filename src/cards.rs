@@ -1,8 +1,10 @@
 extern crate rand;
 
 use self::rand::{thread_rng, Rng};
+use std::fmt;
+use std::cmp::Ordering;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Suit {
     Blank = 0,
     Club = 1,
@@ -11,7 +13,18 @@ pub enum Suit {
     Spade = 4,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+impl fmt::Debug for Suit {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Suit::Blank => write!(f, " "),
+            Suit::Club => write!(f, "\u{2667}"),
+            Suit::Diamond => write!(f, "\u{2662}"),
+            Suit::Heart => write!(f, "\u{2661}"),
+            Suit::Spade => write!(f, "\u{2664}"),
+        }
+    }
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Rank {
     Blank = 0,
     Two = 2,
@@ -28,13 +41,53 @@ pub enum Rank {
     King = 13,
     Ace = 14
 }
+impl fmt::Debug for Rank {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Rank::Blank => write!(f, " "),
+            Rank::Two => write!(f, "2"),
+            Rank::Three => write!(f, "3"),
+            Rank::Four => write!(f, "4"),
+            Rank::Five => write!(f, "5"),
+            Rank::Six => write!(f, "6"),
+            Rank::Seven => write!(f, "7"),
+            Rank::Eight => write!(f, "8"),
+            Rank::Nine => write!(f, "9"),
+            Rank::Ten => write!(f, "10"),
+            Rank::Jack => write!(f, "J"),
+            Rank::Queen => write!(f, "Q"),
+            Rank::King => write!(f, "K"),
+            Rank::Ace => write!(f, "A"),
+        }
+    }
+}
 
-/// The 
-#[derive(Debug, Clone, PartialEq)]
+/// Intuitive card struct. Comparisons are made according to alphabetical order, ascending.
+#[derive(Clone, PartialEq, Eq)]
 pub struct Card {
     pub suit: Suit,
     pub rank: Rank
 }
+
+impl fmt::Debug for Card {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?} {:?}",self.suit , self.rank)
+    }
+}
+
+impl Ord for Card {
+    fn cmp(&self, other: &Card) -> Ordering {
+        ((self.suit as u64) * 15 + (self.rank as u64)).cmp(&(((other.suit as u64)* 15) + (other.rank as u64)))
+    }
+}
+
+impl PartialOrd for Card {
+    fn partial_cmp(&self, other: &Card) -> Option<Ordering> {
+        Some(((self.suit as u64) * 15 + (self.rank as u64)).cmp(&(((other.suit as u64)* 15) + (other.rank as u64))))
+    }
+}
+
+
 
 
 /// Given four cards and a starting card, returns the winner of a trick.

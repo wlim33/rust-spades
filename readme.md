@@ -8,8 +8,11 @@ Spades is a four person [trick-taking](https://en.wikipedia.org/wiki/Trick-takin
 Add this line to your `Cargo.toml`:
 ```
 [dependencies]
-spades = "0.1.2"
+spades = "1.0"
 ```
+
+## Bidding Features
+Currently allows bidding nil by placing a bet of zero (the bonus is +100 points, and penalty is -100 points), but blind bets are not yet supported.
 
 ## How to use
 ```rust
@@ -52,4 +55,4 @@ g.play(GameTransition::Card(valid_card));
 For a complete description of the crate, check the docs.rs [page](https://docs.rs/spades/).
 
 ## Contributing
-If there is a feature you would like to see added, please feel free to make an open an issue or pull request.
+If there is a feature you would like to see added, please feel free to make an open an issue or pull request!
