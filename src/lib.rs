@@ -1,13 +1,10 @@
 //! This crate provides an implementation of the four person card game, [spades](https://www.pagat.com/auctionwhist/spades.html). 
 //! ## Example usage
 //! ```
-//! extern crate rand;
-//! extern crate uuid;
-//! extern crate spades;
-//! 
 //! use std::{io};
 //! use spades::{Game, GameTransition, State};
-//! use rand::{thread_rng, Rng};
+//! use rand::seq::SliceRandom;
+//! use rand::thread_rng;
 //! 
 //! let mut g = Game::new(uuid::Uuid::new_v4(), 
 //!    [uuid::Uuid::new_v4(), 
@@ -27,7 +24,7 @@
 //!         assert!(g.get_current_hand().is_ok());
 //!         let hand = g.get_current_hand().ok().unwrap().clone();
 //! 
-//!         let random_card = rng.choose(hand.as_slice()).unwrap();
+//!         let random_card = hand.as_slice().choose(&mut rng).unwrap();
 //!         
 //!         g.play(GameTransition::Card(random_card.clone()));
 //!     } else {
@@ -36,8 +33,6 @@
 //! }
 //! assert_eq!(*g.get_state(), State::Completed);
 //! ```
-
-extern crate uuid;
 
 mod scoring;
 mod game_state;

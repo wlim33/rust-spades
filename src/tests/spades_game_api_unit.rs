@@ -1,5 +1,3 @@
-extern crate uuid;
-
 use super::super::cards::{Card, Suit, Rank};
 use super::super::result::{TransitionSuccess, TransitionError};
 use super::super::{Game, GameTransition};
