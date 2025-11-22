@@ -1,6 +1,5 @@
-extern crate rand;
-
-use self::rand::{thread_rng, Rng};
+use rand::thread_rng;
+use rand::seq::SliceRandom;
 use std::fmt;
 use std::cmp::Ordering;
 
@@ -162,10 +161,10 @@ pub fn new_pot() -> [Card; 4] {
     ]
 }
 
-/// Shuffles a `Vector` of cards in place, see [`rand::thread_rng::shuffle`](https://docs.rs/rand/0.5.4/rand/trait.Rng.html#method.shuffle).
+/// Shuffles a `Vector` of cards in place, see [`rand::seq::SliceRandom::shuffle`](https://docs.rs/rand/latest/rand/seq/trait.SliceRandom.html#tymethod.shuffle).
 pub fn shuffle(cards: &mut Vec<Card>) {
     let mut rng = thread_rng();
-    rng.shuffle(cards);
+    cards.shuffle(&mut rng);
 }
 
 /// Used to reshuffle a deck of cards, panics if the `cards` does not have 52 elements (should only be used on a "full" deck).
@@ -176,7 +175,7 @@ pub fn deal_four_players(cards: &mut Vec<Card>) -> Vec<Vec<Card>> {
 
     let mut i = 0;
     while cards.len() > 0 {
-        &hands[i].push(cards.pop().unwrap());
+        hands[i].push(cards.pop().unwrap());
         i = (i + 1) % 4;
     }
 

@@ -8,10 +8,11 @@ keywords = ["spades", "cards", "state", "machine"]
 readme = "./README.md"
 license = "MIT"
 description = "A popular four person card game implemented in Rust."
+edition = "2021"
 
 [badges]
 travis-ci = { repository = "wlim33/rust-spades", branch = "master" }
 
 [dependencies]
-rand = "0.5"
-uuid = { version = "0.6", features = ["v4"] }
+rand = "0.8"
+uuid = { version = "1.18", features = ["v4"] }

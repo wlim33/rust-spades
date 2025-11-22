@@ -1,4 +1,4 @@
-use cards::{Card, get_trick_winner};
+use crate::cards::{Card, get_trick_winner};
 
 #[derive(Debug)]
 pub struct GameConfig {
