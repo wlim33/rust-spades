@@ -54,6 +54,7 @@ pub use cards::*;
 pub use game_state::*;
 
 /// The primary way to interface with a spades game. Used as an argument to [Game::play](struct.Game.html#method.play).
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum GameTransition {
     Bet(i32),
     Card(Card),
