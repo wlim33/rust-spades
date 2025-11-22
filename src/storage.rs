@@ -1,5 +1,5 @@
 #[cfg(feature = "server")]
-use rusqlite::{Connection, Result as SqliteResult, params};
+use rusqlite::{Connection, params};
 #[cfg(feature = "server")]
 use serde_json;
 #[cfg(feature = "server")]

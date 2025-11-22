@@ -210,7 +210,7 @@ async fn make_transition(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let transition_type = match &request.transition {
         TransitionType::Start => "Start",
-        TransitionType::Bet { amount } => "Bet",
+        TransitionType::Bet { .. } => "Bet",
         TransitionType::Card { .. } => "Card",
     };
     log::debug!("Received transition request for game {}: {}", game_id, transition_type);
