@@ -155,12 +155,19 @@ impl GameStorage {
         log::debug!("Listing all games from storage");
         
         let mut stmt = self.conn.prepare("SELECT id FROM games")?;
-        let game_ids = stmt.query_map([], |row| {
+        let game_ids: Result<Vec<Uuid>, rusqlite::Error> = stmt.query_map([], |row| {
             let id_str: String = row.get(0)?;
-            Ok(Uuid::parse_str(&id_str).unwrap())
+            match Uuid::parse_str(&id_str) {
+                Ok(uuid) => Ok(uuid),
+                Err(e) => {
+                    log::error!("Failed to parse UUID from database: {} - {}", id_str, e);
+                    Err(rusqlite::Error::InvalidQuery)
+                }
+            }
         })?
-        .collect::<Result<Vec<Uuid>, rusqlite::Error>>()?;
+        .collect();
         
+        let game_ids = game_ids?;
         log::debug!("Found {} games in storage", game_ids.len());
         Ok(game_ids)
     }
