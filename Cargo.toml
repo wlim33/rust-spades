@@ -15,4 +15,21 @@ travis-ci = { repository = "wlim33/rust-spades", branch = "master" }
 
 [dependencies]
 rand = "0.8"
-uuid = { version = "1.18", features = ["v4"] }
+uuid = { version = "1.18", features = ["v4", "serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Server dependencies (optional)
+tokio = { version = "1.0", features = ["full"], optional = true }
+axum = { version = "0.7", optional = true }
+tower = { version = "0.5", optional = true }
+tower-http = { version = "0.6", features = ["cors"], optional = true }
+
+[features]
+default = []
+server = ["tokio", "axum", "tower", "tower-http"]
+
+[[bin]]
+name = "spades-server"
+path = "src/bin/server.rs"
+required-features = ["server"]

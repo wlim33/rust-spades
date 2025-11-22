@@ -1,3 +1,5 @@
+use serde::{Serialize, Deserialize};
+
 /// Current game stage, field of `Game`. 
 /// 
 /// The `Betting` and `Trick` variants have a `usize` value between 0
@@ -5,7 +7,7 @@
 /// respectively.
 /// 
 /// **Example:** `State::Trick(2)` means the game is in the card playing stage, and two players have played their cards.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum State {
     NotStarted,
     Betting(usize),
