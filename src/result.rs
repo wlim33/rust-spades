@@ -73,7 +73,7 @@ impl Error for TransitionError {
     fn description(&self) -> &str {
         "A transition error occured."
     }
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         Some(self)
     }
 }

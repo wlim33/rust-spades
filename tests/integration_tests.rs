@@ -1,8 +1,3 @@
-extern crate spades;
-
-extern crate rand;
-extern crate uuid;
-
 use std::{io};
 use spades::{Game, GameTransition, State, Card, Suit};
 use rand::{thread_rng};
