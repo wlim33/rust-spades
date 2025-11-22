@@ -39,6 +39,9 @@ mod game_state;
 mod cards;
 mod result;
 
+#[cfg(feature = "server")]
+pub mod game_manager;
+
 #[cfg(test)]
 mod tests;
 
@@ -159,14 +162,14 @@ impl Game {
         if player_id == self.player_a.id {
             return Ok(&self.player_a.hand);
         }
-        if player_id == self.player_a.id {
-            return Ok(&self.player_a.hand);
+        if player_id == self.player_b.id {
+            return Ok(&self.player_b.hand);
         }        
-        if player_id == self.player_a.id {
-            return Ok(&self.player_a.hand);
+        if player_id == self.player_c.id {
+            return Ok(&self.player_c.hand);
         }        
-        if player_id == self.player_a.id {
-            return Ok(&self.player_a.hand);
+        if player_id == self.player_d.id {
+            return Ok(&self.player_d.hand);
         }
 
         return Err(GetError::InvalidUuid);
