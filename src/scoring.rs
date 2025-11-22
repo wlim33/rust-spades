@@ -1,11 +1,12 @@
 use crate::cards::{Card, get_trick_winner};
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GameConfig {
     max_points: i32
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TeamState {
     pub current_round_tricks_won: [i32 ; 13],
     pub bags: i32,
@@ -55,7 +56,7 @@ impl TeamState {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Scoring {
     pub config: GameConfig,
     pub team_a: TeamState,

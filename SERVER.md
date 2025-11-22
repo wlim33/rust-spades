@@ -20,6 +20,21 @@ cargo run --features server --bin spades-server
 
 The server will listen on `0.0.0.0:3000` by default.
 
+### Logging
+
+The server uses the `env_logger` crate for logging. You can control the log level using the `RUST_LOG` environment variable:
+
+```bash
+# Run with info-level logging (default)
+RUST_LOG=info cargo run --features server --bin spades-server
+
+# Run with debug-level logging for more detailed output
+RUST_LOG=debug cargo run --features server --bin spades-server
+
+# Run with trace-level logging for maximum verbosity
+RUST_LOG=trace cargo run --features server --bin spades-server
+```
+
 ## API Endpoints
 
 ### Root
@@ -131,6 +146,8 @@ done
 
 You can also use the `GameManager` directly in your Rust code (requires the `server` feature):
 
+### Without Persistence
+
 ```rust
 use spades::game_manager::GameManager;
 use spades::GameTransition;
@@ -156,16 +173,110 @@ fn main() {
 }
 ```
 
+### With SQLite Persistence
+
+```rust
+use spades::game_manager::GameManager;
+use spades::GameTransition;
+
+fn main() {
+    // Create a manager with SQLite storage
+    let manager = GameManager::with_storage("games.db").unwrap();
+    
+    // Create a game (automatically saved to database)
+    let response = manager.create_game(500).unwrap();
+    let game_id = response.game_id;
+    
+    // Start the game (state changes are automatically persisted)
+    manager.make_transition(game_id, GameTransition::Start).unwrap();
+    
+    // Games are automatically loaded from storage when the manager is created
+    // So games persist across server restarts
+}
+```
+
+## SQLite Storage
+
+The server now supports optional SQLite persistence for games. When enabled:
+
+- **Automatic Persistence**: All game state changes are automatically saved to the database
+- **Crash Recovery**: Games are automatically restored when the server restarts
+- **Thread-Safe**: Storage operations are protected by mutexes for concurrent access
+- **Zero Configuration**: Just specify a database file path
+
+To use storage in your own code:
+
+```rust
+use spades::game_manager::GameManager;
+
+// Create manager with persistence
+let manager = GameManager::with_storage("path/to/games.db").unwrap();
+
+// All operations automatically save to database
+let game = manager.create_game(500).unwrap();
+manager.make_transition(game.game_id, GameTransition::Start).unwrap();
+
+// Games persist across restarts
+drop(manager);
+
+// Create a new manager - games are automatically loaded
+let manager2 = GameManager::with_storage("path/to/games.db").unwrap();
+let games = manager2.list_games().unwrap();
+// games vector will contain the previously created game
+```
+
+You can also use the storage module directly:
+
+```rust
+use spades::storage::GameStorage;
+use spades::Game;
+use uuid::Uuid;
+
+fn main() {
+    let storage = GameStorage::new("games.db").unwrap();
+    
+    // Create and save a game
+    let game = Game::new(
+        Uuid::new_v4(),
+        [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()],
+        500
+    );
+    storage.save_game(&game).unwrap();
+    
+    // Load a game
+    let loaded_game = storage.load_game(*game.get_id()).unwrap();
+    
+    // List all games
+    let game_ids = storage.list_games().unwrap();
+}
+```
+
 ## Concurrent Games
 
 The server is designed to handle multiple concurrent games efficiently. Each game is stored in a thread-safe data structure (`Arc<RwLock<HashMap<Uuid, Arc<RwLock<Game>>>>>`), allowing multiple games to be played simultaneously without interference.
 
+When persistence is enabled, storage operations use mutexes to ensure thread-safe database access across concurrent requests.
+
 ## Architecture
 
-- **GameManager**: Manages multiple game instances with thread-safe access
+- **GameManager**: Manages multiple game instances with thread-safe access and optional SQLite persistence
+- **GameStorage**: Optional SQLite-based persistence layer for game state
 - **REST API**: Built with Axum web framework for high performance
+- **Logging**: Comprehensive logging using the `log` crate with `env_logger`
 - **Serialization**: All game types support JSON serialization via Serde
 - **Backward Compatibility**: The original library API remains unchanged; server mode is completely optional
+
+## Robustness & Error Handling
+
+The server and library include comprehensive error handling and logging:
+
+- **Logging**: All operations log at appropriate levels (info, warn, error, debug)
+- **Lock Management**: Proper handling of RwLock/Mutex poisoning
+- **Error Types**: Strongly-typed errors with descriptive messages
+- **Input Validation**: Invalid game transitions, card plays, and bets are caught and logged
+- **Concurrent Access**: Thread-safe data structures prevent race conditions
+- **Storage Errors**: Database errors are caught and properly propagated
+- **Recovery**: Games can be recovered from storage after crashes or restarts
 
 ## Dependencies
 
@@ -175,3 +286,6 @@ The server mode adds the following dependencies (only when the `server` feature 
 - `tower` - Service abstractions
 - `tower-http` - HTTP middleware (CORS support)
 - `serde` and `serde_json` - JSON serialization
+- `log` - Logging facade
+- `env_logger` - Logger implementation
+- `rusqlite` - SQLite database support (with bundled feature for easy deployment)

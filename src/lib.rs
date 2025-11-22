@@ -42,6 +42,9 @@ mod result;
 #[cfg(feature = "server")]
 pub mod game_manager;
 
+#[cfg(feature = "server")]
+pub mod storage;
+
 #[cfg(test)]
 mod tests;
 
@@ -51,13 +54,14 @@ pub use cards::*;
 pub use game_state::*;
 
 /// The primary way to interface with a spades game. Used as an argument to [Game::play](struct.Game.html#method.play).
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum GameTransition {
     Bet(i32),
     Card(Card),
     Start,
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct Player{
     id: Uuid,
     hand: Vec<Card>
@@ -73,7 +77,7 @@ impl Player {
 }
 
 /// Primary game state. Internally manages player rotation, scoring, and cards.
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Game {
     id: Uuid,
     state: State,
@@ -242,20 +246,25 @@ impl Game {
             GameTransition::Bet(bet) => {
                 match self.state {
                     State::NotStarted => {
+                        log::warn!("Game {}: Attempted to bet before game started", self.id);
                         return Err(TransitionError::NotStarted); 
                     },
                     State::Trick(_rotation_status) => {
+                        log::warn!("Game {}: Attempted to bet during trick stage", self.id);
                         return Err(TransitionError::BetInTrickStage);
                     },
                     State::Completed => {
+                        log::warn!("Game {}: Attempted to bet after game completed", self.id);
                         return Err(TransitionError::CompletedGame);
                     },
                     State::Betting(rotation_status) => {
+                        log::debug!("Game {}: Player {} bet {}", self.id, self.current_player_index, bet);
                         self.scoring.add_bet(self.current_player_index,bet);
                         if rotation_status == 3 {
                             self.scoring.bet();
                             self.state = State::Trick((rotation_status + 1) % 4);
                             self.current_player_index = 0;
+                            log::info!("Game {}: All bets placed, starting trick phase", self.id);
                             return Ok(TransitionSuccess::BetComplete);
                         } else {
                             self.current_player_index = (self.current_player_index + 1) % 4;
@@ -269,12 +278,15 @@ impl Game {
             GameTransition::Card(card) => {
                 match self.state {
                     State::NotStarted => {
+                        log::warn!("Game {}: Attempted to play card before game started", self.id);
                         return Err(TransitionError::NotStarted); 
                     },
                     State::Completed => {
+                        log::warn!("Game {}: Attempted to play card after game completed", self.id);
                         return Err(TransitionError::CompletedGame);
                     },
                     State::Betting(_rotation_status) => {
+                        log::warn!("Game {}: Attempted to play card during betting stage", self.id);
                         return Err(TransitionError::CardInBettingStage)
                     },
                     State::Trick(rotation_status) => {
@@ -288,16 +300,22 @@ impl Game {
                             }.hand;
 
                             if !player_hand.contains(&card) {
+                                log::warn!("Game {}: Player {} attempted to play card not in hand: {:?}", 
+                                    self.id, self.current_player_index, card);
                                 return Err(TransitionError::CardNotInHand);
                             }
                             let leading_suit = self.leading_suit;
                             if rotation_status == 0 {
                                 self.leading_suit = card.suit;
+                                log::debug!("Game {}: Leading suit set to {:?}", self.id, card.suit);
                             }
                             if self.leading_suit != card.suit && player_hand.iter().any(|ref x| x.suit == leading_suit) {
+                                log::warn!("Game {}: Player {} attempted to play incorrect suit: {:?}", 
+                                    self.id, self.current_player_index, card);
                                 return Err(TransitionError::CardIncorrectSuit);
                             }
 
+                            log::debug!("Game {}: Player {} played card {:?}", self.id, self.current_player_index, card);
                             let card_index = player_hand.iter().position(|x| x == &card).unwrap();
                             self.deck.push(player_hand.remove(card_index));
                         }
@@ -306,11 +324,14 @@ impl Game {
                         
                         if rotation_status == 3 {
                             let winner = self.scoring.trick(self.current_player_index, self.hands_played.last().unwrap());
+                            log::debug!("Game {}: Trick completed, winner: player {}", self.id, winner);
                             if self.scoring.is_over {
+                                log::info!("Game {}: Game completed", self.id);
                                 self.state = State::Completed;
                                 return Ok(TransitionSuccess::GameOver);
                             }
                             if self.scoring.in_betting_stage {
+                                log::info!("Game {}: Round completed, starting new betting phase", self.id);
                                 self.current_player_index = 0;
                                 self.state = State::Betting((rotation_status + 1) % 4);
                                 self.deal_cards();
@@ -330,8 +351,10 @@ impl Game {
             },
             GameTransition::Start => {
                 if self.state != State::NotStarted {
+                    log::warn!("Game {}: Attempted to start already started game", self.id);
                     return Err(TransitionError::AlreadyStarted);
                 }
+                log::info!("Game {}: Starting game", self.id);
                 self.deal_cards();
                 self.state = State::Betting(0);
                 return Ok(TransitionSuccess::Start);
