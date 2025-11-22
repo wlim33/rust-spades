@@ -79,10 +79,15 @@ impl GameManager {
             Uuid::new_v4(),
         ];
         
+        log::info!("Creating new game {} with max_points: {}", game_id, max_points);
         let game = Game::new(game_id, player_ids, max_points);
         
-        let mut games = self.games.write().map_err(|_| GameManagerError::LockError)?;
+        let mut games = self.games.write().map_err(|e| {
+            log::error!("Failed to acquire write lock for creating game: {:?}", e);
+            GameManagerError::LockError
+        })?;
         games.insert(game_id, Arc::new(RwLock::new(game)));
+        log::debug!("Game {} created successfully with players: {:?}", game_id, player_ids);
         
         Ok(CreateGameResponse {
             game_id,
@@ -92,10 +97,20 @@ impl GameManager {
 
     /// Get the state of a game
     pub fn get_game_state(&self, game_id: Uuid) -> Result<GameStateResponse, GameManagerError> {
-        let games = self.games.read().map_err(|_| GameManagerError::LockError)?;
-        let game_lock = games.get(&game_id).ok_or(GameManagerError::GameNotFound)?;
-        let game = game_lock.read().map_err(|_| GameManagerError::LockError)?;
+        let games = self.games.read().map_err(|e| {
+            log::error!("Failed to acquire read lock for game state: {:?}", e);
+            GameManagerError::LockError
+        })?;
+        let game_lock = games.get(&game_id).ok_or_else(|| {
+            log::warn!("Attempted to get state for non-existent game: {}", game_id);
+            GameManagerError::GameNotFound
+        })?;
+        let game = game_lock.read().map_err(|e| {
+            log::error!("Failed to acquire read lock for game {}: {:?}", game_id, e);
+            GameManagerError::LockError
+        })?;
         
+        log::debug!("Retrieved state for game {}", game_id);
         Ok(GameStateResponse {
             game_id,
             state: game.get_state().clone(),
@@ -109,14 +124,27 @@ impl GameManager {
 
     /// Get a player's hand
     pub fn get_hand(&self, game_id: Uuid, player_id: Uuid) -> Result<HandResponse, GameManagerError> {
-        let games = self.games.read().map_err(|_| GameManagerError::LockError)?;
-        let game_lock = games.get(&game_id).ok_or(GameManagerError::GameNotFound)?;
-        let game = game_lock.read().map_err(|_| GameManagerError::LockError)?;
+        let games = self.games.read().map_err(|e| {
+            log::error!("Failed to acquire read lock for getting hand: {:?}", e);
+            GameManagerError::LockError
+        })?;
+        let game_lock = games.get(&game_id).ok_or_else(|| {
+            log::warn!("Attempted to get hand for non-existent game: {}", game_id);
+            GameManagerError::GameNotFound
+        })?;
+        let game = game_lock.read().map_err(|e| {
+            log::error!("Failed to acquire read lock for game {}: {:?}", game_id, e);
+            GameManagerError::LockError
+        })?;
         
         let cards = game.get_hand_by_player_id(player_id)
-            .map_err(|e| GameManagerError::GameError(format!("{:?}", e)))?
+            .map_err(|e| {
+                log::warn!("Failed to get hand for player {} in game {}: {:?}", player_id, game_id, e);
+                GameManagerError::GameError(format!("{:?}", e))
+            })?
             .clone();
         
+        log::debug!("Retrieved hand for player {} in game {}", player_id, game_id);
         Ok(HandResponse {
             player_id,
             cards,
@@ -126,24 +154,55 @@ impl GameManager {
     /// Make a game transition (start, bet, play card)
     pub fn make_transition(&self, game_id: Uuid, transition: GameTransition) 
         -> Result<TransitionSuccess, GameManagerError> {
-        let games = self.games.read().map_err(|_| GameManagerError::LockError)?;
-        let game_lock = games.get(&game_id).ok_or(GameManagerError::GameNotFound)?;
-        let mut game = game_lock.write().map_err(|_| GameManagerError::LockError)?;
+        let games = self.games.read().map_err(|e| {
+            log::error!("Failed to acquire read lock for transition: {:?}", e);
+            GameManagerError::LockError
+        })?;
+        let game_lock = games.get(&game_id).ok_or_else(|| {
+            log::warn!("Attempted to make transition for non-existent game: {}", game_id);
+            GameManagerError::GameNotFound
+        })?;
+        let mut game = game_lock.write().map_err(|e| {
+            log::error!("Failed to acquire write lock for game {}: {:?}", game_id, e);
+            GameManagerError::LockError
+        })?;
+        
+        log::debug!("Making transition for game {}: {:?}", game_id, 
+            match &transition {
+                GameTransition::Start => "Start",
+                GameTransition::Bet(_) => "Bet",
+                GameTransition::Card(_) => "Card",
+            });
         
         game.play(transition)
-            .map_err(|e| GameManagerError::GameError(format!("{:?}", e)))
+            .map_err(|e| {
+                log::warn!("Transition failed for game {}: {:?}", game_id, e);
+                GameManagerError::GameError(format!("{:?}", e))
+            })
     }
 
     /// List all active games
     pub fn list_games(&self) -> Result<Vec<Uuid>, GameManagerError> {
-        let games = self.games.read().map_err(|_| GameManagerError::LockError)?;
-        Ok(games.keys().copied().collect())
+        let games = self.games.read().map_err(|e| {
+            log::error!("Failed to acquire read lock for listing games: {:?}", e);
+            GameManagerError::LockError
+        })?;
+        let game_ids: Vec<Uuid> = games.keys().copied().collect();
+        log::debug!("Listed {} active games", game_ids.len());
+        Ok(game_ids)
     }
 
     /// Remove a completed game
     pub fn remove_game(&self, game_id: Uuid) -> Result<(), GameManagerError> {
-        let mut games = self.games.write().map_err(|_| GameManagerError::LockError)?;
-        games.remove(&game_id).ok_or(GameManagerError::GameNotFound)?;
+        let mut games = self.games.write().map_err(|e| {
+            log::error!("Failed to acquire write lock for removing game: {:?}", e);
+            GameManagerError::LockError
+        })?;
+        games.remove(&game_id).ok_or_else(|| {
+            log::warn!("Attempted to remove non-existent game: {}", game_id);
+            GameManagerError::GameNotFound
+        })?;
+        log::info!("Removed game {}", game_id);
         Ok(())
     }
 }

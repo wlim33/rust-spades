@@ -45,6 +45,11 @@ struct ErrorResponse {
 
 #[tokio::main]
 async fn main() {
+    // Initialize logging
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+    
+    log::info!("Initializing Spades game server");
+    
     // Initialize the game manager
     let game_manager = GameManager::new();
     let app_state = AppState { game_manager };
@@ -63,6 +68,7 @@ async fn main() {
 
     // Start the server
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    log::info!("Spades server listening on {}", addr);
     println!("Spades server listening on {}", addr);
     println!("\nAvailable endpoints:");
     println!("  GET  /                                          - API info");
@@ -96,11 +102,16 @@ async fn create_game(
     AxumState(state): AxumState<AppState>,
     Json(request): Json<CreateGameRequest>,
 ) -> Result<Json<CreateGameResponse>, (StatusCode, Json<ErrorResponse>)> {
+    log::info!("Received request to create game with max_points: {}", request.max_points);
     state
         .game_manager
         .create_game(request.max_points)
-        .map(Json)
+        .map(|response| {
+            log::info!("Successfully created game {}", response.game_id);
+            Json(response)
+        })
         .map_err(|e| {
+            log::error!("Failed to create game: {:?}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
@@ -113,28 +124,45 @@ async fn create_game(
 async fn list_games(
     AxumState(state): AxumState<AppState>,
 ) -> Result<Json<Vec<Uuid>>, (StatusCode, Json<ErrorResponse>)> {
-    state.game_manager.list_games().map(Json).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("{:?}", e),
-            }),
-        )
-    })
+    log::debug!("Received request to list games");
+    state.game_manager.list_games()
+        .map(|games| {
+            log::debug!("Successfully listed {} games", games.len());
+            Json(games)
+        })
+        .map_err(|e| {
+            log::error!("Failed to list games: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("{:?}", e),
+                }),
+            )
+        })
 }
 
 async fn get_game_state(
     AxumState(state): AxumState<AppState>,
     Path(game_id): Path<Uuid>,
 ) -> Result<Json<GameStateResponse>, (StatusCode, Json<ErrorResponse>)> {
+    log::debug!("Received request to get state for game {}", game_id);
     state
         .game_manager
         .get_game_state(game_id)
-        .map(Json)
+        .map(|response| {
+            log::debug!("Successfully retrieved state for game {}", game_id);
+            Json(response)
+        })
         .map_err(|e| {
             let status = match e {
-                spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
+                spades::game_manager::GameManagerError::GameNotFound => {
+                    log::warn!("Game not found: {}", game_id);
+                    StatusCode::NOT_FOUND
+                },
+                _ => {
+                    log::error!("Error getting game state for {}: {:?}", game_id, e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                },
             };
             (
                 status,
@@ -149,18 +177,30 @@ async fn delete_game(
     AxumState(state): AxumState<AppState>,
     Path(game_id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state.game_manager.remove_game(game_id).map(|_| StatusCode::NO_CONTENT).map_err(|e| {
-        let status = match e {
-            spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        (
-            status,
-            Json(ErrorResponse {
-                error: format!("{:?}", e),
-            }),
-        )
-    })
+    log::info!("Received request to delete game {}", game_id);
+    state.game_manager.remove_game(game_id)
+        .map(|_| {
+            log::info!("Successfully deleted game {}", game_id);
+            StatusCode::NO_CONTENT
+        })
+        .map_err(|e| {
+            let status = match e {
+                spades::game_manager::GameManagerError::GameNotFound => {
+                    log::warn!("Attempted to delete non-existent game: {}", game_id);
+                    StatusCode::NOT_FOUND
+                },
+                _ => {
+                    log::error!("Error deleting game {}: {:?}", game_id, e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                },
+            };
+            (
+                status,
+                Json(ErrorResponse {
+                    error: format!("{:?}", e),
+                }),
+            )
+        })
 }
 
 async fn make_transition(
@@ -168,6 +208,13 @@ async fn make_transition(
     Path(game_id): Path<Uuid>,
     Json(request): Json<TransitionRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let transition_type = match &request.transition {
+        TransitionType::Start => "Start",
+        TransitionType::Bet { amount } => "Bet",
+        TransitionType::Card { .. } => "Card",
+    };
+    log::debug!("Received transition request for game {}: {}", game_id, transition_type);
+    
     let transition = match request.transition {
         TransitionType::Start => GameTransition::Start,
         TransitionType::Bet { amount } => GameTransition::Bet(amount),
@@ -178,6 +225,7 @@ async fn make_transition(
         .game_manager
         .make_transition(game_id, transition)
         .map(|result| {
+            log::info!("Transition successful for game {}: {:?}", game_id, result);
             Json(serde_json::json!({
                 "success": true,
                 "result": format!("{:?}", result)
@@ -185,8 +233,14 @@ async fn make_transition(
         })
         .map_err(|e| {
             let status = match e {
-                spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
-                _ => StatusCode::BAD_REQUEST,
+                spades::game_manager::GameManagerError::GameNotFound => {
+                    log::warn!("Transition failed - game not found: {}", game_id);
+                    StatusCode::NOT_FOUND
+                },
+                _ => {
+                    log::warn!("Transition failed for game {}: {:?}", game_id, e);
+                    StatusCode::BAD_REQUEST
+                },
             };
             (
                 status,
@@ -201,14 +255,24 @@ async fn get_hand(
     AxumState(state): AxumState<AppState>,
     Path((game_id, player_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<HandResponse>, (StatusCode, Json<ErrorResponse>)> {
+    log::debug!("Received request to get hand for player {} in game {}", player_id, game_id);
     state
         .game_manager
         .get_hand(game_id, player_id)
-        .map(Json)
+        .map(|response| {
+            log::debug!("Successfully retrieved hand for player {} in game {}", player_id, game_id);
+            Json(response)
+        })
         .map_err(|e| {
             let status = match e {
-                spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
-                _ => StatusCode::BAD_REQUEST,
+                spades::game_manager::GameManagerError::GameNotFound => {
+                    log::warn!("Get hand failed - game not found: {}", game_id);
+                    StatusCode::NOT_FOUND
+                },
+                _ => {
+                    log::warn!("Get hand failed for player {} in game {}: {:?}", player_id, game_id, e);
+                    StatusCode::BAD_REQUEST
+                },
             };
             (
                 status,
