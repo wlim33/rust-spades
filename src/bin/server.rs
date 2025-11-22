@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, State as AxumState},
     http::StatusCode,
     response::Json,
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use serde::{Deserialize, Serialize};
@@ -218,5 +218,3 @@ async fn get_hand(
             )
         })
 }
-
-use axum::routing::delete;
