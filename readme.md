@@ -11,6 +11,16 @@ Add this line to your `Cargo.toml`:
 spades = "1.0"
 ```
 
+## Server Mode (NEW!)
+Now includes an optional server mode for hosting multiple concurrent games via a REST API! Perfect for building web-based or multiplayer spades applications.
+
+To run the server:
+```bash
+cargo run --features server --bin spades-server
+```
+
+See [SERVER.md](SERVER.md) for complete documentation on the server API and usage.
+
 ## Bidding Features
 Currently allows bidding nil by placing a bet of zero (the bonus is +100 points, and penalty is -100 points), but blind bets are not yet supported.
 
