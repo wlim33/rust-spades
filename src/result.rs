@@ -1,7 +1,8 @@
 use std::error::Error;
 use std::fmt;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum TransitionSuccess {
     Bet,
     BetComplete,
@@ -11,7 +12,7 @@ pub enum TransitionSuccess {
     Start
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum GetError {
     InvalidUuid,
     GameNotStarted,
@@ -37,7 +38,7 @@ impl fmt::Display for GetError {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum TransitionError {
     AlreadyStarted,
     NotStarted,
