@@ -42,6 +42,9 @@ mod result;
 #[cfg(feature = "server")]
 pub mod game_manager;
 
+#[cfg(feature = "server")]
+pub mod storage;
+
 #[cfg(test)]
 mod tests;
 
@@ -57,7 +60,7 @@ pub enum GameTransition {
     Start,
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct Player{
     id: Uuid,
     hand: Vec<Card>
@@ -73,7 +76,7 @@ impl Player {
 }
 
 /// Primary game state. Internally manages player rotation, scoring, and cards.
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Game {
     id: Uuid,
     state: State,
