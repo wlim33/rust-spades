@@ -270,15 +270,52 @@ async fn get_hand(
         })
 }
 
+// --- Matchmaking: Drop Guards ---
+
+struct SeekGuard {
+    matchmaker: Matchmaker,
+    player_id: Uuid,
+    matched: bool,
+}
+
+impl Drop for SeekGuard {
+    fn drop(&mut self) {
+        if !self.matched {
+            self.matchmaker.cancel_seek(self.player_id);
+        }
+    }
+}
+
+struct LobbyGuard {
+    matchmaker: Matchmaker,
+    lobby_id: Uuid,
+    player_id: Uuid,
+    game_started: bool,
+}
+
+impl Drop for LobbyGuard {
+    fn drop(&mut self) {
+        if !self.game_started {
+            self.matchmaker.leave_lobby(self.lobby_id, self.player_id);
+        }
+    }
+}
+
 // --- Matchmaking: Seek Endpoints ---
 
 async fn seek(
     AxumState(state): AxumState<AppState>,
     Json(request): Json<SeekRequest>,
 ) -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
-    let rx = state.matchmaker.add_seek(request.max_points);
+    let (player_id, rx) = state.matchmaker.add_seek(request.max_points);
 
     let stream = async_stream::stream! {
+        let mut guard = SeekGuard {
+            matchmaker: state.matchmaker.clone(),
+            player_id,
+            matched: false,
+        };
+
         // Send initial queue status
         let seeks = state.matchmaker.list_seeks();
         let position = seeks.iter()
@@ -297,6 +334,7 @@ async fn seek(
         // Wait for match result
         match rx.await {
             Ok(result) => {
+                guard.matched = true;
                 yield Ok(Event::default()
                     .event("game_start")
                     .json_data(&result)
@@ -330,6 +368,13 @@ async fn create_lobby(
     let (lobby_id, player_id, mut rx) = state.matchmaker.create_lobby(request.max_points);
 
     let stream = async_stream::stream! {
+        let mut guard = LobbyGuard {
+            matchmaker: state.matchmaker.clone(),
+            lobby_id,
+            player_id,
+            game_started: false,
+        };
+
         yield Ok(Event::default()
             .event("lobby_update")
             .json_data(serde_json::json!({
@@ -351,6 +396,7 @@ async fn create_lobby(
                         .unwrap());
                 }
                 Ok(LobbyEvent::GameStart(result)) => {
+                    guard.game_started = true;
                     let personalized = MatchResult {
                         game_id: result.game_id,
                         player_id,
@@ -390,7 +436,15 @@ async fn join_lobby_handler(
         )
     })?;
 
+    let matchmaker = state.matchmaker.clone();
     let stream = async_stream::stream! {
+        let mut guard = LobbyGuard {
+            matchmaker,
+            lobby_id,
+            player_id,
+            game_started: false,
+        };
+
         yield Ok(Event::default()
             .event("lobby_update")
             .json_data(serde_json::json!({
@@ -411,6 +465,7 @@ async fn join_lobby_handler(
                         .unwrap());
                 }
                 Ok(LobbyEvent::GameStart(result)) => {
+                    guard.game_started = true;
                     let personalized = MatchResult {
                         game_id: result.game_id,
                         player_id,

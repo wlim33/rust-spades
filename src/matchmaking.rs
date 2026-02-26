@@ -81,9 +81,9 @@ impl Matchmaker {
         }
     }
 
-    /// Add a seek to the queue. Returns a oneshot receiver that will receive
-    /// the MatchResult when 4 players with the same max_points are matched.
-    pub fn add_seek(&self, max_points: i32) -> oneshot::Receiver<MatchResult> {
+    /// Add a seek to the queue. Returns (player_id, receiver) so the caller
+    /// can cancel the seek on disconnect.
+    pub fn add_seek(&self, max_points: i32) -> (Uuid, oneshot::Receiver<MatchResult>) {
         let player_id = Uuid::new_v4();
         let (tx, rx) = oneshot::channel();
 
@@ -97,7 +97,7 @@ impl Matchmaker {
         }
 
         self.try_match(max_points);
-        rx
+        (player_id, rx)
     }
 
     /// Remove a seek from the queue by player_id.
@@ -292,7 +292,7 @@ mod tests {
         let mut receivers = Vec::new();
 
         for _ in 0..4 {
-            let rx = mm.add_seek(500);
+            let (_pid, rx) = mm.add_seek(500);
             receivers.push(rx);
         }
 
@@ -338,12 +338,7 @@ mod tests {
     #[tokio::test]
     async fn test_cancel_seek() {
         let mm = make_matchmaker();
-        let player_id;
-        {
-            let _rx = mm.add_seek(500);
-            let queue = mm.seek_queue.lock().unwrap();
-            player_id = queue[0].player_id;
-        }
+        let (player_id, _rx) = mm.add_seek(500);
 
         mm.cancel_seek(player_id);
 
