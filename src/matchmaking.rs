@@ -169,6 +169,113 @@ impl Matchmaker {
             let _ = seek.sender.send(result);
         }
     }
+
+    /// Create a new lobby. Returns (lobby_id, creator_player_id, broadcast_receiver).
+    pub fn create_lobby(&self, max_points: i32) -> (Uuid, Uuid, broadcast::Receiver<LobbyEvent>) {
+        let lobby_id = Uuid::new_v4();
+        let creator_id = Uuid::new_v4();
+        let (broadcast_tx, broadcast_rx) = broadcast::channel(16);
+
+        let lobby = Lobby {
+            lobby_id,
+            creator_id,
+            max_points,
+            players: vec![LobbyPlayer { player_id: creator_id }],
+            broadcast_tx,
+        };
+
+        let mut lobbies = self.lobbies.write().unwrap();
+        lobbies.insert(lobby_id, lobby);
+
+        (lobby_id, creator_id, broadcast_rx)
+    }
+
+    /// Join an existing lobby. Returns (player_id, broadcast_receiver).
+    pub fn join_lobby(&self, lobby_id: Uuid) -> Result<(Uuid, broadcast::Receiver<LobbyEvent>), MatchmakingError> {
+        let mut lobbies = self.lobbies.write().unwrap();
+        let lobby = lobbies.get_mut(&lobby_id).ok_or(MatchmakingError::LobbyNotFound)?;
+
+        if lobby.players.len() >= 4 {
+            return Err(MatchmakingError::LobbyFull);
+        }
+
+        let player_id = Uuid::new_v4();
+        let rx = lobby.broadcast_tx.subscribe();
+        lobby.players.push(LobbyPlayer { player_id });
+
+        let player_count = lobby.players.len();
+        let _ = lobby.broadcast_tx.send(LobbyEvent::LobbyUpdate {
+            lobby_id,
+            players: player_count,
+        });
+
+        if player_count == 4 {
+            let player_ids: [Uuid; 4] = [
+                lobby.players[0].player_id,
+                lobby.players[1].player_id,
+                lobby.players[2].player_id,
+                lobby.players[3].player_id,
+            ];
+            let max_points = lobby.max_points;
+            let broadcast_tx = lobby.broadcast_tx.clone();
+
+            lobbies.remove(&lobby_id);
+            drop(lobbies);
+
+            if let Ok(response) = self.game_manager.create_game_with_players(player_ids, max_points) {
+                let _ = self.game_manager.make_transition(response.game_id, GameTransition::Start);
+
+                let _ = broadcast_tx.send(LobbyEvent::GameStart(MatchResult {
+                    game_id: response.game_id,
+                    player_id: Uuid::nil(),
+                    player_ids,
+                }));
+            }
+        }
+
+        Ok((player_id, rx))
+    }
+
+    /// List open lobbies (not yet full).
+    pub fn list_lobbies(&self) -> Vec<LobbySummary> {
+        let lobbies = self.lobbies.read().unwrap();
+        lobbies
+            .values()
+            .map(|l| LobbySummary {
+                lobby_id: l.lobby_id,
+                max_points: l.max_points,
+                players: l.players.len(),
+            })
+            .collect()
+    }
+
+    /// Delete a lobby. Only the creator can delete it.
+    pub fn delete_lobby(&self, lobby_id: Uuid, requester_id: Uuid) -> Result<(), MatchmakingError> {
+        let mut lobbies = self.lobbies.write().unwrap();
+        let lobby = lobbies.get(&lobby_id).ok_or(MatchmakingError::LobbyNotFound)?;
+        if lobby.creator_id != requester_id {
+            return Err(MatchmakingError::LobbyNotFound);
+        }
+        lobbies.remove(&lobby_id);
+        Ok(())
+    }
+
+    /// Remove a player from a lobby. If the creator leaves, the lobby is deleted.
+    pub fn leave_lobby(&self, lobby_id: Uuid, player_id: Uuid) {
+        let mut lobbies = self.lobbies.write().unwrap();
+        if let Some(lobby) = lobbies.get_mut(&lobby_id) {
+            if lobby.creator_id == player_id {
+                lobbies.remove(&lobby_id);
+            } else {
+                lobby.players.retain(|p| p.player_id != player_id);
+                let player_count = lobby.players.len();
+                let _ = lobby.broadcast_tx.send(LobbyEvent::LobbyUpdate {
+                    lobby_id,
+                    players: player_count,
+                });
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -242,5 +349,89 @@ mod tests {
 
         let summary = mm.list_seeks();
         assert_eq!(summary.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_create_lobby() {
+        let mm = make_matchmaker();
+        let (lobby_id, _player_id, _rx) = mm.create_lobby(500);
+
+        let lobbies = mm.list_lobbies();
+        assert_eq!(lobbies.len(), 1);
+        assert_eq!(lobbies[0].lobby_id, lobby_id);
+        assert_eq!(lobbies[0].max_points, 500);
+        assert_eq!(lobbies[0].players, 1);
+    }
+
+    #[tokio::test]
+    async fn test_join_lobby() {
+        let mm = make_matchmaker();
+        let (lobby_id, _creator_id, _creator_rx) = mm.create_lobby(500);
+
+        let result = mm.join_lobby(lobby_id);
+        assert!(result.is_ok());
+
+        let lobbies = mm.list_lobbies();
+        assert_eq!(lobbies[0].players, 2);
+    }
+
+    #[tokio::test]
+    async fn test_join_lobby_not_found() {
+        let mm = make_matchmaker();
+        let result = mm.join_lobby(Uuid::new_v4());
+        assert!(matches!(result, Err(MatchmakingError::LobbyNotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_lobby_auto_start_on_4th_player() {
+        let mm = make_matchmaker();
+        let (lobby_id, _creator_id, mut creator_rx) = mm.create_lobby(500);
+
+        let mut _join_rxs = Vec::new();
+        for _ in 0..3 {
+            let (_player_id, rx) = mm.join_lobby(lobby_id).unwrap();
+            _join_rxs.push(rx);
+        }
+
+        // Creator should have received game_start via broadcast
+        // The first event might be a LobbyUpdate, so loop until we get GameStart
+        loop {
+            let event = creator_rx.recv().await.unwrap();
+            match event {
+                LobbyEvent::GameStart(result) => {
+                    assert_eq!(result.player_ids.len(), 4);
+                    break;
+                }
+                LobbyEvent::LobbyUpdate { .. } => continue,
+            }
+        }
+
+        // Lobby should be removed after game starts
+        let lobbies = mm.list_lobbies();
+        assert_eq!(lobbies.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_delete_lobby() {
+        let mm = make_matchmaker();
+        let (lobby_id, creator_id, _rx) = mm.create_lobby(500);
+
+        let result = mm.delete_lobby(lobby_id, creator_id);
+        assert!(result.is_ok());
+
+        let lobbies = mm.list_lobbies();
+        assert_eq!(lobbies.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_leave_lobby() {
+        let mm = make_matchmaker();
+        let (lobby_id, _creator_id, _creator_rx) = mm.create_lobby(500);
+        let (joiner_id, _rx) = mm.join_lobby(lobby_id).unwrap();
+
+        mm.leave_lobby(lobby_id, joiner_id);
+
+        let lobbies = mm.list_lobbies();
+        assert_eq!(lobbies[0].players, 1);
     }
 }
