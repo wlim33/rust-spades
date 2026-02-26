@@ -90,6 +90,20 @@ impl GameManager {
         })
     }
 
+    /// Create a new game with pre-assigned player IDs
+    pub fn create_game_with_players(&self, player_ids: [Uuid; 4], max_points: i32) -> Result<CreateGameResponse, GameManagerError> {
+        let game_id = Uuid::new_v4();
+        let game = Game::new(game_id, player_ids, max_points);
+
+        let mut games = self.games.write().map_err(|_| GameManagerError::LockError)?;
+        games.insert(game_id, Arc::new(RwLock::new(game)));
+
+        Ok(CreateGameResponse {
+            game_id,
+            player_ids,
+        })
+    }
+
     /// Get the state of a game
     pub fn get_game_state(&self, game_id: Uuid) -> Result<GameStateResponse, GameManagerError> {
         let games = self.games.read().map_err(|_| GameManagerError::LockError)?;
@@ -207,10 +221,28 @@ mod tests {
     fn test_remove_game() {
         let manager = GameManager::new();
         let response = manager.create_game(500).unwrap();
-        
+
         manager.remove_game(response.game_id).unwrap();
-        
+
         let games = manager.list_games().unwrap();
         assert_eq!(games.len(), 0);
+    }
+
+    #[test]
+    fn test_create_game_with_players() {
+        let manager = GameManager::new();
+        let player_ids = [
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+        ];
+        let response = manager.create_game_with_players(player_ids, 500).unwrap();
+
+        assert_eq!(response.player_ids, player_ids);
+        assert_ne!(response.game_id, Uuid::nil());
+
+        let state = manager.get_game_state(response.game_id).unwrap();
+        assert_eq!(state.state, State::NotStarted);
     }
 }
