@@ -496,6 +496,12 @@ impl ChallengeManager {
         })
     }
 
+    /// Resolve a Sqids short ID to a challenge UUID and return the challenge status.
+    pub fn get_challenge_by_short_id(&self, short_id: &str) -> Result<ChallengeStatus, ChallengeError> {
+        let uuid = short_id_to_uuid(short_id).ok_or(ChallengeError::NotFound)?;
+        self.get_status(uuid)
+    }
+
     /// List all open challenges.
     pub fn list_challenges(&self) -> Vec<ChallengeSummary> {
         let challenges = match self.challenges.read() {

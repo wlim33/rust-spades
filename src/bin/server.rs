@@ -127,6 +127,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/lobbies/:lobby_id", delete(delete_lobby_handler))
         .route("/challenges", post(create_challenge_handler))
         .route("/challenges", get(list_challenges_handler))
+        .route("/challenges/by-short-id/:short_id", get(get_challenge_by_short_id_handler))
         .route("/challenges/:challenge_id", get(get_challenge_handler))
         .route("/challenges/:challenge_id/join/:seat", post(join_challenge_handler))
         .route("/challenges/:challenge_id", delete(cancel_challenge_handler))
@@ -189,6 +190,7 @@ async fn main() {
     println!("  DELETE /lobbies/:lobby_id                       - Delete lobby");
     println!("  POST /challenges                                - Create challenge (SSE)");
     println!("  GET  /challenges                                - List open challenges");
+    println!("  GET  /challenges/by-short-id/:short_id          - Get challenge by short ID");
     println!("  GET  /challenges/:challenge_id                  - Get challenge status");
     println!("  POST /challenges/:id/join/:seat                 - Join challenge seat (SSE)");
     println!("  DELETE /challenges/:challenge_id                - Cancel challenge");
@@ -916,6 +918,27 @@ async fn get_challenge_handler(
         })
 }
 
+async fn get_challenge_by_short_id_handler(
+    AxumState(state): AxumState<AppState>,
+    Path(short_id): Path<String>,
+) -> Result<Json<ChallengeStatus>, (StatusCode, Json<ErrorResponse>)> {
+    match state.challenge_manager.get_challenge_by_short_id(&short_id) {
+        Ok(status) => Ok(Json(status)),
+        Err(ChallengeError::NotFound) => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Challenge not found".to_string(),
+            }),
+        )),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("{:?}", e),
+            }),
+        )),
+    }
+}
+
 async fn join_challenge_handler(
     AxumState(state): AxumState<AppState>,
     Path((challenge_id, seat_str)): Path<(Uuid, String)>,
@@ -1457,5 +1480,12 @@ mod tests {
             .json();
         // State should exist (serialized as { "Trick": 0 } or similar)
         assert!(state.get("state").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_challenge_by_short_id_not_found() {
+        let server = test_app();
+        let response = server.get("/challenges/by-short-id/abc123").await;
+        response.assert_status(StatusCode::NOT_FOUND);
     }
 }
