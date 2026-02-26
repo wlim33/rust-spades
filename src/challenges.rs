@@ -130,6 +130,7 @@ pub struct SeatInfo {
 pub enum ChallengeEvent {
     ChallengeCreated {
         challenge_id: Uuid,
+        short_id: String,
         creator_player_id: Option<Uuid>,
         seats: [Option<SeatInfo>; 4],
         join_urls: HashMap<String, String>,
@@ -160,6 +161,7 @@ pub enum ChallengeStatusKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChallengeStatus {
     pub challenge_id: Uuid,
+    pub short_id: String,
     pub max_points: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timer_config: Option<TimerConfig>,
@@ -173,6 +175,7 @@ pub struct ChallengeStatus {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChallengeSummary {
     pub challenge_id: Uuid,
+    pub short_id: String,
     pub max_points: i32,
     pub seats_filled: usize,
     pub seats: [Option<SeatInfo>; 4],
@@ -484,6 +487,7 @@ impl ChallengeManager {
 
         Ok(ChallengeStatus {
             challenge_id: challenge.challenge_id,
+            short_id: uuid_to_short_id(challenge.challenge_id),
             max_points: challenge.max_points,
             timer_config: challenge.timer_config,
             seats: challenge.seats_snapshot(),
@@ -503,6 +507,7 @@ impl ChallengeManager {
             .filter(|c| matches!(c.status, ChallengeStatusKindInternal::Open))
             .map(|c| ChallengeSummary {
                 challenge_id: c.challenge_id,
+                short_id: uuid_to_short_id(c.challenge_id),
                 max_points: c.max_points,
                 seats_filled: c.seats_filled(),
                 seats: c.seats_snapshot(),
