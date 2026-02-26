@@ -894,4 +894,209 @@ mod tests {
         let games = manager.list_games().unwrap();
         assert_eq!(games.len(), 0);
     }
+
+    #[test]
+    fn test_with_db_empty() {
+        let manager = GameManager::with_db(":memory:").unwrap();
+        let games = manager.list_games().unwrap();
+        assert_eq!(games.len(), 0);
+    }
+
+    #[test]
+    fn test_with_db_persist_and_reload() {
+        let dir = std::env::temp_dir().join(format!("spades_test_{}", Uuid::new_v4()));
+        let db_path = dir.to_str().unwrap().to_string();
+
+        // Create a manager, add a game, persist it
+        {
+            let manager = GameManager::with_db(&db_path).unwrap();
+            manager.create_game(500, None).unwrap();
+            assert_eq!(manager.list_games().unwrap().len(), 1);
+        }
+
+        // Re-open the db and verify the game was loaded
+        {
+            let manager = GameManager::with_db(&db_path).unwrap();
+            assert_eq!(manager.list_games().unwrap().len(), 1);
+        }
+
+        // Clean up
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[test]
+    fn test_full_game_bet_and_play_card() {
+        let manager = GameManager::new();
+        let response = manager.create_game(500, None).unwrap();
+        let game_id = response.game_id;
+
+        // Start the game
+        manager.make_transition(game_id, GameTransition::Start).unwrap();
+
+        // Place 4 bets
+        for _ in 0..4 {
+            manager.make_transition(game_id, GameTransition::Bet(3)).unwrap();
+        }
+
+        let state = manager.get_game_state(game_id).unwrap();
+        assert!(matches!(state.state, State::Trick(0)));
+
+        // Play a valid card from the current player's hand
+        let current_pid = state.current_player_id.unwrap();
+        let hand = manager.get_hand(game_id, current_pid).unwrap();
+        let card = hand.cards[0].clone();
+        let result = manager.make_transition(game_id, GameTransition::Card(card));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_persist_operations_with_db() {
+        let manager = GameManager::with_db(":memory:").unwrap();
+        let response = manager.create_game(500, None).unwrap();
+
+        // Start game (triggers persist_update)
+        manager.make_transition(response.game_id, GameTransition::Start).unwrap();
+
+        // Set player name (triggers persist_update)
+        manager.set_player_name(response.game_id, response.player_ids[0], Some("Alice".to_string())).unwrap();
+
+        // Remove game (triggers persist_delete)
+        manager.remove_game(response.game_id).unwrap();
+        assert!(manager.list_games().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_remove_game_cancels_timer() {
+        let manager = GameManager::new();
+        let tc = TimerConfig { initial_time_secs: 300, increment_secs: 5 };
+        let response = manager.create_game(500, Some(tc)).unwrap();
+        // Remove immediately — should not panic even though no timer is active
+        manager.remove_game(response.game_id).unwrap();
+    }
+
+    #[test]
+    fn test_build_state_response_with_timer() {
+        let manager = GameManager::new();
+        let response = manager.create_game(500, None).unwrap();
+        manager.make_transition(response.game_id, GameTransition::Start).unwrap();
+
+        // This exercises build_state_response_with_timer (no active timer)
+        let state = manager.build_state_response_with_timer(
+            response.game_id,
+            &crate::Game::new(response.game_id, response.player_ids, 500, None),
+        );
+        assert_eq!(state.game_id, response.game_id);
+    }
+
+    #[test]
+    fn test_transition_request_type_serde() {
+        let start = TransitionRequestType::Start;
+        let json = serde_json::to_string(&start).unwrap();
+        let _: TransitionRequestType = serde_json::from_str(&json).unwrap();
+
+        let bet = TransitionRequestType::Bet { amount: 3 };
+        let json = serde_json::to_string(&bet).unwrap();
+        let _: TransitionRequestType = serde_json::from_str(&json).unwrap();
+
+        let card = TransitionRequestType::Card {
+            card: crate::Card { suit: crate::Suit::Heart, rank: crate::Rank::Ace },
+        };
+        let json = serde_json::to_string(&card).unwrap();
+        let _: TransitionRequestType = serde_json::from_str(&json).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_timed_game_start_and_bet() {
+        let manager = GameManager::new();
+        let tc = TimerConfig { initial_time_secs: 300, increment_secs: 5 };
+        let response = manager.create_game(500, Some(tc)).unwrap();
+        let game_id = response.game_id;
+
+        // Start timed game - should start turn timer
+        let result = manager.make_transition(game_id, GameTransition::Start).unwrap();
+        assert_eq!(result, TransitionSuccess::Start);
+
+        // Check state has timer data
+        let state = manager.get_game_state(game_id).unwrap();
+        assert!(state.timer_config.is_some());
+        assert!(state.player_clocks_ms.is_some());
+
+        // Place 4 bets — each cancels old timer and starts new one
+        for _ in 0..4 {
+            manager.make_transition(game_id, GameTransition::Bet(3)).unwrap();
+        }
+
+        let state = manager.get_game_state(game_id).unwrap();
+        assert!(matches!(state.state, State::Trick(0)));
+
+        // Play a valid card
+        let current_pid = state.current_player_id.unwrap();
+        let hand = manager.get_hand(game_id, current_pid).unwrap();
+        let card = hand.cards[0].clone();
+        manager.make_transition(game_id, GameTransition::Card(card)).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_timed_game_remove_cancels_timer() {
+        let manager = GameManager::new();
+        let tc = TimerConfig { initial_time_secs: 300, increment_secs: 5 };
+        let response = manager.create_game(500, Some(tc)).unwrap();
+
+        manager.make_transition(response.game_id, GameTransition::Start).unwrap();
+        // Timer is now active — removing game should cancel it
+        manager.remove_game(response.game_id).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_timed_game_state_has_active_clock() {
+        let manager = GameManager::new();
+        let tc = TimerConfig { initial_time_secs: 300, increment_secs: 5 };
+        let response = manager.create_game(500, Some(tc)).unwrap();
+
+        manager.make_transition(response.game_id, GameTransition::Start).unwrap();
+
+        // Small delay to let timer start
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let state = manager.get_game_state(response.game_id).unwrap();
+        // active_player_clock_ms should be set since timer is running
+        assert!(state.active_player_clock_ms.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_with_db_persists_timed_game() {
+        let dir = std::env::temp_dir().join(format!("spades_timed_{}", Uuid::new_v4()));
+        let db_path = dir.to_str().unwrap().to_string();
+
+        // Create timed game, start it, persist
+        {
+            let manager = GameManager::with_db(&db_path).unwrap();
+            let tc = TimerConfig { initial_time_secs: 300, increment_secs: 5 };
+            let response = manager.create_game(500, Some(tc)).unwrap();
+            manager.make_transition(response.game_id, GameTransition::Start).unwrap();
+        }
+
+        // Re-open — should reload and attempt to restart timers
+        {
+            let manager = GameManager::with_db(&db_path).unwrap();
+            assert_eq!(manager.list_games().unwrap().len(), 1);
+        }
+
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[test]
+    fn test_game_manager_error_serde() {
+        let err = GameManagerError::GameNotFound;
+        let json = serde_json::to_string(&err).unwrap();
+        let _: GameManagerError = serde_json::from_str(&json).unwrap();
+
+        let err = GameManagerError::LockError;
+        let json = serde_json::to_string(&err).unwrap();
+        let _: GameManagerError = serde_json::from_str(&json).unwrap();
+
+        let err = GameManagerError::GameError("test".to_string());
+        let json = serde_json::to_string(&err).unwrap();
+        let _: GameManagerError = serde_json::from_str(&json).unwrap();
+    }
 }

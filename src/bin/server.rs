@@ -16,7 +16,7 @@ use spades::game_manager::{
     CreateGameResponse, GameEvent, GameManager, GameStateResponse, HandResponse,
 };
 use spades::challenges::{
-    uuid_to_short_id, ChallengeConfig, ChallengeError, ChallengeEvent, ChallengeManager,
+    ChallengeConfig, ChallengeError, ChallengeEvent, ChallengeManager,
     ChallengeStatus, ChallengeSummary, Seat,
 };
 use spades::matchmaking::{LobbyEvent, LobbySummary, MatchResult, Matchmaker, SeekSummary};
@@ -1487,5 +1487,110 @@ mod tests {
         let server = test_app();
         let response = server.get("/challenges/by-short-id/abc123").await;
         response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_card_transition() {
+        let server = test_app();
+
+        // Create and start game
+        let create_resp: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+
+        server
+            .post(&format!("/games/{}/transition", create_resp.game_id))
+            .json(&serde_json::json!({"type": "start"}))
+            .await
+            .assert_status_ok();
+
+        // Place 4 bets
+        for _ in 0..4 {
+            server
+                .post(&format!("/games/{}/transition", create_resp.game_id))
+                .json(&serde_json::json!({"type": "bet", "amount": 3}))
+                .await
+                .assert_status_ok();
+        }
+
+        // Get current player's hand and play first card
+        let state: serde_json::Value = server
+            .get(&format!("/games/{}", create_resp.game_id))
+            .await
+            .json();
+        let current_pid = state["current_player_id"].as_str().unwrap();
+
+        let hand: serde_json::Value = server
+            .get(&format!(
+                "/games/{}/players/{}/hand",
+                create_resp.game_id, current_pid
+            ))
+            .await
+            .json();
+        let first_card = &hand["cards"][0];
+
+        let response = server
+            .post(&format!("/games/{}/transition", create_resp.game_id))
+            .json(&serde_json::json!({
+                "type": "card",
+                "card": first_card
+            }))
+            .await;
+        response.assert_status_ok();
+    }
+
+    #[tokio::test]
+    async fn test_set_player_name_game_not_found() {
+        let server = test_app();
+        let response = server
+            .put(&format!(
+                "/games/{}/players/{}/name",
+                Uuid::new_v4(),
+                Uuid::new_v4()
+            ))
+            .json(&serde_json::json!({"name": "Alice"}))
+            .await;
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_set_player_name_invalid_player_id() {
+        let server = test_app();
+        let create_resp: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+
+        let response = server
+            .put(&format!(
+                "/games/{}/players/{}/name",
+                create_resp.game_id,
+                Uuid::new_v4()
+            ))
+            .json(&serde_json::json!({"name": "Alice"}))
+            .await;
+        response.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_set_player_name_empty() {
+        let server = test_app();
+        let create_resp: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+
+        let response = server
+            .put(&format!(
+                "/games/{}/players/{}/name",
+                create_resp.game_id, create_resp.player_ids[0]
+            ))
+            .json(&serde_json::json!({"name": ""}))
+            .await;
+        response.assert_status(StatusCode::BAD_REQUEST);
     }
 }

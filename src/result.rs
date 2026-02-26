@@ -78,3 +78,57 @@ impl Error for TransitionError {
         Some(self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ntest::test_case;
+    use std::error::Error;
+
+    #[test_case("InvalidUuid")]
+    #[test_case("GameNotStarted")]
+    #[test_case("GameCompleted")]
+    #[test_case("GameNotCompleted")]
+    #[test_case("Unknown")]
+    fn get_error_display_contains_error(variant_name: &str) {
+        let err = match variant_name {
+            "InvalidUuid" => GetError::InvalidUuid,
+            "GameNotStarted" => GetError::GameNotStarted,
+            "GameCompleted" => GetError::GameCompleted,
+            "GameNotCompleted" => GetError::GameNotCompleted,
+            "Unknown" => GetError::Unknown,
+            _ => unreachable!(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.starts_with("Error:"), "GetError::{} display should start with 'Error:', got: {}", variant_name, msg);
+    }
+
+    #[test_case("AlreadyStarted")]
+    #[test_case("NotStarted")]
+    #[test_case("CardInBettingStage")]
+    #[test_case("BetInTrickStage")]
+    #[test_case("CompletedGame")]
+    #[test_case("CardNotInHand")]
+    #[test_case("CardIncorrectSuit")]
+    fn transition_error_display_contains_error(variant_name: &str) {
+        let err = match variant_name {
+            "AlreadyStarted" => TransitionError::AlreadyStarted,
+            "NotStarted" => TransitionError::NotStarted,
+            "CardInBettingStage" => TransitionError::CardInBettingStage,
+            "BetInTrickStage" => TransitionError::BetInTrickStage,
+            "CompletedGame" => TransitionError::CompletedGame,
+            "CardNotInHand" => TransitionError::CardNotInHand,
+            "CardIncorrectSuit" => TransitionError::CardIncorrectSuit,
+            _ => unreachable!(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.starts_with("Error:"), "TransitionError::{} display should start with 'Error:', got: {}", variant_name, msg);
+    }
+
+    #[test]
+    fn transition_error_implements_std_error() {
+        let err = TransitionError::NotStarted;
+        assert_eq!(err.description(), "A transition error occured.");
+        assert!(err.cause().is_some());
+    }
+}

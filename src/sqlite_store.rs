@@ -75,3 +75,83 @@ impl SqliteStore {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_game() -> Game {
+        Game::new(
+            Uuid::new_v4(),
+            [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()],
+            500,
+            None,
+        )
+    }
+
+    #[test]
+    fn test_open_creates_table() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let games = store.load_all_games().unwrap();
+        assert!(games.is_empty());
+    }
+
+    #[test]
+    fn test_insert_and_load() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let game = make_game();
+        let game_id = *game.get_id();
+
+        store.insert_game(&game).unwrap();
+
+        let loaded = store.load_all_games().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(*loaded[0].get_id(), game_id);
+    }
+
+    #[test]
+    fn test_update_game() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let mut game = make_game();
+        store.insert_game(&game).unwrap();
+
+        game.play(crate::GameTransition::Start).unwrap();
+        store.update_game(&game).unwrap();
+
+        let loaded = store.load_all_games().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(*loaded[0].get_state(), crate::game_state::State::Betting(0));
+    }
+
+    #[test]
+    fn test_delete_game() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let game = make_game();
+        let game_id = *game.get_id();
+
+        store.insert_game(&game).unwrap();
+        assert_eq!(store.load_all_games().unwrap().len(), 1);
+
+        store.delete_game(game_id).unwrap();
+        assert!(store.load_all_games().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_insert_multiple_games() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        for _ in 0..3 {
+            store.insert_game(&make_game()).unwrap();
+        }
+        assert_eq!(store.load_all_games().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn test_insert_or_replace_same_id() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let game = make_game();
+        store.insert_game(&game).unwrap();
+        // INSERT OR REPLACE with same ID should not duplicate
+        store.insert_game(&game).unwrap();
+        assert_eq!(store.load_all_games().unwrap().len(), 1);
+    }
+}

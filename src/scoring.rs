@@ -505,6 +505,36 @@ mod tests {
     }
 
     #[test]
+    fn test_second_player_nil_bid_failure() {
+        // Player C (index 2) bids nil but wins a trick => -100 for team A's second nil
+        let mut s = Scoring::new(500);
+        s.add_bet(0, 6); // player A bets 6
+        s.add_bet(1, 6);
+        s.add_bet(2, 0); // player C bids nil
+        s.add_bet(3, 7);
+        s.bet();
+
+        // Player C (index 2) wins 1 trick, player A wins 5, player B wins 7
+        for t in 0..13 {
+            let cards = if t == 0 {
+                // Player 2 wins (has Ace)
+                make_trick(Suit::Club, [Rank::Two, Rank::Three, Rank::Ace, Rank::Four])
+            } else if t < 6 {
+                // Player 0 wins
+                make_trick(Suit::Club, [Rank::Ace, Rank::King, Rank::Queen, Rank::Jack])
+            } else {
+                // Player 1 wins
+                make_trick(Suit::Club, [Rank::Two, Rank::Ace, Rank::Three, Rank::Four])
+            };
+            scoring_trick_with_start(&mut s, 0, &cards);
+        }
+
+        // nil_check[2] = true (player C won a trick) => -100 for nil failure
+        // Team A: bet=6+0=6, won=6 tricks => +60 from regular - 100 from failed nil = -40
+        assert_eq!(s.team_a.cumulative_points, -40);
+    }
+
+    #[test]
     fn test_trick_13th_resets_round() {
         let mut s = Scoring::new(500);
         s.add_bet(0, 3);
