@@ -70,7 +70,7 @@ pub enum GameTransition {
 }
 
 /// Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct TimerConfig {
     pub initial_time_secs: u64,
     pub increment_secs: u64,

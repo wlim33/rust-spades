@@ -65,6 +65,8 @@ pub struct GameStateResponse {
     pub player_clocks_ms: Option<[u64; 4]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_player_clock_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub table_cards: Option<[Card; 4]>,
 }
 
 /// Response for getting a player's hand
@@ -262,6 +264,8 @@ impl GameManager {
             (None, None)
         };
 
+        let table_cards = game.get_current_trick_cards().ok().cloned();
+
         GameStateResponse {
             game_id,
             state: game.get_state().clone(),
@@ -279,6 +283,7 @@ impl GameManager {
             timer_config,
             player_clocks_ms,
             active_player_clock_ms,
+            table_cards,
         }
     }
 
@@ -864,6 +869,7 @@ mod tests {
             timer_config: None,
             player_clocks_ms: None,
             active_player_clock_ms: None,
+            table_cards: None,
         };
         let event = GameEvent::StateChanged(state);
         let json = serde_json::to_string(&event).unwrap();

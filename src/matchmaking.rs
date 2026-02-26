@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use uuid::Uuid;
 use serde::{Serialize, Deserialize};
-use tokio::sync::{oneshot, broadcast};
+use tokio::sync::{mpsc, broadcast};
 use crate::game_manager::GameManager;
-use crate::GameTransition;
+use crate::{GameTransition, TimerConfig};
 
 /// Result sent to matched players
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,6 +13,14 @@ pub struct MatchResult {
     pub player_id: Uuid,
     pub player_ids: [Uuid; 4],
     pub player_names: [Option<String>; 4],
+}
+
+/// Event sent to seekers in the quickplay queue
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SeekEvent {
+    QueueUpdate { waiting: usize },
+    GameStart(MatchResult),
 }
 
 /// SSE event sent to lobby members
@@ -51,8 +59,9 @@ pub enum MatchmakingError {
 struct PendingSeek {
     player_id: Uuid,
     max_points: i32,
+    timer_config: TimerConfig,
     name: Option<String>,
-    sender: oneshot::Sender<MatchResult>,
+    sender: mpsc::UnboundedSender<SeekEvent>,
 }
 
 struct LobbyPlayer {
@@ -87,28 +96,37 @@ impl Matchmaker {
 
     /// Add a seek to the queue. Returns (player_id, receiver) so the caller
     /// can cancel the seek on disconnect.
-    pub fn add_seek(&self, max_points: i32, name: Option<String>) -> (Uuid, oneshot::Receiver<MatchResult>) {
+    pub fn add_seek(&self, max_points: i32, timer_config: TimerConfig, name: Option<String>) -> (Uuid, mpsc::UnboundedReceiver<SeekEvent>) {
         let player_id = Uuid::new_v4();
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = mpsc::unbounded_channel();
 
         {
             let mut queue = self.seek_queue.lock().unwrap();
             queue.push(PendingSeek {
                 player_id,
                 max_points,
+                timer_config,
                 name,
                 sender: tx,
             });
         }
 
-        self.try_match(max_points);
+        self.try_match(max_points, timer_config);
+        self.notify_seekers(max_points, timer_config);
         (player_id, rx)
     }
 
     /// Remove a seek from the queue by player_id.
     pub fn cancel_seek(&self, player_id: Uuid) {
-        let mut queue = self.seek_queue.lock().unwrap();
-        queue.retain(|s| s.player_id != player_id);
+        let seek_info;
+        {
+            let mut queue = self.seek_queue.lock().unwrap();
+            seek_info = queue.iter().find(|s| s.player_id == player_id).map(|s| (s.max_points, s.timer_config));
+            queue.retain(|s| s.player_id != player_id);
+        }
+        if let Some((mp, tc)) = seek_info {
+            self.notify_seekers(mp, tc);
+        }
     }
 
     /// List a summary of active seeks grouped by max_points.
@@ -124,14 +142,14 @@ impl Matchmaker {
             .collect()
     }
 
-    /// Check if there are 4 seeks with the same max_points and create a game.
-    fn try_match(&self, max_points: i32) {
+    /// Check if there are 4 seeks with the same max_points and timer_config and create a game.
+    fn try_match(&self, max_points: i32, timer_config: TimerConfig) {
         let mut queue = self.seek_queue.lock().unwrap();
 
         let matching: Vec<usize> = queue
             .iter()
             .enumerate()
-            .filter(|(_, s)| s.max_points == max_points)
+            .filter(|(_, s)| s.max_points == max_points && s.timer_config == timer_config)
             .map(|(i, _)| i)
             .collect();
 
@@ -165,7 +183,7 @@ impl Matchmaker {
         ];
 
         // Create game with pre-assigned player IDs and auto-start
-        let response = match self.game_manager.create_game_with_players(player_ids, max_points, None) {
+        let response = match self.game_manager.create_game_with_players(player_ids, max_points, Some(timer_config)) {
             Ok(r) => r,
             Err(_) => {
                 // Re-queue the seeks so players aren't lost
@@ -202,7 +220,17 @@ impl Matchmaker {
                 player_ids,
                 player_names: player_names.clone(),
             };
-            let _ = seek.sender.send(result);
+            let _ = seek.sender.send(SeekEvent::GameStart(result));
+        }
+    }
+
+    /// Notify all seekers for a given max_points and timer_config of the current queue count.
+    fn notify_seekers(&self, max_points: i32, timer_config: TimerConfig) {
+        let queue = self.seek_queue.lock().unwrap();
+        let matches = |s: &&PendingSeek| s.max_points == max_points && s.timer_config == timer_config;
+        let waiting = queue.iter().filter(matches).count();
+        for seek in queue.iter().filter(|s| s.max_points == max_points && s.timer_config == timer_config) {
+            let _ = seek.sender.send(SeekEvent::QueueUpdate { waiting });
         }
     }
 
@@ -353,26 +381,36 @@ mod tests {
         Matchmaker::new(GameManager::new())
     }
 
+    fn default_timer() -> TimerConfig {
+        TimerConfig { initial_time_secs: 300, increment_secs: 3 }
+    }
+
     #[tokio::test]
     async fn test_seek_match_4_players() {
         let mm = make_matchmaker();
         let mut receivers = Vec::new();
 
         for _ in 0..4 {
-            let (_pid, rx) = mm.add_seek(500, None);
+            let (_pid, rx) = mm.add_seek(500, default_timer(), None);
             receivers.push(rx);
         }
 
         let mut game_id = None;
-        for rx in receivers {
-            let result = rx.await.expect("channel should not be dropped");
-            if let Some(gid) = game_id {
-                assert_eq!(result.game_id, gid, "all players should be in same game");
-            } else {
-                game_id = Some(result.game_id);
+        for mut rx in receivers {
+            // Drain until we get GameStart
+            while let Some(event) = rx.recv().await {
+                if let SeekEvent::GameStart(result) = event {
+                    if let Some(gid) = game_id {
+                        assert_eq!(result.game_id, gid, "all players should be in same game");
+                    } else {
+                        game_id = Some(result.game_id);
+                    }
+                    assert_eq!(result.player_ids.len(), 4);
+                    break;
+                }
             }
-            assert_eq!(result.player_ids.len(), 4);
         }
+        assert!(game_id.is_some());
     }
 
     #[tokio::test]
@@ -380,7 +418,7 @@ mod tests {
         let mm = make_matchmaker();
 
         for _ in 0..3 {
-            let _ = mm.add_seek(500, None);
+            let _ = mm.add_seek(500, default_timer(), None);
         }
 
         let summary = mm.list_seeks();
@@ -394,9 +432,9 @@ mod tests {
         let mm = make_matchmaker();
 
         for _ in 0..3 {
-            let _ = mm.add_seek(500, None);
+            let _ = mm.add_seek(500, default_timer(), None);
         }
-        let _ = mm.add_seek(300, None);
+        let _ = mm.add_seek(300, default_timer(), None);
 
         let summary = mm.list_seeks();
         assert_eq!(summary.len(), 2);
@@ -405,7 +443,7 @@ mod tests {
     #[tokio::test]
     async fn test_cancel_seek() {
         let mm = make_matchmaker();
-        let (player_id, _rx) = mm.add_seek(500, None);
+        let (player_id, _rx) = mm.add_seek(500, default_timer(), None);
 
         mm.cancel_seek(player_id);
 
@@ -504,15 +542,19 @@ mod tests {
         let names = ["Alice", "Bob", "Carol", "Dave"];
 
         for name in &names {
-            let (_pid, rx) = mm.add_seek(500, Some(name.to_string()));
+            let (_pid, rx) = mm.add_seek(500, default_timer(), Some(name.to_string()));
             receivers.push(rx);
         }
 
-        for rx in receivers {
-            let result = rx.await.expect("channel should not be dropped");
-            // All 4 player_names should be Some
-            for pn in &result.player_names {
-                assert!(pn.is_some());
+        for mut rx in receivers {
+            while let Some(event) = rx.recv().await {
+                if let SeekEvent::GameStart(result) = event {
+                    // All 4 player_names should be Some
+                    for pn in &result.player_names {
+                        assert!(pn.is_some());
+                    }
+                    break;
+                }
             }
         }
     }
@@ -561,9 +603,9 @@ mod tests {
     #[tokio::test]
     async fn test_seek_list_after_partial_cancel() {
         let mm = make_matchmaker();
-        let (p1, _rx1) = mm.add_seek(500, None);
-        let (_p2, _rx2) = mm.add_seek(500, None);
-        let (_p3, _rx3) = mm.add_seek(500, None);
+        let (p1, _rx1) = mm.add_seek(500, default_timer(), None);
+        let (_p2, _rx2) = mm.add_seek(500, default_timer(), None);
+        let (_p3, _rx3) = mm.add_seek(500, default_timer(), None);
 
         mm.cancel_seek(p1);
 

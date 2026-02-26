@@ -70,14 +70,7 @@ impl fmt::Display for TransitionError {
     }
 }
 
-impl Error for TransitionError {
-    fn description(&self) -> &str {
-        "A transition error occured."
-    }
-    fn cause(&self) -> Option<&dyn Error> {
-        Some(self)
-    }
-}
+impl Error for TransitionError {}
 
 #[cfg(test)]
 mod tests {
@@ -128,7 +121,7 @@ mod tests {
     #[test]
     fn transition_error_implements_std_error() {
         let err = TransitionError::NotStarted;
-        assert_eq!(err.description(), "A transition error occured.");
-        assert!(err.cause().is_some());
+        assert_eq!(err.to_string(), "Error: Attempted to play a game not started yet.");
+        assert!(err.source().is_none());
     }
 }

@@ -19,9 +19,9 @@ use spades::challenges::{
     ChallengeConfig, ChallengeError, ChallengeEvent, ChallengeManager,
     ChallengeStatus, ChallengeSummary, Seat,
 };
-use spades::matchmaking::{LobbyEvent, LobbySummary, MatchResult, Matchmaker, SeekSummary};
+use spades::matchmaking::{LobbyEvent, LobbySummary, MatchResult, Matchmaker, SeekEvent, SeekSummary};
 use spades::validation::validate_player_name;
-use spades::{Card, GameTransition};
+use spades::{Card, GameTransition, TimerConfig};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -64,6 +64,7 @@ struct ErrorResponse {
 struct SeekRequest {
     #[serde(default = "default_max_points")]
     max_points: i32,
+    timer_config: TimerConfig,
     #[serde(default)]
     name: Option<String>,
 }
@@ -510,7 +511,7 @@ async fn seek(
         None => None,
     };
 
-    let (player_id, rx) = state.matchmaker.add_seek(request.max_points, validated_name);
+    let (player_id, mut rx) = state.matchmaker.add_seek(request.max_points, request.timer_config, validated_name);
 
     let stream = async_stream::stream! {
         let mut guard = SeekGuard {
@@ -519,32 +520,26 @@ async fn seek(
             matched: false,
         };
 
-        // Send initial queue status
-        let seeks = state.matchmaker.list_seeks();
-        let position = seeks.iter()
-            .find(|s| s.max_points == request.max_points)
-            .map(|s| s.waiting)
-            .unwrap_or(0);
-
-        yield Ok(Event::default()
-            .event("queue_status")
-            .json_data(serde_json::json!({
-                "position": position,
-                "waiting": position,
-            }))
-            .unwrap());
-
-        // Wait for match result
-        match rx.await {
-            Ok(result) => {
-                guard.matched = true;
-                yield Ok(Event::default()
-                    .event("game_start")
-                    .json_data(&result)
-                    .unwrap());
-            }
-            Err(_) => {
-                // Channel dropped - seek was cancelled
+        // Listen for queue updates and match result
+        while let Some(event) = rx.recv().await {
+            match event {
+                SeekEvent::QueueUpdate { waiting } => {
+                    yield Ok(Event::default()
+                        .event("queue_status")
+                        .json_data(serde_json::json!({
+                            "position": waiting,
+                            "waiting": waiting,
+                        }))
+                        .unwrap());
+                }
+                SeekEvent::GameStart(result) => {
+                    guard.matched = true;
+                    yield Ok(Event::default()
+                        .event("game_start")
+                        .json_data(&result)
+                        .unwrap());
+                    break;
+                }
             }
         }
     };
