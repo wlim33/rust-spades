@@ -42,6 +42,9 @@ mod result;
 #[cfg(feature = "server")]
 pub mod game_manager;
 
+#[cfg(feature = "server")]
+pub mod matchmaking;
+
 #[cfg(test)]
 mod tests;
 
