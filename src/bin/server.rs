@@ -306,7 +306,16 @@ impl Drop for LobbyGuard {
 async fn seek(
     AxumState(state): AxumState<AppState>,
     Json(request): Json<SeekRequest>,
-) -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
+) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<ErrorResponse>)> {
+    if request.max_points <= 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "max_points must be positive".to_string(),
+            }),
+        ));
+    }
+
     let (player_id, rx) = state.matchmaker.add_seek(request.max_points);
 
     let stream = async_stream::stream! {
@@ -346,11 +355,11 @@ async fn seek(
         }
     };
 
-    Sse::new(stream).keep_alive(
+    Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(15))
             .text("keepalive"),
-    )
+    ))
 }
 
 async fn list_seeks_handler(
@@ -364,7 +373,16 @@ async fn list_seeks_handler(
 async fn create_lobby(
     AxumState(state): AxumState<AppState>,
     Json(request): Json<CreateLobbyRequest>,
-) -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
+) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<ErrorResponse>)> {
+    if request.max_points <= 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "max_points must be positive".to_string(),
+            }),
+        ));
+    }
+
     let (lobby_id, player_id, mut rx) = state.matchmaker.create_lobby(request.max_points);
 
     let stream = async_stream::stream! {
@@ -413,11 +431,11 @@ async fn create_lobby(
         }
     };
 
-    Sse::new(stream).keep_alive(
+    Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(15))
             .text("keepalive"),
-    )
+    ))
 }
 
 async fn join_lobby_handler(
@@ -428,8 +446,12 @@ async fn join_lobby_handler(
     (StatusCode, Json<ErrorResponse>),
 > {
     let (player_id, mut rx) = state.matchmaker.join_lobby(lobby_id).map_err(|e| {
+        let status = match &e {
+            spades::matchmaking::MatchmakingError::LobbyFull => StatusCode::CONFLICT,
+            _ => StatusCode::NOT_FOUND,
+        };
         (
-            StatusCode::NOT_FOUND,
+            status,
             Json(ErrorResponse {
                 error: format!("{:?}", e),
             }),

@@ -155,9 +155,25 @@ impl Matchmaker {
         // Create game with pre-assigned player IDs and auto-start
         let response = match self.game_manager.create_game_with_players(player_ids, max_points) {
             Ok(r) => r,
-            Err(_) => return,
+            Err(_) => {
+                // Re-queue the seeks so players aren't lost
+                let mut queue = self.seek_queue.lock().unwrap();
+                for seek in seeks {
+                    queue.push(seek);
+                }
+                return;
+            }
         };
-        let _ = self.game_manager.make_transition(response.game_id, GameTransition::Start);
+
+        if self.game_manager.make_transition(response.game_id, GameTransition::Start).is_err() {
+            // Game was created but couldn't start — remove it and re-queue seeks
+            let _ = self.game_manager.remove_game(response.game_id);
+            let mut queue = self.seek_queue.lock().unwrap();
+            for seek in seeks {
+                queue.push(seek);
+            }
+            return;
+        }
 
         // Notify all 4 players
         for seek in seeks {
@@ -192,7 +208,7 @@ impl Matchmaker {
 
     /// Join an existing lobby. Returns (player_id, broadcast_receiver).
     pub fn join_lobby(&self, lobby_id: Uuid) -> Result<(Uuid, broadcast::Receiver<LobbyEvent>), MatchmakingError> {
-        let mut lobbies = self.lobbies.write().unwrap();
+        let mut lobbies = self.lobbies.write().map_err(|_| MatchmakingError::LockError)?;
         let lobby = lobbies.get_mut(&lobby_id).ok_or(MatchmakingError::LobbyNotFound)?;
 
         if lobby.players.len() >= 4 {
@@ -219,17 +235,29 @@ impl Matchmaker {
             let max_points = lobby.max_points;
             let broadcast_tx = lobby.broadcast_tx.clone();
 
-            lobbies.remove(&lobby_id);
+            // Drop lock before calling game_manager
             drop(lobbies);
 
-            if let Ok(response) = self.game_manager.create_game_with_players(player_ids, max_points) {
-                let _ = self.game_manager.make_transition(response.game_id, GameTransition::Start);
+            match self.game_manager.create_game_with_players(player_ids, max_points) {
+                Ok(response) => {
+                    if self.game_manager.make_transition(response.game_id, GameTransition::Start).is_err() {
+                        // Game was created but couldn't start — remove it, lobby stays
+                        let _ = self.game_manager.remove_game(response.game_id);
+                    } else {
+                        let _ = broadcast_tx.send(LobbyEvent::GameStart(MatchResult {
+                            game_id: response.game_id,
+                            player_id: Uuid::nil(),
+                            player_ids,
+                        }));
 
-                let _ = broadcast_tx.send(LobbyEvent::GameStart(MatchResult {
-                    game_id: response.game_id,
-                    player_id: Uuid::nil(),
-                    player_ids,
-                }));
+                        // Remove lobby after successful game creation
+                        let mut lobbies = self.lobbies.write().map_err(|_| MatchmakingError::LockError)?;
+                        lobbies.remove(&lobby_id);
+                    }
+                }
+                Err(_) => {
+                    // Game creation failed — lobby stays, players remain
+                }
             }
         }
 
@@ -251,7 +279,7 @@ impl Matchmaker {
 
     /// Delete a lobby. Only the creator can delete it.
     pub fn delete_lobby(&self, lobby_id: Uuid, requester_id: Uuid) -> Result<(), MatchmakingError> {
-        let mut lobbies = self.lobbies.write().unwrap();
+        let mut lobbies = self.lobbies.write().map_err(|_| MatchmakingError::LockError)?;
         let lobby = lobbies.get(&lobby_id).ok_or(MatchmakingError::LobbyNotFound)?;
         if lobby.creator_id != requester_id {
             return Err(MatchmakingError::LobbyNotFound);
