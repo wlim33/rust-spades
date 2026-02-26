@@ -1,5 +1,8 @@
 use axum::{
-    extract::{Path, State as AxumState},
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        Path, Query, State as AxumState,
+    },
     http::StatusCode,
     response::{
         Json,
@@ -10,13 +13,14 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use spades::game_manager::{
-    CreateGameResponse, GameManager, GameStateResponse, HandResponse,
+    CreateGameResponse, GameEvent, GameManager, GameStateResponse, HandResponse,
 };
 use spades::matchmaking::{LobbyEvent, LobbySummary, MatchResult, Matchmaker, SeekSummary};
 use spades::{Card, GameTransition};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::time::Duration;
+use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
@@ -88,6 +92,7 @@ async fn main() {
         .route("/games/:game_id", delete(delete_game))
         .route("/games/:game_id/transition", post(make_transition))
         .route("/games/:game_id/players/:player_id/hand", get(get_hand))
+        .route("/games/:game_id/ws", get(game_ws))
         .route("/matchmaking/seek", post(seek))
         .route("/matchmaking/seeks", get(list_seeks_handler))
         .route("/lobbies", post(create_lobby))
@@ -97,7 +102,13 @@ async fn main() {
         .layer(CorsLayer::permissive())
         .with_state(app_state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    let port: u16 = std::env::args()
+        .skip_while(|a| a != "--port")
+        .nth(1)
+        .or_else(|| std::env::var("PORT").ok())
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(3000);
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     println!("Spades server listening on {}", addr);
     println!("\nAvailable endpoints:");
     println!("  GET  /                                          - API info");
@@ -106,6 +117,7 @@ async fn main() {
     println!("  GET  /games/:game_id                            - Get game state");
     println!("  POST /games/:game_id/transition                 - Make a move");
     println!("  GET  /games/:game_id/players/:player_id/hand    - Get player's hand");
+    println!("  GET  /games/:game_id/ws                         - Game state WebSocket");
     println!("  DELETE /games/:game_id                          - Delete a game");
     println!("  POST /matchmaking/seek                          - Quick match (SSE)");
     println!("  GET  /matchmaking/seeks                         - List active seeks");
@@ -128,6 +140,7 @@ async fn root() -> Json<serde_json::Value> {
             "get_game_state": "GET /games/:game_id",
             "make_transition": "POST /games/:game_id/transition",
             "get_hand": "GET /games/:game_id/players/:player_id/hand",
+            "game_ws": "GET /games/:game_id/ws?player_id=<uuid>",
             "delete_game": "DELETE /games/:game_id",
             "seek": "POST /matchmaking/seek",
             "list_seeks": "GET /matchmaking/seeks",
@@ -268,6 +281,81 @@ async fn get_hand(
                 }),
             )
         })
+}
+
+// --- WebSocket: Game state push ---
+
+#[derive(Debug, Deserialize)]
+struct WsQuery {
+    player_id: Option<Uuid>,
+}
+
+async fn game_ws(
+    AxumState(state): AxumState<AppState>,
+    Path(game_id): Path<Uuid>,
+    Query(query): Query<WsQuery>,
+    ws: WebSocketUpgrade,
+) -> Result<impl axum::response::IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let initial_state = state.game_manager.get_game_state(game_id).map_err(|e| {
+        let status = match e {
+            spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (status, Json(ErrorResponse { error: format!("{:?}", e) }))
+    })?;
+
+    let rx = state.game_manager.subscribe(game_id).map_err(|e| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse { error: format!("{:?}", e) }),
+        )
+    })?;
+
+    let player_id = query.player_id;
+    Ok(ws.on_upgrade(move |socket| handle_game_ws(socket, initial_state, rx, player_id)))
+}
+
+async fn handle_game_ws(
+    mut socket: WebSocket,
+    initial_state: GameStateResponse,
+    mut rx: broadcast::Receiver<GameEvent>,
+    _player_id: Option<Uuid>,
+) {
+    let initial_event = GameEvent::StateChanged(initial_state);
+    if let Ok(json) = serde_json::to_string(&initial_event) {
+        if socket.send(Message::Text(json.into())).await.is_err() {
+            return;
+        }
+    }
+
+    loop {
+        tokio::select! {
+            event = rx.recv() => {
+                match event {
+                    Ok(game_event) => {
+                        if let Ok(json) = serde_json::to_string(&game_event) {
+                            if socket.send(Message::Text(json.into())).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(Message::Ping(data))) => {
+                        if socket.send(Message::Pong(data)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Some(Ok(Message::Close(_))) | None => break,
+                    _ => {}
+                }
+            }
+        }
+    }
 }
 
 // --- Matchmaking: Drop Guards ---

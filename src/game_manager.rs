@@ -1,14 +1,23 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
+use tokio::sync::broadcast;
 use crate::{Game, GameTransition, State, Card};
 use crate::result::TransitionSuccess;
 use serde::{Serialize, Deserialize};
+
+/// Event broadcast to WebSocket subscribers when game state changes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "event", rename_all = "snake_case")]
+pub enum GameEvent {
+    StateChanged(GameStateResponse),
+}
 
 /// Manages multiple concurrent spades games
 #[derive(Clone)]
 pub struct GameManager {
     games: Arc<RwLock<HashMap<Uuid, Arc<RwLock<Game>>>>>,
+    broadcasters: Arc<RwLock<HashMap<Uuid, broadcast::Sender<GameEvent>>>>,
 }
 
 /// Response for creating a new game
@@ -19,7 +28,7 @@ pub struct CreateGameResponse {
 }
 
 /// Response for getting game state
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameStateResponse {
     pub game_id: Uuid,
     pub state: State,
@@ -66,6 +75,7 @@ impl GameManager {
     pub fn new() -> Self {
         GameManager {
             games: Arc::new(RwLock::new(HashMap::new())),
+            broadcasters: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -78,12 +88,17 @@ impl GameManager {
             Uuid::new_v4(),
             Uuid::new_v4(),
         ];
-        
+
         let game = Game::new(game_id, player_ids, max_points);
-        
+
         let mut games = self.games.write().map_err(|_| GameManagerError::LockError)?;
         games.insert(game_id, Arc::new(RwLock::new(game)));
-        
+        drop(games);
+
+        let (tx, _) = broadcast::channel(64);
+        let mut broadcasters = self.broadcasters.write().map_err(|_| GameManagerError::LockError)?;
+        broadcasters.insert(game_id, tx);
+
         Ok(CreateGameResponse {
             game_id,
             player_ids,
@@ -97,6 +112,11 @@ impl GameManager {
 
         let mut games = self.games.write().map_err(|_| GameManagerError::LockError)?;
         games.insert(game_id, Arc::new(RwLock::new(game)));
+        drop(games);
+
+        let (tx, _) = broadcast::channel(64);
+        let mut broadcasters = self.broadcasters.write().map_err(|_| GameManagerError::LockError)?;
+        broadcasters.insert(game_id, tx);
 
         Ok(CreateGameResponse {
             game_id,
@@ -138,14 +158,35 @@ impl GameManager {
     }
 
     /// Make a game transition (start, bet, play card)
-    pub fn make_transition(&self, game_id: Uuid, transition: GameTransition) 
+    pub fn make_transition(&self, game_id: Uuid, transition: GameTransition)
         -> Result<TransitionSuccess, GameManagerError> {
         let games = self.games.read().map_err(|_| GameManagerError::LockError)?;
         let game_lock = games.get(&game_id).ok_or(GameManagerError::GameNotFound)?;
         let mut game = game_lock.write().map_err(|_| GameManagerError::LockError)?;
-        
-        game.play(transition)
-            .map_err(|e| GameManagerError::GameError(format!("{:?}", e)))
+
+        let result = game.play(transition)
+            .map_err(|e| GameManagerError::GameError(format!("{:?}", e)))?;
+
+        let state_response = GameStateResponse {
+            game_id,
+            state: game.get_state().clone(),
+            team_a_score: game.get_team_a_score().ok().copied(),
+            team_b_score: game.get_team_b_score().ok().copied(),
+            team_a_bags: game.get_team_a_bags().ok().copied(),
+            team_b_bags: game.get_team_b_bags().ok().copied(),
+            current_player_id: game.get_current_player_id().ok().copied(),
+        };
+
+        drop(game);
+        drop(games);
+
+        if let Ok(broadcasters) = self.broadcasters.read() {
+            if let Some(tx) = broadcasters.get(&game_id) {
+                let _ = tx.send(GameEvent::StateChanged(state_response));
+            }
+        }
+
+        Ok(result)
     }
 
     /// List all active games
@@ -158,7 +199,20 @@ impl GameManager {
     pub fn remove_game(&self, game_id: Uuid) -> Result<(), GameManagerError> {
         let mut games = self.games.write().map_err(|_| GameManagerError::LockError)?;
         games.remove(&game_id).ok_or(GameManagerError::GameNotFound)?;
+        drop(games);
+
+        if let Ok(mut broadcasters) = self.broadcasters.write() {
+            broadcasters.remove(&game_id);
+        }
+
         Ok(())
+    }
+
+    /// Subscribe to game state change events
+    pub fn subscribe(&self, game_id: Uuid) -> Result<broadcast::Receiver<GameEvent>, GameManagerError> {
+        let broadcasters = self.broadcasters.read().map_err(|_| GameManagerError::LockError)?;
+        let tx = broadcasters.get(&game_id).ok_or(GameManagerError::GameNotFound)?;
+        Ok(tx.subscribe())
     }
 }
 

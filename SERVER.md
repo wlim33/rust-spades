@@ -87,9 +87,33 @@ The server will listen on `0.0.0.0:3000` by default.
   curl http://localhost:3000/games/<game_id>/players/<player_id>/hand
   ```
 
+### Game State WebSocket
+- **GET /games/:game_id/ws** - Subscribe to real-time game state updates via WebSocket
+  - Query params: `player_id` (optional) - your player UUID for identification
+  - On connect: sends the current game state immediately
+  - On each transition: pushes the updated game state as a JSON message
+  - Message format:
+    ```json
+    {
+      "event": "state_changed",
+      "game_id": "<uuid>",
+      "state": "Betting(0)",
+      "team_a_score": 0,
+      "team_b_score": 0,
+      "team_a_bags": 0,
+      "team_b_bags": 0,
+      "current_player_id": "<uuid>"
+    }
+    ```
+
+  ```bash
+  # Using websocat:
+  websocat "ws://localhost:3000/games/<game_id>/ws?player_id=<player_id>"
+  ```
+
 ### Delete a Game
 - **DELETE /games/:game_id** - Remove a game from the server
-  
+
   ```bash
   curl -X DELETE http://localhost:3000/games/<game_id>
   ```
