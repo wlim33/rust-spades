@@ -1,6 +1,6 @@
 [package]
 name = "spades"
-version = "1.1.0"
+version = "1.2.0"
 authors = ["William <limwilliam23@gmail.com>"]
 repository = "https://github.com/wlim33/rust-spades"
 categories = ["games", "game-engines", "simulation"]
@@ -37,6 +37,7 @@ server = ["tokio", "axum", "tower", "tower-http", "tokio-stream", "futures-util"
 
 [dev-dependencies]
 axum-test = "16"
+ntest = "0.9"
 
 [[bin]]
 name = "spades-server"

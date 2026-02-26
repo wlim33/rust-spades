@@ -6,12 +6,12 @@
 //! use rand::seq::SliceRandom;
 //! use rand::thread_rng;
 //! 
-//! let mut g = Game::new(uuid::Uuid::new_v4(), 
-//!    [uuid::Uuid::new_v4(), 
-//!     uuid::Uuid::new_v4(), 
-//!     uuid::Uuid::new_v4(), 
-//!     uuid::Uuid::new_v4()], 
-//!     500);
+//! let mut g = Game::new(uuid::Uuid::new_v4(),
+//!    [uuid::Uuid::new_v4(),
+//!     uuid::Uuid::new_v4(),
+//!     uuid::Uuid::new_v4(),
+//!     uuid::Uuid::new_v4()],
+//!     500, None);
 //! 
 //! 
 //! g.play(GameTransition::Start);
@@ -45,6 +45,15 @@ pub mod game_manager;
 #[cfg(feature = "server")]
 pub mod matchmaking;
 
+#[cfg(feature = "server")]
+pub mod sqlite_store;
+
+#[cfg(feature = "server")]
+pub mod validation;
+
+#[cfg(feature = "server")]
+pub mod challenges;
+
 #[cfg(test)]
 mod tests;
 
@@ -60,23 +69,39 @@ pub enum GameTransition {
     Start,
 }
 
-#[derive(Debug)]
+/// Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct TimerConfig {
+    pub initial_time_secs: u64,
+    pub increment_secs: u64,
+}
+
+/// Remaining clock time for each player in milliseconds.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PlayerClocks {
+    pub remaining_ms: [u64; 4],
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct Player{
     id: Uuid,
-    hand: Vec<Card>
+    hand: Vec<Card>,
+    #[serde(default)]
+    name: Option<String>,
 }
 
 impl Player {
     pub fn new(id: Uuid) -> Player {
         Player {
             id: id,
-            hand: vec![]
+            hand: vec![],
+            name: None,
         }
     }
 }
 
 /// Primary game state. Internally manages player rotation, scoring, and cards.
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Game {
     id: Uuid,
     state: State,
@@ -89,12 +114,21 @@ pub struct Game {
     player_b: Player,
     player_c: Player,
     player_d: Player,
+    #[serde(default)]
+    timer_config: Option<TimerConfig>,
+    #[serde(default)]
+    player_clocks: Option<PlayerClocks>,
+    #[serde(default)]
+    turn_started_at_epoch_ms: Option<u64>,
 }
 
 impl Game {
-    pub fn new(id: Uuid, player_ids: [Uuid; 4], max_points: i32) -> Game {
+    pub fn new(id: Uuid, player_ids: [Uuid; 4], max_points: i32, timer_config: Option<TimerConfig>) -> Game {
+        let player_clocks = timer_config.map(|tc| PlayerClocks {
+            remaining_ms: [tc.initial_time_secs * 1000; 4],
+        });
         Game {
-            id: id,
+            id,
             state: State::NotStarted,
             scoring: scoring::Scoring::new(max_points),
             hands_played: vec![new_pot()],
@@ -105,6 +139,9 @@ impl Game {
             player_b: Player::new(player_ids[1]),
             player_c: Player::new(player_ids[2]),
             player_d: Player::new(player_ids[3]),
+            timer_config,
+            player_clocks,
+            turn_started_at_epoch_ms: None,
         }
     }
 
@@ -201,7 +238,7 @@ impl Game {
     pub fn get_current_trick_cards(&self) -> Result<&[cards::Card; 4], GetError> {
         match self.state {
             State::NotStarted => {Err(GetError::GameNotStarted)},
-            State::Completed => {Err(GetError::GameCompleted)},
+            State::Completed | State::Aborted => {Err(GetError::GameCompleted)},
             State::Betting(_) => {Err(GetError::GameCompleted)},
             State::Trick(_) => {Ok(self.hands_played.last().unwrap())},
         }
@@ -221,10 +258,13 @@ impl Game {
     pub fn get_winner_ids(&self) -> Result<(&Uuid, &Uuid), GetError> {
         match self.state {
             State::Completed => {
-                if self.scoring.team_a.cumulative_points <= self.scoring.team_b.cumulative_points {
+                if self.scoring.team_a.cumulative_points > self.scoring.team_b.cumulative_points {
                     return Ok((&self.player_a.id, &self.player_c.id));
-                } else {
+                } else if self.scoring.team_b.cumulative_points > self.scoring.team_a.cumulative_points {
                     return Ok((&self.player_b.id, &self.player_d.id));
+                } else {
+                    // Tie should not happen (is_over prevents it), but guard against it
+                    return Err(GetError::GameNotCompleted);
                 }
             },
             _ => {
@@ -243,12 +283,12 @@ impl Game {
             GameTransition::Bet(bet) => {
                 match self.state {
                     State::NotStarted => {
-                        return Err(TransitionError::NotStarted); 
+                        return Err(TransitionError::NotStarted);
                     },
                     State::Trick(_rotation_status) => {
                         return Err(TransitionError::BetInTrickStage);
                     },
-                    State::Completed => {
+                    State::Completed | State::Aborted => {
                         return Err(TransitionError::CompletedGame);
                     },
                     State::Betting(rotation_status) => {
@@ -270,9 +310,9 @@ impl Game {
             GameTransition::Card(card) => {
                 match self.state {
                     State::NotStarted => {
-                        return Err(TransitionError::NotStarted); 
+                        return Err(TransitionError::NotStarted);
                     },
-                    State::Completed => {
+                    State::Completed | State::Aborted => {
                         return Err(TransitionError::CompletedGame);
                     },
                     State::Betting(_rotation_status) => {
@@ -337,6 +377,87 @@ impl Game {
                 self.state = State::Betting(0);
                 return Ok(TransitionSuccess::Start);
             }
+        }
+    }
+
+    pub fn set_player_name(&mut self, player_id: Uuid, name: Option<String>) -> Result<(), GetError> {
+        if player_id == self.player_a.id {
+            self.player_a.name = name;
+        } else if player_id == self.player_b.id {
+            self.player_b.name = name;
+        } else if player_id == self.player_c.id {
+            self.player_c.name = name;
+        } else if player_id == self.player_d.id {
+            self.player_d.name = name;
+        } else {
+            return Err(GetError::InvalidUuid);
+        }
+        Ok(())
+    }
+
+    pub fn get_player_names(&self) -> [(Uuid, Option<&str>); 4] {
+        [
+            (self.player_a.id, self.player_a.name.as_deref()),
+            (self.player_b.id, self.player_b.name.as_deref()),
+            (self.player_c.id, self.player_c.name.as_deref()),
+            (self.player_d.id, self.player_d.name.as_deref()),
+        ]
+    }
+
+    pub fn get_timer_config(&self) -> Option<&TimerConfig> {
+        self.timer_config.as_ref()
+    }
+
+    pub fn get_player_clocks(&self) -> Option<&PlayerClocks> {
+        self.player_clocks.as_ref()
+    }
+
+    pub fn get_player_clocks_mut(&mut self) -> Option<&mut PlayerClocks> {
+        self.player_clocks.as_mut()
+    }
+
+    pub fn get_current_player_index_num(&self) -> usize {
+        self.current_player_index
+    }
+
+    /// Returns true if the game is in the first round's betting phase (round 0, Betting state).
+    pub fn is_first_round_betting(&self) -> bool {
+        self.scoring.round == 0 && matches!(self.state, State::Betting(_))
+    }
+
+    pub fn get_turn_started_at_epoch_ms(&self) -> Option<u64> {
+        self.turn_started_at_epoch_ms
+    }
+
+    pub fn set_turn_started_at_epoch_ms(&mut self, epoch_ms: Option<u64>) {
+        self.turn_started_at_epoch_ms = epoch_ms;
+    }
+
+    /// Set the game state directly (used by GameManager for abort).
+    pub fn set_state(&mut self, state: State) {
+        self.state = state;
+    }
+
+    /// Returns the list of legal cards the current player can play.
+    /// Only valid in the Trick state.
+    pub fn get_legal_cards(&self) -> Result<Vec<Card>, GetError> {
+        match &self.state {
+            State::Trick(rotation_status) => {
+                let hand = self.get_current_hand()?;
+                if *rotation_status == 0 {
+                    // First card in trick: any card is legal
+                    Ok(hand.clone())
+                } else {
+                    // Must follow leading suit if possible
+                    let has_leading_suit = hand.iter().any(|c| c.suit == self.leading_suit);
+                    if has_leading_suit {
+                        Ok(hand.iter().filter(|c| c.suit == self.leading_suit).cloned().collect())
+                    } else {
+                        Ok(hand.clone())
+                    }
+                }
+            }
+            _ => Err(GetError::Unknown),
         }
     }
 

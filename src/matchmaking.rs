@@ -12,13 +12,14 @@ pub struct MatchResult {
     pub game_id: Uuid,
     pub player_id: Uuid,
     pub player_ids: [Uuid; 4],
+    pub player_names: [Option<String>; 4],
 }
 
 /// SSE event sent to lobby members
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum LobbyEvent {
-    LobbyUpdate { lobby_id: Uuid, players: usize },
+    LobbyUpdate { lobby_id: Uuid, players: usize, player_names: Vec<Option<String>> },
     GameStart(MatchResult),
 }
 
@@ -35,6 +36,7 @@ pub struct LobbySummary {
     pub lobby_id: Uuid,
     pub max_points: i32,
     pub players: usize,
+    pub player_names: Vec<Option<String>>,
 }
 
 /// Errors from matchmaking operations
@@ -49,11 +51,13 @@ pub enum MatchmakingError {
 struct PendingSeek {
     player_id: Uuid,
     max_points: i32,
+    name: Option<String>,
     sender: oneshot::Sender<MatchResult>,
 }
 
 struct LobbyPlayer {
     player_id: Uuid,
+    name: Option<String>,
 }
 
 struct Lobby {
@@ -83,7 +87,7 @@ impl Matchmaker {
 
     /// Add a seek to the queue. Returns (player_id, receiver) so the caller
     /// can cancel the seek on disconnect.
-    pub fn add_seek(&self, max_points: i32) -> (Uuid, oneshot::Receiver<MatchResult>) {
+    pub fn add_seek(&self, max_points: i32, name: Option<String>) -> (Uuid, oneshot::Receiver<MatchResult>) {
         let player_id = Uuid::new_v4();
         let (tx, rx) = oneshot::channel();
 
@@ -92,6 +96,7 @@ impl Matchmaker {
             queue.push(PendingSeek {
                 player_id,
                 max_points,
+                name,
                 sender: tx,
             });
         }
@@ -152,8 +157,15 @@ impl Matchmaker {
             seeks[3].player_id,
         ];
 
+        let player_names: [Option<String>; 4] = [
+            seeks[0].name.clone(),
+            seeks[1].name.clone(),
+            seeks[2].name.clone(),
+            seeks[3].name.clone(),
+        ];
+
         // Create game with pre-assigned player IDs and auto-start
-        let response = match self.game_manager.create_game_with_players(player_ids, max_points) {
+        let response = match self.game_manager.create_game_with_players(player_ids, max_points, None) {
             Ok(r) => r,
             Err(_) => {
                 // Re-queue the seeks so players aren't lost
@@ -175,19 +187,27 @@ impl Matchmaker {
             return;
         }
 
+        // Set player names on the game
+        for (i, name) in player_names.iter().enumerate() {
+            if name.is_some() {
+                let _ = self.game_manager.set_player_name(response.game_id, player_ids[i], name.clone());
+            }
+        }
+
         // Notify all 4 players
         for seek in seeks {
             let result = MatchResult {
                 game_id: response.game_id,
                 player_id: seek.player_id,
                 player_ids,
+                player_names: player_names.clone(),
             };
             let _ = seek.sender.send(result);
         }
     }
 
     /// Create a new lobby. Returns (lobby_id, creator_player_id, broadcast_receiver).
-    pub fn create_lobby(&self, max_points: i32) -> (Uuid, Uuid, broadcast::Receiver<LobbyEvent>) {
+    pub fn create_lobby(&self, max_points: i32, name: Option<String>) -> (Uuid, Uuid, broadcast::Receiver<LobbyEvent>) {
         let lobby_id = Uuid::new_v4();
         let creator_id = Uuid::new_v4();
         let (broadcast_tx, broadcast_rx) = broadcast::channel(16);
@@ -196,7 +216,7 @@ impl Matchmaker {
             lobby_id,
             creator_id,
             max_points,
-            players: vec![LobbyPlayer { player_id: creator_id }],
+            players: vec![LobbyPlayer { player_id: creator_id, name }],
             broadcast_tx,
         };
 
@@ -207,7 +227,7 @@ impl Matchmaker {
     }
 
     /// Join an existing lobby. Returns (player_id, broadcast_receiver).
-    pub fn join_lobby(&self, lobby_id: Uuid) -> Result<(Uuid, broadcast::Receiver<LobbyEvent>), MatchmakingError> {
+    pub fn join_lobby(&self, lobby_id: Uuid, name: Option<String>) -> Result<(Uuid, broadcast::Receiver<LobbyEvent>), MatchmakingError> {
         let mut lobbies = self.lobbies.write().map_err(|_| MatchmakingError::LockError)?;
         let lobby = lobbies.get_mut(&lobby_id).ok_or(MatchmakingError::LobbyNotFound)?;
 
@@ -217,12 +237,14 @@ impl Matchmaker {
 
         let player_id = Uuid::new_v4();
         let rx = lobby.broadcast_tx.subscribe();
-        lobby.players.push(LobbyPlayer { player_id });
+        lobby.players.push(LobbyPlayer { player_id, name });
 
         let player_count = lobby.players.len();
+        let lobby_player_names: Vec<Option<String>> = lobby.players.iter().map(|p| p.name.clone()).collect();
         let _ = lobby.broadcast_tx.send(LobbyEvent::LobbyUpdate {
             lobby_id,
             players: player_count,
+            player_names: lobby_player_names,
         });
 
         if player_count == 4 {
@@ -232,22 +254,36 @@ impl Matchmaker {
                 lobby.players[2].player_id,
                 lobby.players[3].player_id,
             ];
+            let player_names: [Option<String>; 4] = [
+                lobby.players[0].name.clone(),
+                lobby.players[1].name.clone(),
+                lobby.players[2].name.clone(),
+                lobby.players[3].name.clone(),
+            ];
             let max_points = lobby.max_points;
             let broadcast_tx = lobby.broadcast_tx.clone();
 
             // Drop lock before calling game_manager
             drop(lobbies);
 
-            match self.game_manager.create_game_with_players(player_ids, max_points) {
+            match self.game_manager.create_game_with_players(player_ids, max_points, None) {
                 Ok(response) => {
                     if self.game_manager.make_transition(response.game_id, GameTransition::Start).is_err() {
                         // Game was created but couldn't start — remove it, lobby stays
                         let _ = self.game_manager.remove_game(response.game_id);
                     } else {
+                        // Set player names on the game
+                        for (i, name) in player_names.iter().enumerate() {
+                            if name.is_some() {
+                                let _ = self.game_manager.set_player_name(response.game_id, player_ids[i], name.clone());
+                            }
+                        }
+
                         let _ = broadcast_tx.send(LobbyEvent::GameStart(MatchResult {
                             game_id: response.game_id,
                             player_id: Uuid::nil(),
                             player_ids,
+                            player_names,
                         }));
 
                         // Remove lobby after successful game creation
@@ -273,6 +309,7 @@ impl Matchmaker {
                 lobby_id: l.lobby_id,
                 max_points: l.max_points,
                 players: l.players.len(),
+                player_names: l.players.iter().map(|p| p.name.clone()).collect(),
             })
             .collect()
     }
@@ -297,9 +334,11 @@ impl Matchmaker {
             } else {
                 lobby.players.retain(|p| p.player_id != player_id);
                 let player_count = lobby.players.len();
+                let lobby_player_names: Vec<Option<String>> = lobby.players.iter().map(|p| p.name.clone()).collect();
                 let _ = lobby.broadcast_tx.send(LobbyEvent::LobbyUpdate {
                     lobby_id,
                     players: player_count,
+                    player_names: lobby_player_names,
                 });
             }
         }
@@ -320,7 +359,7 @@ mod tests {
         let mut receivers = Vec::new();
 
         for _ in 0..4 {
-            let (_pid, rx) = mm.add_seek(500);
+            let (_pid, rx) = mm.add_seek(500, None);
             receivers.push(rx);
         }
 
@@ -341,7 +380,7 @@ mod tests {
         let mm = make_matchmaker();
 
         for _ in 0..3 {
-            let _ = mm.add_seek(500);
+            let _ = mm.add_seek(500, None);
         }
 
         let summary = mm.list_seeks();
@@ -355,9 +394,9 @@ mod tests {
         let mm = make_matchmaker();
 
         for _ in 0..3 {
-            let _ = mm.add_seek(500);
+            let _ = mm.add_seek(500, None);
         }
-        let _ = mm.add_seek(300);
+        let _ = mm.add_seek(300, None);
 
         let summary = mm.list_seeks();
         assert_eq!(summary.len(), 2);
@@ -366,7 +405,7 @@ mod tests {
     #[tokio::test]
     async fn test_cancel_seek() {
         let mm = make_matchmaker();
-        let (player_id, _rx) = mm.add_seek(500);
+        let (player_id, _rx) = mm.add_seek(500, None);
 
         mm.cancel_seek(player_id);
 
@@ -377,7 +416,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_lobby() {
         let mm = make_matchmaker();
-        let (lobby_id, _player_id, _rx) = mm.create_lobby(500);
+        let (lobby_id, _player_id, _rx) = mm.create_lobby(500, None);
 
         let lobbies = mm.list_lobbies();
         assert_eq!(lobbies.len(), 1);
@@ -389,9 +428,9 @@ mod tests {
     #[tokio::test]
     async fn test_join_lobby() {
         let mm = make_matchmaker();
-        let (lobby_id, _creator_id, _creator_rx) = mm.create_lobby(500);
+        let (lobby_id, _creator_id, _creator_rx) = mm.create_lobby(500, None);
 
-        let result = mm.join_lobby(lobby_id);
+        let result = mm.join_lobby(lobby_id, None);
         assert!(result.is_ok());
 
         let lobbies = mm.list_lobbies();
@@ -401,18 +440,18 @@ mod tests {
     #[tokio::test]
     async fn test_join_lobby_not_found() {
         let mm = make_matchmaker();
-        let result = mm.join_lobby(Uuid::new_v4());
+        let result = mm.join_lobby(Uuid::new_v4(), None);
         assert!(matches!(result, Err(MatchmakingError::LobbyNotFound)));
     }
 
     #[tokio::test]
     async fn test_lobby_auto_start_on_4th_player() {
         let mm = make_matchmaker();
-        let (lobby_id, _creator_id, mut creator_rx) = mm.create_lobby(500);
+        let (lobby_id, _creator_id, mut creator_rx) = mm.create_lobby(500, None);
 
         let mut _join_rxs = Vec::new();
         for _ in 0..3 {
-            let (_player_id, rx) = mm.join_lobby(lobby_id).unwrap();
+            let (_player_id, rx) = mm.join_lobby(lobby_id, None).unwrap();
             _join_rxs.push(rx);
         }
 
@@ -437,7 +476,7 @@ mod tests {
     #[tokio::test]
     async fn test_delete_lobby() {
         let mm = make_matchmaker();
-        let (lobby_id, creator_id, _rx) = mm.create_lobby(500);
+        let (lobby_id, creator_id, _rx) = mm.create_lobby(500, None);
 
         let result = mm.delete_lobby(lobby_id, creator_id);
         assert!(result.is_ok());
@@ -449,12 +488,111 @@ mod tests {
     #[tokio::test]
     async fn test_leave_lobby() {
         let mm = make_matchmaker();
-        let (lobby_id, _creator_id, _creator_rx) = mm.create_lobby(500);
-        let (joiner_id, _rx) = mm.join_lobby(lobby_id).unwrap();
+        let (lobby_id, _creator_id, _creator_rx) = mm.create_lobby(500, None);
+        let (joiner_id, _rx) = mm.join_lobby(lobby_id, None).unwrap();
 
         mm.leave_lobby(lobby_id, joiner_id);
 
         let lobbies = mm.list_lobbies();
         assert_eq!(lobbies[0].players, 1);
+    }
+
+    #[tokio::test]
+    async fn test_seek_with_names_propagated() {
+        let mm = make_matchmaker();
+        let mut receivers = Vec::new();
+        let names = ["Alice", "Bob", "Carol", "Dave"];
+
+        for name in &names {
+            let (_pid, rx) = mm.add_seek(500, Some(name.to_string()));
+            receivers.push(rx);
+        }
+
+        for rx in receivers {
+            let result = rx.await.expect("channel should not be dropped");
+            // All 4 player_names should be Some
+            for pn in &result.player_names {
+                assert!(pn.is_some());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_lobby_creator_leaves_deletes_lobby() {
+        let mm = make_matchmaker();
+        let (lobby_id, creator_id, _rx) = mm.create_lobby(500, None);
+        let _ = mm.join_lobby(lobby_id, None).unwrap();
+
+        // Creator leaving deletes the lobby
+        mm.leave_lobby(lobby_id, creator_id);
+
+        let lobbies = mm.list_lobbies();
+        assert_eq!(lobbies.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_lobby_with_player_names() {
+        let mm = make_matchmaker();
+        let (_lobby_id, _creator_id, _rx) = mm.create_lobby(500, Some("Alice".to_string()));
+
+        let lobbies = mm.list_lobbies();
+        assert_eq!(lobbies[0].player_names[0].as_deref(), Some("Alice"));
+    }
+
+    #[tokio::test]
+    async fn test_leave_lobby_broadcasts_update() {
+        let mm = make_matchmaker();
+        let (lobby_id, _creator_id, mut creator_rx) = mm.create_lobby(500, None);
+        let (joiner_id, _joiner_rx) = mm.join_lobby(lobby_id, None).unwrap();
+
+        // Drain the LobbyUpdate from join
+        let _ = creator_rx.try_recv();
+
+        mm.leave_lobby(lobby_id, joiner_id);
+
+        // Should receive a LobbyUpdate with 1 player
+        let event = creator_rx.try_recv().unwrap();
+        match event {
+            LobbyEvent::LobbyUpdate { players, .. } => assert_eq!(players, 1),
+            _ => panic!("Expected LobbyUpdate"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_seek_list_after_partial_cancel() {
+        let mm = make_matchmaker();
+        let (p1, _rx1) = mm.add_seek(500, None);
+        let (_p2, _rx2) = mm.add_seek(500, None);
+        let (_p3, _rx3) = mm.add_seek(500, None);
+
+        mm.cancel_seek(p1);
+
+        let summary = mm.list_seeks();
+        assert_eq!(summary.len(), 1);
+        assert_eq!(summary[0].waiting, 2);
+    }
+
+    #[tokio::test]
+    async fn test_join_full_lobby() {
+        let mm = make_matchmaker();
+        let (lobby_id, _creator_id, _rx) = mm.create_lobby(500, None);
+
+        // Fill up the lobby to 4 players
+        for _ in 0..3 {
+            let _ = mm.join_lobby(lobby_id, None).unwrap();
+        }
+
+        // Lobby should be gone (game started), so joining returns LobbyNotFound
+        let result = mm.join_lobby(lobby_id, None);
+        assert!(matches!(result, Err(MatchmakingError::LobbyNotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_delete_lobby_wrong_creator() {
+        let mm = make_matchmaker();
+        let (lobby_id, _creator_id, _rx) = mm.create_lobby(500, None);
+
+        let result = mm.delete_lobby(lobby_id, Uuid::new_v4());
+        assert!(matches!(result, Err(MatchmakingError::LobbyNotFound)));
     }
 }

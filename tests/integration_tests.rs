@@ -5,12 +5,12 @@ use rand::{thread_rng};
 #[test]
 #[allow(unused)]
 fn main() {
-    let mut g = Game::new(uuid::Uuid::new_v4(), 
-        [uuid::Uuid::new_v4(), 
-         uuid::Uuid::new_v4(), 
-         uuid::Uuid::new_v4(), 
-         uuid::Uuid::new_v4()], 
-         500);
+    let mut g = Game::new(uuid::Uuid::new_v4(),
+        [uuid::Uuid::new_v4(),
+         uuid::Uuid::new_v4(),
+         uuid::Uuid::new_v4(),
+         uuid::Uuid::new_v4()],
+         500, None);
 
     g.play(GameTransition::Start);
     println!("{:#?}", g);

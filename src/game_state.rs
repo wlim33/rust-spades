@@ -12,5 +12,6 @@ pub enum State {
     NotStarted,
     Betting(usize),
     Trick(usize),
-    Completed
+    Completed,
+    Aborted,
 }

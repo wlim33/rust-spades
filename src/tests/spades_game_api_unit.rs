@@ -6,12 +6,12 @@ use super::super::game_state::State;
 #[allow(unused)]
 #[test]
 pub fn api_main_unit() {
-    let mut g = Game::new(uuid::Uuid::new_v4(), 
-        [uuid::Uuid::new_v4(), 
-         uuid::Uuid::new_v4(), 
-         uuid::Uuid::new_v4(), 
-         uuid::Uuid::new_v4()], 
-         500);
+    let mut g = Game::new(uuid::Uuid::new_v4(),
+        [uuid::Uuid::new_v4(),
+         uuid::Uuid::new_v4(),
+         uuid::Uuid::new_v4(),
+         uuid::Uuid::new_v4()],
+         500, None);
 
 
     assert_eq!(g.play(GameTransition::Card(Card { suit: Suit::Heart, rank: Rank::Five })), Err(TransitionError::NotStarted));

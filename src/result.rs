@@ -59,13 +59,13 @@ impl fmt::Display for TransitionError {
             TransitionError::CardInBettingStage => {
                 write!(f, "Error: Attempted to play a card while game is in betting stage.")},
             TransitionError::BetInTrickStage => {
-                write!(f, "Error: Attempted to place a bet while game is in not stage.")},
+                write!(f, "Error: Attempted to place a bet while game is in trick stage.")},
             TransitionError::CompletedGame => {
                 write!(f, "Error: Attempted to play a completed game.")},
             TransitionError::CardNotInHand => {
                 write!(f, "Error: Attempted to play a card not in hand.")},
             TransitionError::CardIncorrectSuit => {
-                write!(f, "Error: Attempted to play a of the wrong suit.")},
+                write!(f, "Error: Attempted to play a card of the wrong suit.")},
         }
     }
 }
