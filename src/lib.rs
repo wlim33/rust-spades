@@ -58,9 +58,35 @@ pub mod challenges;
 mod tests;
 
 use uuid::Uuid;
+use sqids::Sqids;
 pub use result::*;
 pub use cards::*;
 pub use game_state::*;
+
+fn sqids_instance() -> Sqids {
+    Sqids::builder()
+        .min_length(6)
+        .build()
+        .expect("valid sqids config")
+}
+
+pub fn uuid_to_short_id(uuid: Uuid) -> String {
+    let bytes = uuid.as_bytes();
+    let high = u64::from_be_bytes(bytes[0..8].try_into().unwrap());
+    let low = u64::from_be_bytes(bytes[8..16].try_into().unwrap());
+    sqids_instance().encode(&[high, low]).expect("sqids encode")
+}
+
+pub fn short_id_to_uuid(short_id: &str) -> Option<Uuid> {
+    let nums = sqids_instance().decode(short_id);
+    if nums.len() != 2 {
+        return None;
+    }
+    let mut bytes = [0u8; 16];
+    bytes[0..8].copy_from_slice(&nums[0].to_be_bytes());
+    bytes[8..16].copy_from_slice(&nums[1].to_be_bytes());
+    Some(Uuid::from_bytes(bytes))
+}
 
 /// The primary way to interface with a spades game. Used as an argument to [Game::play](struct.Game.html#method.play).
 pub enum GameTransition {

@@ -4,7 +4,6 @@ use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
-use sqids::Sqids;
 use serde::{Serialize, Deserialize};
 use tokio::sync::broadcast;
 use crate::game_manager::GameManager;
@@ -42,31 +41,6 @@ impl Seat {
     }
 
     pub const ALL: [Seat; 4] = [Seat::A, Seat::B, Seat::C, Seat::D];
-}
-
-fn sqids_instance() -> Sqids {
-    Sqids::builder()
-        .min_length(6)
-        .build()
-        .expect("valid sqids config")
-}
-
-pub fn uuid_to_short_id(uuid: Uuid) -> String {
-    let bytes = uuid.as_bytes();
-    let high = u64::from_be_bytes(bytes[0..8].try_into().unwrap());
-    let low = u64::from_be_bytes(bytes[8..16].try_into().unwrap());
-    sqids_instance().encode(&[high, low]).expect("sqids encode")
-}
-
-pub fn short_id_to_uuid(short_id: &str) -> Option<Uuid> {
-    let nums = sqids_instance().decode(short_id);
-    if nums.len() != 2 {
-        return None;
-    }
-    let mut bytes = [0u8; 16];
-    bytes[0..8].copy_from_slice(&nums[0].to_be_bytes());
-    bytes[8..16].copy_from_slice(&nums[1].to_be_bytes());
-    Some(Uuid::from_bytes(bytes))
 }
 
 impl FromStr for Seat {
@@ -413,6 +387,7 @@ impl ChallengeManager {
                             player_id: Uuid::nil(),
                             player_ids,
                             player_names,
+                            short_id: crate::uuid_to_short_id(response.game_id),
                         }));
                     }
                 }
@@ -487,7 +462,7 @@ impl ChallengeManager {
 
         Ok(ChallengeStatus {
             challenge_id: challenge.challenge_id,
-            short_id: uuid_to_short_id(challenge.challenge_id),
+            short_id: crate::uuid_to_short_id(challenge.challenge_id),
             max_points: challenge.max_points,
             timer_config: challenge.timer_config,
             seats: challenge.seats_snapshot(),
@@ -498,7 +473,7 @@ impl ChallengeManager {
 
     /// Resolve a Sqids short ID to a challenge UUID and return the challenge status.
     pub fn get_challenge_by_short_id(&self, short_id: &str) -> Result<ChallengeStatus, ChallengeError> {
-        let uuid = short_id_to_uuid(short_id).ok_or(ChallengeError::NotFound)?;
+        let uuid = crate::short_id_to_uuid(short_id).ok_or(ChallengeError::NotFound)?;
         self.get_status(uuid)
     }
 
@@ -513,7 +488,7 @@ impl ChallengeManager {
             .filter(|c| matches!(c.status, ChallengeStatusKindInternal::Open))
             .map(|c| ChallengeSummary {
                 challenge_id: c.challenge_id,
-                short_id: uuid_to_short_id(c.challenge_id),
+                short_id: crate::uuid_to_short_id(c.challenge_id),
                 max_points: c.max_points,
                 seats_filled: c.seats_filled(),
                 seats: c.seats_snapshot(),
@@ -926,15 +901,15 @@ mod tests {
     #[test]
     fn test_uuid_short_id_roundtrip() {
         let uuid = Uuid::new_v4();
-        let short = uuid_to_short_id(uuid);
+        let short = crate::uuid_to_short_id(uuid);
         assert!(short.len() >= 6);
         assert!(short.len() < 36);
-        let decoded = short_id_to_uuid(&short).unwrap();
+        let decoded = crate::short_id_to_uuid(&short).unwrap();
         assert_eq!(uuid, decoded);
     }
 
     #[test]
     fn test_short_id_invalid_returns_none() {
-        assert!(short_id_to_uuid("!!!invalid!!!").is_none());
+        assert!(crate::short_id_to_uuid("!!!invalid!!!").is_none());
     }
 }

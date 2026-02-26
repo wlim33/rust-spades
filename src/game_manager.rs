@@ -52,6 +52,7 @@ pub struct PlayerNameEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameStateResponse {
     pub game_id: Uuid,
+    pub short_id: String,
     pub state: State,
     pub team_a_score: Option<i32>,
     pub team_b_score: Option<i32>,
@@ -268,6 +269,7 @@ impl GameManager {
 
         GameStateResponse {
             game_id,
+            short_id: crate::uuid_to_short_id(game_id),
             state: game.get_state().clone(),
             team_a_score: game.get_team_a_score().ok().copied(),
             team_b_score: game.get_team_b_score().ok().copied(),
@@ -854,6 +856,7 @@ mod tests {
     fn test_game_event_serde_state_changed() {
         let state = GameStateResponse {
             game_id: Uuid::nil(),
+            short_id: crate::uuid_to_short_id(Uuid::nil()),
             state: State::NotStarted,
             team_a_score: None,
             team_b_score: None,

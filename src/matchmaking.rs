@@ -13,6 +13,7 @@ pub struct MatchResult {
     pub player_id: Uuid,
     pub player_ids: [Uuid; 4],
     pub player_names: [Option<String>; 4],
+    pub short_id: String,
 }
 
 /// Event sent to seekers in the quickplay queue
@@ -219,6 +220,7 @@ impl Matchmaker {
                 player_id: seek.player_id,
                 player_ids,
                 player_names: player_names.clone(),
+                short_id: crate::uuid_to_short_id(response.game_id),
             };
             let _ = seek.sender.send(SeekEvent::GameStart(result));
         }
@@ -312,6 +314,7 @@ impl Matchmaker {
                             player_id: Uuid::nil(),
                             player_ids,
                             player_names,
+                            short_id: crate::uuid_to_short_id(response.game_id),
                         }));
 
                         // Remove lobby after successful game creation

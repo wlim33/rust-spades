@@ -126,6 +126,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/lobbies", get(list_lobbies_handler))
         .route("/lobbies/:lobby_id/join", post(join_lobby_handler))
         .route("/lobbies/:lobby_id", delete(delete_lobby_handler))
+        .route("/games/by-short-id/:short_id", get(get_game_by_short_id_handler))
         .route("/challenges", post(create_challenge_handler))
         .route("/challenges", get(list_challenges_handler))
         .route("/challenges/by-short-id/:short_id", get(get_challenge_by_short_id_handler))
@@ -270,6 +271,30 @@ async fn get_game_state(
                 status,
                 Json(ErrorResponse {
                     error: format!("{:?}", e),
+                }),
+            )
+        })
+}
+
+async fn get_game_by_short_id_handler(
+    AxumState(state): AxumState<AppState>,
+    Path(short_id): Path<String>,
+) -> Result<Json<GameStateResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let game_id = spades::short_id_to_uuid(&short_id).ok_or((
+        StatusCode::NOT_FOUND,
+        Json(ErrorResponse {
+            error: "Game not found".to_string(),
+        }),
+    ))?;
+    state
+        .game_manager
+        .get_game_state(game_id)
+        .map(Json)
+        .map_err(|_| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Game not found".to_string(),
                 }),
             )
         })
@@ -617,6 +642,7 @@ async fn create_lobby(
                         player_id,
                         player_ids: result.player_ids,
                         player_names: result.player_names.clone(),
+                        short_id: result.short_id.clone(),
                     };
                     yield Ok(Event::default()
                         .event("game_start")
@@ -700,6 +726,7 @@ async fn join_lobby_handler(
                         player_id,
                         player_ids: result.player_ids,
                         player_names: result.player_names.clone(),
+                        short_id: result.short_id.clone(),
                     };
                     yield Ok(Event::default()
                         .event("game_start")
@@ -855,6 +882,7 @@ async fn create_challenge_handler(
                         player_id: creator_player_id.unwrap_or(Uuid::nil()),
                         player_ids: result.player_ids,
                         player_names: result.player_names.clone(),
+                        short_id: result.short_id.clone(),
                     };
                     yield Ok(Event::default()
                         .event("game_start")
@@ -1013,6 +1041,7 @@ async fn join_challenge_handler(
                         player_id,
                         player_ids: result.player_ids,
                         player_names: result.player_names.clone(),
+                        short_id: result.short_id.clone(),
                     };
                     yield Ok(Event::default()
                         .event("game_start")
