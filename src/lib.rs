@@ -38,6 +38,7 @@ mod scoring;
 mod game_state;
 mod cards;
 mod result;
+pub mod ai;
 
 #[cfg(feature = "server")]
 pub mod game_manager;
