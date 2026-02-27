@@ -11,6 +11,7 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
+use oasgen::{oasgen, OaSchema};
 use serde::{Deserialize, Serialize};
 use spades::game_manager::{
     CreateGameResponse, GameEvent, GameManager, GameStateResponse, HandResponse,
@@ -49,18 +50,18 @@ struct UserSession {
     display_name: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, oasgen::OaSchema)]
 struct SessionPlayerResponse {
     user_id: Uuid,
     display_name: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, oasgen::OaSchema)]
 struct SetDisplayNameRequest {
     name: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
 struct CreateGameRequest {
     #[serde(default = "default_max_points")]
     max_points: i32,
@@ -68,13 +69,13 @@ struct CreateGameRequest {
     num_humans: Option<u8>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
 struct TransitionRequest {
     #[serde(flatten)]
     transition: TransitionType,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum TransitionType {
     Start,
@@ -82,16 +83,22 @@ enum TransitionType {
     Card { card: Card },
 }
 
+#[derive(Debug, Serialize, OaSchema)]
+struct TransitionResponse {
+    success: bool,
+    result: String,
+}
+
 fn parse_uuid_or_short_id(s: &str) -> Option<Uuid> {
     Uuid::parse_str(s).ok().or_else(|| spades::short_id_to_uuid(s))
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
 struct ErrorResponse {
     error: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, oasgen::OaSchema)]
 struct PlayerUrlResponse {
     game_id: Uuid,
     player_id: Uuid,
@@ -100,7 +107,7 @@ struct PlayerUrlResponse {
     hand: HandResponse,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
 struct SeekRequest {
     #[serde(default = "default_max_points")]
     max_points: i32,
@@ -110,19 +117,19 @@ struct SeekRequest {
 }
 
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
 struct SetNameRequest {
     #[serde(default)]
     name: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
 struct JoinChallengeRequest {
     #[serde(default)]
     name: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
 struct CancelChallengeRequest {
     creator_id: Uuid,
 }
@@ -132,29 +139,53 @@ fn default_max_points() -> i32 {
 }
 
 pub fn build_router(state: AppState) -> Router {
+    let mut server = oasgen::Server::axum();
+    server.openapi.info.title = "Spades Game Server".to_string();
+    server.openapi.info.version = env!("CARGO_PKG_VERSION").to_string();
+    server.openapi.info.description = Some(
+        "4-player Spades card game server with matchmaking, challenges, and real-time updates."
+            .to_string(),
+    );
+
+    let server = server
+        // Game endpoints
+        .post("/games", create_game)
+        .get("/games", list_games)
+        .get("/games/{game_id}", get_game_state)
+        .post("/games/{game_id}/transition", make_transition)
+        .get("/games/{game_id}/players/{player_id}/hand", get_hand)
+        .get("/games/by-short-id/{short_id}", get_game_by_short_id_handler)
+        .get("/games/by-player-url/{url_id}", get_game_by_player_url)
+        .get("/games/{game_id}/presence", get_presence)
+        // Matchmaking
+        .get("/matchmaking/seeks", list_seeks_handler)
+        // Challenges
+        .get("/challenges", list_challenges_handler)
+        .get("/challenges/{challenge_id}", get_challenge_handler)
+        .get("/challenges/by-short-id/{short_id}", get_challenge_by_short_id_handler)
+        // Spec endpoints
+        .route_json_spec("/openapi.json")
+        .route_yaml_spec("/openapi.yaml")
+        .swagger_ui("/docs/")
+        .freeze();
+
     Router::new()
+        .merge(server.into_router())
+        // Root
         .route("/", get(root))
-        .route("/games", post(create_game))
-        .route("/games", get(list_games))
-        .route("/games/:game_id", get(get_game_state))
-        .route("/games/:game_id", delete(delete_game))
-        .route("/games/:game_id/transition", post(make_transition))
-        .route("/games/:game_id/players/:player_id/hand", get(get_hand))
-        .route("/games/:game_id/players/:player_id/name", put(set_player_name))
-        .route("/games/:game_id/ws", get(game_ws))
-        .route("/games/:game_id/presence", get(get_presence))
-        .route("/matchmaking/seek", post(seek))
-        .route("/matchmaking/seeks", get(list_seeks_handler))
-        .route("/games/by-short-id/:short_id", get(get_game_by_short_id_handler))
-        .route("/games/by-player-url/:url_id", get(get_game_by_player_url))
-        .route("/challenges", post(create_challenge_handler))
-        .route("/challenges", get(list_challenges_handler))
-        .route("/challenges/by-short-id/:short_id", get(get_challenge_by_short_id_handler))
-        .route("/challenges/:challenge_id", get(get_challenge_handler))
-        .route("/challenges/:challenge_id/join/:seat", post(join_challenge_handler))
-        .route("/challenges/:challenge_id", delete(cancel_challenge_handler))
+        // Handlers returning StatusCode (not JSON body — oasgen needs Json responses)
+        .route("/games/{game_id}", delete(delete_game))
+        .route("/games/{game_id}/players/{player_id}/name", put(set_player_name))
+        .route("/challenges/{challenge_id}", delete(cancel_challenge_handler))
+        // Session-based (oasgen can't handle Session extractor)
         .route("/player", get(get_player))
         .route("/player/name", put(set_display_name))
+        // SSE endpoints
+        .route("/matchmaking/seek", post(seek))
+        .route("/challenges", post(create_challenge_handler))
+        .route("/challenges/{challenge_id}/join/{seat}", post(join_challenge_handler))
+        // WebSocket
+        .route("/games/{game_id}/ws", get(game_ws))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -256,6 +287,7 @@ async fn root() -> Json<serde_json::Value> {
     }))
 }
 
+#[oasgen]
 async fn create_game(
     AxumState(state): AxumState<AppState>,
     Json(request): Json<CreateGameRequest>,
@@ -323,6 +355,7 @@ async fn create_game(
     }
 }
 
+#[oasgen]
 async fn list_games(
     AxumState(state): AxumState<AppState>,
 ) -> Result<Json<Vec<Uuid>>, (StatusCode, Json<ErrorResponse>)> {
@@ -336,6 +369,7 @@ async fn list_games(
     })
 }
 
+#[oasgen]
 async fn get_game_state(
     AxumState(state): AxumState<AppState>,
     Path(game_id): Path<Uuid>,
@@ -358,6 +392,7 @@ async fn get_game_state(
         })
 }
 
+#[oasgen]
 async fn get_game_by_short_id_handler(
     AxumState(state): AxumState<AppState>,
     Path(short_id): Path<String>,
@@ -382,6 +417,7 @@ async fn get_game_by_short_id_handler(
         })
 }
 
+#[oasgen]
 async fn get_game_by_player_url(
     AxumState(state): AxumState<AppState>,
     Path(url_id): Path<String>,
@@ -431,11 +467,12 @@ async fn delete_game(
     Ok(result)
 }
 
+#[oasgen]
 async fn make_transition(
     AxumState(state): AxumState<AppState>,
     Path(game_id): Path<Uuid>,
     Json(request): Json<TransitionRequest>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<TransitionResponse>, (StatusCode, Json<ErrorResponse>)> {
     let transition = match request.transition {
         TransitionType::Start => GameTransition::Start,
         TransitionType::Bet { amount } => GameTransition::Bet(amount),
@@ -461,12 +498,13 @@ async fn make_transition(
     // Auto-play AI turns if this game has AI players
     let _ = state.game_manager.play_ai_turns(game_id);
 
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "result": format!("{:?}", result)
-    })))
+    Ok(Json(TransitionResponse {
+        success: true,
+        result: format!("{:?}", result),
+    }))
 }
 
+#[oasgen]
 async fn get_hand(
     AxumState(state): AxumState<AppState>,
     Path((game_id, player_id_raw)): Path<(Uuid, String)>,
@@ -529,6 +567,7 @@ async fn set_player_name(
 
 // --- Presence: REST endpoint ---
 
+#[oasgen]
 async fn get_presence(
     AxumState(state): AxumState<AppState>,
     Path(game_id): Path<Uuid>,
@@ -560,13 +599,13 @@ struct WsQuery {
 
 // --- Presence Tracking ---
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, oasgen::OaSchema)]
 struct PlayerPresenceEntry {
     player_id: Uuid,
     connected: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, oasgen::OaSchema)]
 struct PresenceSnapshot {
     game_id: Uuid,
     players: Vec<PlayerPresenceEntry>,
@@ -880,6 +919,7 @@ async fn seek(
     ))
 }
 
+#[oasgen]
 async fn list_seeks_handler(
     AxumState(state): AxumState<AppState>,
 ) -> Json<Vec<SeekSummary>> {
@@ -1031,12 +1071,14 @@ async fn create_challenge_handler(
     ))
 }
 
+#[oasgen]
 async fn list_challenges_handler(
     AxumState(state): AxumState<AppState>,
 ) -> Json<Vec<ChallengeSummary>> {
     Json(state.challenge_manager.list_challenges())
 }
 
+#[oasgen]
 async fn get_challenge_handler(
     AxumState(state): AxumState<AppState>,
     Path(challenge_id): Path<Uuid>,
@@ -1059,6 +1101,7 @@ async fn get_challenge_handler(
         })
 }
 
+#[oasgen]
 async fn get_challenge_by_short_id_handler(
     AxumState(state): AxumState<AppState>,
     Path(short_id): Path<String>,
@@ -2058,5 +2101,31 @@ mod tests {
             .filter(|p| p.player_id != human_pid && p.connected)
             .collect();
         assert_eq!(ai_connected.len(), 3);
+    }
+
+    // --- OpenAPI spec tests ---
+
+    #[tokio::test]
+    async fn test_openapi_json_endpoint() {
+        let server = test_app();
+        let response = server.get("/openapi.json").await;
+        response.assert_status_ok();
+        let body: serde_json::Value = response.json();
+        assert_eq!(body["info"]["title"], "Spades Game Server");
+        assert!(body["paths"].as_object().unwrap().len() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_openapi_yaml_endpoint() {
+        let server = test_app();
+        let response = server.get("/openapi.yaml").await;
+        response.assert_status_ok();
+    }
+
+    #[tokio::test]
+    async fn test_swagger_ui_endpoint() {
+        let server = test_app();
+        let response = server.get("/docs/").await;
+        response.assert_status_ok();
     }
 }

@@ -68,7 +68,8 @@ pub struct Scoring {
     pub is_over: bool,
     pub round: usize,
     pub trick: usize,
-    pub nil_check: [bool; 4]
+    pub nil_check: [bool; 4],
+    pub player_tricks_won: [i32; 4],
 }
 
 impl Scoring {
@@ -82,7 +83,8 @@ impl Scoring {
             round: 0,
             trick: 0,
             config: GameConfig {max_points: max_points},
-            nil_check: [false, false, false, false]
+            nil_check: [false, false, false, false],
+            player_tricks_won: [0; 4],
 
         }
     }
@@ -101,6 +103,7 @@ impl Scoring {
     pub fn trick(&mut self, starting_player_index: usize, cards: &[Card; 4]) -> usize {
         let winner = get_trick_winner(starting_player_index, &cards);
         self.nil_check[winner] = true;
+        self.player_tricks_won[winner] += 1;
 
         if winner % 2 == 0 {
             self.team_a.current_round_tricks_won[self.trick] += 1;
@@ -112,6 +115,7 @@ impl Scoring {
             self.team_a.calculate_round_totals(self.bets_placed[self.round][0], self.nil_check[0], self.bets_placed[self.round][2], self.nil_check[2]);
             self.team_b.calculate_round_totals(self.bets_placed[self.round][1], self.nil_check[1], self.bets_placed[self.round][3], self.nil_check[3]);
             self.nil_check = [false; 4];
+            self.player_tricks_won = [0; 4];
             self.in_betting_stage = true;
             self.team_a.current_round_tricks_won = [0; 13];
             self.team_b.current_round_tricks_won = [0; 13];

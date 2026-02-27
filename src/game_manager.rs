@@ -50,7 +50,7 @@ pub struct CreateGameResponse {
 }
 
 /// A player's name entry
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, oasgen::OaSchema)]
 pub struct PlayerNameEntry {
     pub player_id: Uuid,
     pub name: Option<String>,
@@ -76,10 +76,16 @@ pub struct GameStateResponse {
     pub active_player_clock_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub table_cards: Option<[Card; 4]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub player_bets: Option<[i32; 4]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub player_tricks_won: Option<[i32; 4]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_trick_winner_id: Option<Uuid>,
 }
 
 /// Response for getting a player's hand
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
 pub struct HandResponse {
     pub player_id: Uuid,
     pub cards: Vec<Card>,
@@ -367,6 +373,9 @@ impl GameManager {
             player_clocks_ms,
             active_player_clock_ms,
             table_cards,
+            player_bets: game.get_player_bets(),
+            player_tricks_won: game.get_player_tricks_won(),
+            last_trick_winner_id: game.get_last_trick_winner_id(),
         }
     }
 
@@ -958,6 +967,9 @@ mod tests {
             player_clocks_ms: None,
             active_player_clock_ms: None,
             table_cards: None,
+            player_bets: None,
+            player_tricks_won: None,
+            last_trick_winner_id: None,
         };
         let event = GameEvent::StateChanged(state);
         let json = serde_json::to_string(&event).unwrap();

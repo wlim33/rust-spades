@@ -41,6 +41,9 @@ mod result;
 pub mod ai;
 
 #[cfg(feature = "server")]
+mod oasgen_impls;
+
+#[cfg(feature = "server")]
 pub mod game_manager;
 
 #[cfg(feature = "server")]
@@ -123,6 +126,7 @@ pub enum GameTransition {
 
 /// Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "server", derive(oasgen::OaSchema))]
 pub struct TimerConfig {
     pub initial_time_secs: u64,
     pub increment_secs: u64,
@@ -172,6 +176,8 @@ pub struct Game {
     player_clocks: Option<PlayerClocks>,
     #[serde(default)]
     turn_started_at_epoch_ms: Option<u64>,
+    #[serde(default)]
+    last_trick_winner: Option<usize>,
 }
 
 impl Game {
@@ -194,6 +200,7 @@ impl Game {
             timer_config,
             player_clocks,
             turn_started_at_epoch_ms: None,
+            last_trick_winner: None,
         }
     }
 
@@ -399,11 +406,13 @@ impl Game {
                         
                         if rotation_status == 3 {
                             let winner = self.scoring.trick(self.current_player_index, self.hands_played.last().unwrap());
+                            self.last_trick_winner = Some(winner);
                             if self.scoring.is_over {
                                 self.state = State::Completed;
                                 return Ok(TransitionSuccess::GameOver);
                             }
                             if self.scoring.in_betting_stage {
+                                self.last_trick_winner = None;
                                 self.current_player_index = 0;
                                 self.state = State::Betting((rotation_status + 1) % 4);
                                 self.deal_cards();
@@ -483,6 +492,29 @@ impl Game {
 
     pub fn set_turn_started_at_epoch_ms(&mut self, epoch_ms: Option<u64>) {
         self.turn_started_at_epoch_ms = epoch_ms;
+    }
+
+    pub fn get_player_bets(&self) -> Option<[i32; 4]> {
+        match self.state {
+            State::NotStarted => None,
+            _ => Some(self.scoring.bets_placed[self.scoring.round]),
+        }
+    }
+
+    pub fn get_player_tricks_won(&self) -> Option<[i32; 4]> {
+        match self.state {
+            State::NotStarted => None,
+            _ => Some(self.scoring.player_tricks_won),
+        }
+    }
+
+    pub fn get_last_trick_winner_id(&self) -> Option<Uuid> {
+        self.last_trick_winner.map(|idx| match idx {
+            0 => self.player_a.id,
+            1 => self.player_b.id,
+            2 => self.player_c.id,
+            _ => self.player_d.id,
+        })
     }
 
     /// Set the game state directly (used by GameManager for abort).

@@ -5,6 +5,7 @@ use std::cmp::Ordering;
 use serde::{Serialize, Deserialize};
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "server", derive(oasgen::OaSchema))]
 pub enum Suit {
     Blank = 0,
     Club = 1,
@@ -25,6 +26,7 @@ impl fmt::Debug for Suit {
     }
 }
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "server", derive(oasgen::OaSchema))]
 pub enum Rank {
     Blank = 0,
     Two = 2,
@@ -64,6 +66,7 @@ impl fmt::Debug for Rank {
 
 /// Intuitive card struct. Comparisons are made according to alphabetical order, ascending.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "server", derive(oasgen::OaSchema))]
 pub struct Card {
     pub suit: Suit,
     pub rank: Rank

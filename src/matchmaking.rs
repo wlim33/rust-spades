@@ -27,7 +27,7 @@ pub enum SeekEvent {
 }
 
 /// Summary of seeks waiting for a given max_points
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
 pub struct SeekSummary {
     pub max_points: i32,
     pub waiting: usize,
