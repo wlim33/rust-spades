@@ -1193,4 +1193,86 @@ mod tests {
         let json = serde_json::to_string(&err).unwrap();
         let _: GameManagerError = serde_json::from_str(&json).unwrap();
     }
+
+    #[test]
+    fn test_create_ai_game() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let gm = GameManager::new();
+            let strategy = Arc::new(crate::ai::RandomStrategy);
+            let human_seats: HashSet<usize> = [0].into_iter().collect();
+            let response = gm.create_ai_game(human_seats, 500, None, strategy).unwrap();
+            assert_ne!(response.game_id, Uuid::nil());
+        });
+    }
+
+    #[test]
+    fn test_ai_auto_plays_betting() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let gm = GameManager::new();
+            let strategy = Arc::new(crate::ai::RandomStrategy);
+            let human_seats: HashSet<usize> = [0].into_iter().collect();
+            let response = gm.create_ai_game(human_seats, 500, None, strategy).unwrap();
+            let game_id = response.game_id;
+
+            // Start the game
+            gm.make_transition(game_id, GameTransition::Start).unwrap();
+            // Player 0 (human) bets
+            gm.make_transition(game_id, GameTransition::Bet(3)).unwrap();
+            // Auto-play AI turns (players 1, 2, 3)
+            gm.play_ai_turns(game_id).unwrap();
+
+            // Should now be in Trick state (all bets placed) with player 0's turn
+            let state = gm.get_game_state(game_id).unwrap();
+            assert!(matches!(state.state, State::Trick(0)));
+            assert_eq!(state.current_player_id, Some(response.player_ids[0]));
+        });
+    }
+
+    #[test]
+    fn test_ai_full_game_1_human_3_ai() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let gm = GameManager::new();
+            let strategy = Arc::new(crate::ai::RandomStrategy);
+            let human_seats: HashSet<usize> = [0].into_iter().collect();
+            let response = gm.create_ai_game(human_seats, 200, None, strategy).unwrap();
+            let game_id = response.game_id;
+            let human_player_id = response.player_ids[0];
+
+            gm.make_transition(game_id, GameTransition::Start).unwrap();
+
+            loop {
+                // Let AI play its turns first
+                gm.play_ai_turns(game_id).unwrap();
+
+                let state = gm.get_game_state(game_id).unwrap();
+                if state.state == State::Completed {
+                    break;
+                }
+
+                // Human's turn — make a move
+                if state.current_player_id == Some(human_player_id) {
+                    if matches!(state.state, State::Betting(_)) {
+                        gm.make_transition(game_id, GameTransition::Bet(3)).unwrap();
+                    } else {
+                        // Get hand and try each card until one succeeds
+                        let hand = gm.get_hand(game_id, human_player_id).unwrap();
+                        let mut played = false;
+                        for card in &hand.cards {
+                            if gm.make_transition(game_id, GameTransition::Card(card.clone())).is_ok() {
+                                played = true;
+                                break;
+                            }
+                        }
+                        assert!(played, "No legal card found in hand");
+                    }
+                }
+            }
+
+            let final_state = gm.get_game_state(game_id).unwrap();
+            assert_eq!(final_state.state, State::Completed);
+        });
+    }
 }
