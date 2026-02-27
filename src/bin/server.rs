@@ -122,10 +122,22 @@ fn default_max_points() -> i32 {
     500
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct CreateAiGameRequest {
+    #[serde(default = "default_max_points")]
+    max_points: i32,
+    #[serde(default = "default_num_humans")]
+    num_humans: u8,
+    timer_config: Option<TimerConfig>,
+}
+
+fn default_num_humans() -> u8 { 1 }
+
 pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/", get(root))
         .route("/games", post(create_game))
+        .route("/games/vs-ai", post(create_ai_game))
         .route("/games", get(list_games))
         .route("/games/:game_id", get(get_game_state))
         .route("/games/:game_id", delete(delete_game))
@@ -255,6 +267,63 @@ async fn create_game(
         })
 }
 
+async fn create_ai_game(
+    AxumState(state): AxumState<AppState>,
+    Json(request): Json<CreateAiGameRequest>,
+) -> Result<Json<CreateGameResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let human_seats: std::collections::HashSet<usize> = match request.num_humans {
+        1 => [0].into_iter().collect(),
+        2 => [0, 2].into_iter().collect(),
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "num_humans must be 1 or 2".to_string(),
+                }),
+            ));
+        }
+    };
+
+    let strategy = std::sync::Arc::new(spades::ai::RandomStrategy);
+    let response = state
+        .game_manager
+        .create_ai_game(human_seats, request.max_points, request.timer_config, strategy)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("{:?}", e),
+                }),
+            )
+        })?;
+
+    let game_id = response.game_id;
+
+    // Auto-start the game
+    state.game_manager.make_transition(game_id, spades::GameTransition::Start)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("{:?}", e),
+                }),
+            )
+        })?;
+
+    // Play through initial AI turns
+    state.game_manager.play_ai_turns(game_id)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("{:?}", e),
+                }),
+            )
+        })?;
+
+    Ok(Json(response))
+}
+
 async fn list_games(
     AxumState(state): AxumState<AppState>,
 ) -> Result<Json<Vec<Uuid>>, (StatusCode, Json<ErrorResponse>)> {
@@ -372,15 +441,9 @@ async fn make_transition(
         TransitionType::Card { card } => GameTransition::Card(card),
     };
 
-    state
+    let result = state
         .game_manager
         .make_transition(game_id, transition)
-        .map(|result| {
-            Json(serde_json::json!({
-                "success": true,
-                "result": format!("{:?}", result)
-            }))
-        })
         .map_err(|e| {
             let status = match e {
                 spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
@@ -392,7 +455,15 @@ async fn make_transition(
                     error: format!("{:?}", e),
                 }),
             )
-        })
+        })?;
+
+    // Auto-play AI turns if this game has AI players
+    let _ = state.game_manager.play_ai_turns(game_id);
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "result": format!("{:?}", result)
+    })))
 }
 
 async fn get_hand(
