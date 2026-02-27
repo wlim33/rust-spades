@@ -1744,4 +1744,57 @@ mod tests {
             .await;
         response.assert_status(StatusCode::BAD_REQUEST);
     }
+
+    #[tokio::test]
+    async fn test_create_ai_game_1_human() {
+        let app = test_app();
+        let response = app
+            .post("/games/vs-ai")
+            .json(&serde_json::json!({ "max_points": 200, "num_humans": 1 }))
+            .await;
+        response.assert_status_ok();
+        let body: CreateGameResponse = response.json();
+        assert_ne!(body.game_id, Uuid::nil());
+    }
+
+    #[tokio::test]
+    async fn test_create_ai_game_2_humans() {
+        let app = test_app();
+        let response = app
+            .post("/games/vs-ai")
+            .json(&serde_json::json!({ "max_points": 200, "num_humans": 2 }))
+            .await;
+        response.assert_status_ok();
+        let body: CreateGameResponse = response.json();
+        assert_ne!(body.game_id, Uuid::nil());
+    }
+
+    #[tokio::test]
+    async fn test_create_ai_game_invalid_num_humans() {
+        let app = test_app();
+        let response = app
+            .post("/games/vs-ai")
+            .json(&serde_json::json!({ "max_points": 200, "num_humans": 3 }))
+            .await;
+        response.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_ai_game_state_after_creation() {
+        let app = test_app();
+        let response = app
+            .post("/games/vs-ai")
+            .json(&serde_json::json!({ "max_points": 500, "num_humans": 1 }))
+            .await;
+        response.assert_status_ok();
+        let body: CreateGameResponse = response.json();
+
+        let state_response = app
+            .get(&format!("/games/{}", body.game_id))
+            .await;
+        state_response.assert_status_ok();
+        let state: GameStateResponse = state_response.json();
+        // Human is player 0 — after auto-start and AI betting, it should be the human's turn
+        assert_eq!(state.current_player_id, Some(body.player_ids[0]));
+    }
 }
