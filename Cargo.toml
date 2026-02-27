@@ -30,10 +30,13 @@ futures-util = { version = "0.3", optional = true }
 async-stream = { version = "0.3", optional = true }
 rusqlite = { version = "0.32", features = ["bundled"], optional = true }
 rustrict = { version = "0.7", optional = true }
+tower-sessions = { version = "0.13", optional = true }
+tower-sessions-sqlx-store = { version = "0.14", features = ["sqlite"], optional = true }
+time = { version = "0.3", optional = true }
 
 [features]
 default = []
-server = ["tokio", "axum", "tower", "tower-http", "tokio-stream", "futures-util", "async-stream", "rusqlite", "rustrict"]
+server = ["tokio", "axum", "tower", "tower-http", "tokio-stream", "futures-util", "async-stream", "rusqlite", "rustrict", "tower-sessions", "tower-sessions-sqlx-store", "time"]
 
 [dev-dependencies]
 axum-test = "16"

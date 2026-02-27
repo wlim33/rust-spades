@@ -19,14 +19,18 @@ use spades::challenges::{
     ChallengeConfig, ChallengeError, ChallengeEvent, ChallengeManager,
     ChallengeStatus, ChallengeSummary, Seat,
 };
-use spades::matchmaking::{LobbyEvent, LobbySummary, MatchResult, Matchmaker, SeekEvent, SeekSummary};
+use spades::matchmaking::{MatchResult, Matchmaker, SeekEvent, SeekSummary};
 use spades::validation::validate_player_name;
 use spades::{Card, GameTransition, TimerConfig};
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
+use tower_sessions::{Expiry, Session, SessionManagerLayer};
+use tower_sessions_sqlx_store::SqliteStore as SessionSqliteStore;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -34,11 +38,34 @@ pub struct AppState {
     pub game_manager: GameManager,
     pub matchmaker: Matchmaker,
     pub challenge_manager: ChallengeManager,
+    presence: PresenceTracker,
+}
+
+const SESSION_USER_KEY: &str = "user";
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct UserSession {
+    user_id: Uuid,
+    display_name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SessionPlayerResponse {
+    user_id: Uuid,
+    display_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SetDisplayNameRequest {
+    name: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CreateGameRequest {
+    #[serde(default = "default_max_points")]
     max_points: i32,
+    timer_config: Option<TimerConfig>,
+    num_humans: Option<u8>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -82,29 +109,11 @@ struct SeekRequest {
     name: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct CreateLobbyRequest {
-    #[serde(default = "default_max_points")]
-    max_points: i32,
-    #[serde(default)]
-    name: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct JoinLobbyRequest {
-    #[serde(default)]
-    name: Option<String>,
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SetNameRequest {
     #[serde(default)]
     name: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct DeleteLobbyRequest {
-    creator_id: Uuid,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -122,22 +131,10 @@ fn default_max_points() -> i32 {
     500
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct CreateAiGameRequest {
-    #[serde(default = "default_max_points")]
-    max_points: i32,
-    #[serde(default = "default_num_humans")]
-    num_humans: u8,
-    timer_config: Option<TimerConfig>,
-}
-
-fn default_num_humans() -> u8 { 1 }
-
 pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/", get(root))
         .route("/games", post(create_game))
-        .route("/games/vs-ai", post(create_ai_game))
         .route("/games", get(list_games))
         .route("/games/:game_id", get(get_game_state))
         .route("/games/:game_id", delete(delete_game))
@@ -145,12 +142,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/games/:game_id/players/:player_id/hand", get(get_hand))
         .route("/games/:game_id/players/:player_id/name", put(set_player_name))
         .route("/games/:game_id/ws", get(game_ws))
+        .route("/games/:game_id/presence", get(get_presence))
         .route("/matchmaking/seek", post(seek))
         .route("/matchmaking/seeks", get(list_seeks_handler))
-        .route("/lobbies", post(create_lobby))
-        .route("/lobbies", get(list_lobbies_handler))
-        .route("/lobbies/:lobby_id/join", post(join_lobby_handler))
-        .route("/lobbies/:lobby_id", delete(delete_lobby_handler))
         .route("/games/by-short-id/:short_id", get(get_game_by_short_id_handler))
         .route("/games/by-player-url/:url_id", get(get_game_by_player_url))
         .route("/challenges", post(create_challenge_handler))
@@ -159,6 +153,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/challenges/:challenge_id", get(get_challenge_handler))
         .route("/challenges/:challenge_id/join/:seat", post(join_challenge_handler))
         .route("/challenges/:challenge_id", delete(cancel_challenge_handler))
+        .route("/player", get(get_player))
+        .route("/player/name", put(set_display_name))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -186,9 +182,25 @@ async fn main() {
         game_manager,
         matchmaker,
         challenge_manager,
+        presence: PresenceTracker::new(),
     };
 
-    let app = build_router(app_state);
+    // Session store setup
+    let session_db_url = match db_path {
+        Some(ref path) => format!("sqlite:{}?mode=rwc", path),
+        None => "sqlite::memory:".to_string(),
+    };
+    let session_pool = tower_sessions_sqlx_store::sqlx::SqlitePool::connect(&session_db_url)
+        .await
+        .expect("Failed to connect session SQLite pool");
+    let session_store = SessionSqliteStore::new(session_pool);
+    session_store.migrate().await.expect("Failed to migrate session store");
+
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_secure(false)
+        .with_expiry(Expiry::OnInactivity(time::Duration::days(30)));
+
+    let app = build_router(app_state).layer(session_layer);
 
     let port: u16 = std::env::args()
         .skip_while(|a| a != "--port")
@@ -209,19 +221,18 @@ async fn main() {
     println!("  GET  /games/:game_id/players/:player_id/hand    - Get player's hand");
     println!("  PUT  /games/:game_id/players/:player_id/name    - Set player name");
     println!("  GET  /games/:game_id/ws                         - Game state WebSocket");
+    println!("  GET  /games/:game_id/presence                   - Player presence");
     println!("  DELETE /games/:game_id                          - Delete a game");
     println!("  POST /matchmaking/seek                          - Quick match (SSE)");
     println!("  GET  /matchmaking/seeks                         - List active seeks");
-    println!("  POST /lobbies                                   - Create lobby (SSE)");
-    println!("  GET  /lobbies                                   - List open lobbies");
-    println!("  POST /lobbies/:lobby_id/join                    - Join lobby (SSE)");
-    println!("  DELETE /lobbies/:lobby_id                       - Delete lobby");
     println!("  POST /challenges                                - Create challenge (SSE)");
     println!("  GET  /challenges                                - List open challenges");
     println!("  GET  /challenges/by-short-id/:short_id          - Get challenge by short ID");
     println!("  GET  /challenges/:challenge_id                  - Get challenge status");
     println!("  POST /challenges/:id/join/:seat                 - Join challenge seat (SSE)");
     println!("  DELETE /challenges/:challenge_id                - Cancel challenge");
+    println!("  GET  /player                                    - Get/create session identity");
+    println!("  PUT  /player/name                               - Set display name");
 
     axum::serve(listener, app).await.unwrap();
 }
@@ -241,10 +252,6 @@ async fn root() -> Json<serde_json::Value> {
             "delete_game": "DELETE /games/:game_id",
             "seek": "POST /matchmaking/seek",
             "list_seeks": "GET /matchmaking/seeks",
-            "create_lobby": "POST /lobbies",
-            "list_lobbies": "GET /lobbies",
-            "join_lobby": "POST /lobbies/:lobby_id/join",
-            "delete_lobby": "DELETE /lobbies/:lobby_id"
         }
     }))
 }
@@ -253,75 +260,67 @@ async fn create_game(
     AxumState(state): AxumState<AppState>,
     Json(request): Json<CreateGameRequest>,
 ) -> Result<Json<CreateGameResponse>, (StatusCode, Json<ErrorResponse>)> {
-    state
-        .game_manager
-        .create_game(request.max_points, None)
-        .map(Json)
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: format!("{:?}", e),
-                }),
-            )
-        })
-}
-
-async fn create_ai_game(
-    AxumState(state): AxumState<AppState>,
-    Json(request): Json<CreateAiGameRequest>,
-) -> Result<Json<CreateGameResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let human_seats: std::collections::HashSet<usize> = match request.num_humans {
-        1 => [0].into_iter().collect(),
-        2 => [0, 2].into_iter().collect(),
-        _ => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: "num_humans must be 1 or 2".to_string(),
-                }),
-            ));
-        }
+    let map_err = |e: spades::game_manager::GameManagerError| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("{:?}", e),
+            }),
+        )
     };
 
-    let strategy = std::sync::Arc::new(spades::ai::RandomStrategy);
-    let response = state
-        .game_manager
-        .create_ai_game(human_seats, request.max_points, request.timer_config, strategy)
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: format!("{:?}", e),
-                }),
-            )
-        })?;
+    match request.num_humans {
+        None | Some(4) => {
+            // Human-only game
+            let response = state
+                .game_manager
+                .create_game(request.max_points, request.timer_config)
+                .map_err(map_err)?;
+            state.presence.ensure_game(response.game_id, &response.player_ids);
+            Ok(Json(response))
+        }
+        Some(1) | Some(2) => {
+            // AI game
+            let num = request.num_humans.unwrap();
+            let human_seats: std::collections::HashSet<usize> = match num {
+                1 => [0].into_iter().collect(),
+                _ => [0, 2].into_iter().collect(),
+            };
 
-    let game_id = response.game_id;
+            let strategy = std::sync::Arc::new(spades::ai::RandomStrategy);
+            let response = state
+                .game_manager
+                .create_ai_game(human_seats.clone(), request.max_points, request.timer_config, strategy)
+                .map_err(map_err)?;
 
-    // Auto-start the game
-    state.game_manager.make_transition(game_id, spades::GameTransition::Start)
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: format!("{:?}", e),
-                }),
-            )
-        })?;
+            let game_id = response.game_id;
 
-    // Play through initial AI turns
-    state.game_manager.play_ai_turns(game_id)
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: format!("{:?}", e),
-                }),
-            )
-        })?;
+            // Init presence and mark AI players as connected
+            state.presence.ensure_game(game_id, &response.player_ids);
+            for i in 0..4 {
+                if !human_seats.contains(&i) {
+                    state.presence.player_connected(game_id, response.player_ids[i]);
+                }
+            }
 
-    Ok(Json(response))
+            // Auto-start the game
+            state
+                .game_manager
+                .make_transition(game_id, spades::GameTransition::Start)
+                .map_err(map_err)?;
+
+            // Play through initial AI turns
+            state.game_manager.play_ai_turns(game_id).map_err(map_err)?;
+
+            Ok(Json(response))
+        }
+        _ => Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "num_humans must be 1, 2, or 4".to_string(),
+            }),
+        )),
+    }
 }
 
 async fn list_games(
@@ -412,7 +411,7 @@ async fn delete_game(
     AxumState(state): AxumState<AppState>,
     Path(game_id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state
+    let result = state
         .game_manager
         .remove_game(game_id)
         .map(|_| StatusCode::NO_CONTENT)
@@ -427,7 +426,9 @@ async fn delete_game(
                     error: format!("{:?}", e),
                 }),
             )
-        })
+        })?;
+    state.presence.remove_game(game_id);
+    Ok(result)
 }
 
 async fn make_transition(
@@ -526,11 +527,144 @@ async fn set_player_name(
         })
 }
 
+// --- Presence: REST endpoint ---
+
+async fn get_presence(
+    AxumState(state): AxumState<AppState>,
+    Path(game_id): Path<Uuid>,
+) -> Result<Json<PresenceSnapshot>, (StatusCode, Json<ErrorResponse>)> {
+    // Lazy init: if tracker doesn't know this game, look up player_ids from game state
+    if state.presence.get_snapshot(game_id).is_none() {
+        let game_state = state.game_manager.get_game_state(game_id).map_err(|e| {
+            let status = match e {
+                spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse { error: format!("{:?}", e) }))
+        })?;
+        let player_ids: Vec<Uuid> = game_state.player_names.iter().map(|pn| pn.player_id).collect();
+        state.presence.ensure_game(game_id, &player_ids);
+    }
+    state.presence.get_snapshot(game_id).map(Json).ok_or((
+        StatusCode::NOT_FOUND,
+        Json(ErrorResponse { error: "Game not found".to_string() }),
+    ))
+}
+
 // --- WebSocket: Game state push ---
 
 #[derive(Debug, Deserialize)]
 struct WsQuery {
     player_id: Option<String>,
+}
+
+// --- Presence Tracking ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PlayerPresenceEntry {
+    player_id: Uuid,
+    connected: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PresenceSnapshot {
+    game_id: Uuid,
+    players: Vec<PlayerPresenceEntry>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "event", rename_all = "snake_case")]
+enum ServerEvent {
+    StateChanged(GameStateResponse),
+    GameAborted { game_id: Uuid, reason: String },
+    PresenceChanged(PresenceSnapshot),
+}
+
+/// Per-game connection counts: game_id -> (player_id -> connection_count)
+#[derive(Clone)]
+struct PresenceTracker {
+    /// game_id -> (player_id -> active connection count)
+    connections: Arc<RwLock<HashMap<Uuid, HashMap<Uuid, usize>>>>,
+    /// game_id -> broadcast sender for presence snapshots
+    broadcasters: Arc<RwLock<HashMap<Uuid, broadcast::Sender<PresenceSnapshot>>>>,
+}
+
+impl PresenceTracker {
+    fn new() -> Self {
+        Self {
+            connections: Arc::new(RwLock::new(HashMap::new())),
+            broadcasters: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Idempotent init for a game. Creates entry + broadcaster if missing.
+    fn ensure_game(&self, game_id: Uuid, player_ids: &[Uuid]) {
+        let mut conns = self.connections.write().unwrap();
+        conns.entry(game_id).or_insert_with(|| {
+            player_ids.iter().map(|&pid| (pid, 0usize)).collect()
+        });
+        let mut bcast = self.broadcasters.write().unwrap();
+        bcast.entry(game_id).or_insert_with(|| broadcast::channel(16).0);
+    }
+
+    /// Increment connection count. Returns snapshot if player is in the game.
+    fn player_connected(&self, game_id: Uuid, player_id: Uuid) -> Option<PresenceSnapshot> {
+        let mut conns = self.connections.write().unwrap();
+        let game = conns.get_mut(&game_id)?;
+        // Only track known players (ignore spectators)
+        let count = game.get_mut(&player_id)?;
+        *count += 1;
+        Some(self.build_snapshot_from(game_id, game))
+    }
+
+    /// Decrement connection count (saturating). Returns snapshot if player is in the game.
+    fn player_disconnected(&self, game_id: Uuid, player_id: Uuid) -> Option<PresenceSnapshot> {
+        let mut conns = self.connections.write().unwrap();
+        let game = conns.get_mut(&game_id)?;
+        let count = game.get_mut(&player_id)?;
+        *count = count.saturating_sub(1);
+        Some(self.build_snapshot_from(game_id, game))
+    }
+
+    /// Read-only current state.
+    fn get_snapshot(&self, game_id: Uuid) -> Option<PresenceSnapshot> {
+        let conns = self.connections.read().unwrap();
+        let game = conns.get(&game_id)?;
+        Some(self.build_snapshot_from(game_id, game))
+    }
+
+    /// Subscribe to presence broadcasts for a game.
+    fn subscribe(&self, game_id: Uuid) -> Option<broadcast::Receiver<PresenceSnapshot>> {
+        let bcast = self.broadcasters.read().unwrap();
+        bcast.get(&game_id).map(|tx| tx.subscribe())
+    }
+
+    /// Send snapshot to all subscribers.
+    fn broadcast(&self, game_id: Uuid, snapshot: PresenceSnapshot) {
+        let bcast = self.broadcasters.read().unwrap();
+        if let Some(tx) = bcast.get(&game_id) {
+            let _ = tx.send(snapshot);
+        }
+    }
+
+    /// Clean up tracker state for a deleted game.
+    fn remove_game(&self, game_id: Uuid) {
+        self.connections.write().unwrap().remove(&game_id);
+        self.broadcasters.write().unwrap().remove(&game_id);
+    }
+
+    fn build_snapshot_from(&self, game_id: Uuid, game: &HashMap<Uuid, usize>) -> PresenceSnapshot {
+        PresenceSnapshot {
+            game_id,
+            players: game
+                .iter()
+                .map(|(&pid, &count)| PlayerPresenceEntry {
+                    player_id: pid,
+                    connected: count > 0,
+                })
+                .collect(),
+        }
+    }
 }
 
 async fn game_ws(
@@ -554,29 +688,67 @@ async fn game_ws(
         )
     })?;
 
+    // Lazy init presence for games created via matchmaking/challenge
+    let player_ids: Vec<Uuid> = initial_state.player_names.iter().map(|pn| pn.player_id).collect();
+    state.presence.ensure_game(game_id, &player_ids);
+
+    let presence_rx = state.presence.subscribe(game_id);
+    let initial_presence = state.presence.get_snapshot(game_id);
+
     let player_id = query.player_id.as_deref().and_then(parse_uuid_or_short_id);
-    Ok(ws.on_upgrade(move |socket| handle_game_ws(socket, initial_state, rx, player_id)))
+    let presence = state.presence.clone();
+    Ok(ws.on_upgrade(move |socket| {
+        handle_game_ws(socket, initial_state, rx, player_id, game_id, presence, presence_rx, initial_presence)
+    }))
 }
 
 async fn handle_game_ws(
     mut socket: WebSocket,
     initial_state: GameStateResponse,
     mut rx: broadcast::Receiver<GameEvent>,
-    _player_id: Option<Uuid>,
+    player_id: Option<Uuid>,
+    game_id: Uuid,
+    presence: PresenceTracker,
+    presence_rx: Option<broadcast::Receiver<PresenceSnapshot>>,
+    initial_presence: Option<PresenceSnapshot>,
 ) {
-    let initial_event = GameEvent::StateChanged(initial_state);
+    // Send initial game state as ServerEvent
+    let initial_event = ServerEvent::StateChanged(initial_state);
     if let Ok(json) = serde_json::to_string(&initial_event) {
         if socket.send(Message::Text(json.into())).await.is_err() {
             return;
         }
     }
 
+    // Send initial presence snapshot
+    if let Some(snapshot) = initial_presence {
+        let event = ServerEvent::PresenceChanged(snapshot);
+        if let Ok(json) = serde_json::to_string(&event) {
+            if socket.send(Message::Text(json.into())).await.is_err() {
+                return;
+            }
+        }
+    }
+
+    // Mark player connected and broadcast
+    if let Some(pid) = player_id {
+        if let Some(snapshot) = presence.player_connected(game_id, pid) {
+            presence.broadcast(game_id, snapshot);
+        }
+    }
+
+    let mut presence_rx = presence_rx;
+
     loop {
         tokio::select! {
             event = rx.recv() => {
                 match event {
                     Ok(game_event) => {
-                        if let Ok(json) = serde_json::to_string(&game_event) {
+                        let server_event = match game_event {
+                            GameEvent::StateChanged(state) => ServerEvent::StateChanged(state),
+                            GameEvent::GameAborted { game_id, reason } => ServerEvent::GameAborted { game_id, reason },
+                        };
+                        if let Ok(json) = serde_json::to_string(&server_event) {
                             if socket.send(Message::Text(json.into())).await.is_err() {
                                 break;
                             }
@@ -584,6 +756,28 @@ async fn handle_game_ws(
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            event = async {
+                match presence_rx.as_mut() {
+                    Some(rx) => rx.recv().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                match event {
+                    Ok(snapshot) => {
+                        let server_event = ServerEvent::PresenceChanged(snapshot);
+                        if let Ok(json) = serde_json::to_string(&server_event) {
+                            if socket.send(Message::Text(json.into())).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => {
+                        // Presence channel closed, disable this arm
+                        presence_rx = None;
+                    }
                 }
             }
             msg = socket.recv() => {
@@ -597,6 +791,13 @@ async fn handle_game_ws(
                     _ => {}
                 }
             }
+        }
+    }
+
+    // Mark player disconnected on exit
+    if let Some(pid) = player_id {
+        if let Some(snapshot) = presence.player_disconnected(game_id, pid) {
+            presence.broadcast(game_id, snapshot);
         }
     }
 }
@@ -613,21 +814,6 @@ impl Drop for SeekGuard {
     fn drop(&mut self) {
         if !self.matched {
             self.matchmaker.cancel_seek(self.player_id);
-        }
-    }
-}
-
-struct LobbyGuard {
-    matchmaker: Matchmaker,
-    lobby_id: Uuid,
-    player_id: Uuid,
-    game_started: bool,
-}
-
-impl Drop for LobbyGuard {
-    fn drop(&mut self) {
-        if !self.game_started {
-            self.matchmaker.leave_lobby(self.lobby_id, self.player_id);
         }
     }
 }
@@ -698,199 +884,6 @@ async fn list_seeks_handler(
     AxumState(state): AxumState<AppState>,
 ) -> Json<Vec<SeekSummary>> {
     Json(state.matchmaker.list_seeks())
-}
-
-// --- Matchmaking: Lobby Endpoints ---
-
-async fn create_lobby(
-    AxumState(state): AxumState<AppState>,
-    Json(request): Json<CreateLobbyRequest>,
-) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<ErrorResponse>)> {
-    if request.max_points <= 0 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "max_points must be positive".to_string(),
-            }),
-        ));
-    }
-
-    let validated_name = match request.name {
-        Some(raw) => Some(validate_player_name(&raw).map_err(|e| {
-            (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() }))
-        })?),
-        None => None,
-    };
-
-    let (lobby_id, player_id, mut rx) = state.matchmaker.create_lobby(request.max_points, validated_name);
-
-    let stream = async_stream::stream! {
-        let mut guard = LobbyGuard {
-            matchmaker: state.matchmaker.clone(),
-            lobby_id,
-            player_id,
-            game_started: false,
-        };
-
-        yield Ok(Event::default()
-            .event("lobby_update")
-            .json_data(serde_json::json!({
-                "lobby_id": lobby_id,
-                "player_id": player_id,
-                "players": 1,
-            }))
-            .unwrap());
-
-        loop {
-            match rx.recv().await {
-                Ok(LobbyEvent::LobbyUpdate { lobby_id: lid, players, player_names }) => {
-                    yield Ok(Event::default()
-                        .event("lobby_update")
-                        .json_data(serde_json::json!({
-                            "lobby_id": lid,
-                            "players": players,
-                            "player_names": player_names,
-                        }))
-                        .unwrap());
-                }
-                Ok(LobbyEvent::GameStart(result)) => {
-                    guard.game_started = true;
-                    let personalized = MatchResult {
-                        game_id: result.game_id,
-                        player_id,
-                        player_short_id: spades::uuid_to_short_id(player_id),
-                        player_url: spades::encode_player_url(result.game_id, player_id),
-                        player_ids: result.player_ids,
-                        player_names: result.player_names.clone(),
-                        short_id: result.short_id.clone(),
-                    };
-                    yield Ok(Event::default()
-                        .event("game_start")
-                        .json_data(&personalized)
-                        .unwrap());
-                    break;
-                }
-                Err(_) => break,
-            }
-        }
-    };
-
-    Ok(Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("keepalive"),
-    ))
-}
-
-async fn join_lobby_handler(
-    AxumState(state): AxumState<AppState>,
-    Path(lobby_id): Path<Uuid>,
-    body: Option<Json<JoinLobbyRequest>>,
-) -> Result<
-    Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>,
-    (StatusCode, Json<ErrorResponse>),
-> {
-    let validated_name = match body.and_then(|b| b.0.name) {
-        Some(raw) => Some(validate_player_name(&raw).map_err(|e| {
-            (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() }))
-        })?),
-        None => None,
-    };
-
-    let (player_id, mut rx) = state.matchmaker.join_lobby(lobby_id, validated_name).map_err(|e| {
-        let status = match &e {
-            spades::matchmaking::MatchmakingError::LobbyFull => StatusCode::CONFLICT,
-            _ => StatusCode::NOT_FOUND,
-        };
-        (
-            status,
-            Json(ErrorResponse {
-                error: format!("{:?}", e),
-            }),
-        )
-    })?;
-
-    let matchmaker = state.matchmaker.clone();
-    let stream = async_stream::stream! {
-        let mut guard = LobbyGuard {
-            matchmaker,
-            lobby_id,
-            player_id,
-            game_started: false,
-        };
-
-        yield Ok(Event::default()
-            .event("lobby_update")
-            .json_data(serde_json::json!({
-                "lobby_id": lobby_id,
-                "player_id": player_id,
-            }))
-            .unwrap());
-
-        loop {
-            match rx.recv().await {
-                Ok(LobbyEvent::LobbyUpdate { lobby_id: lid, players, player_names }) => {
-                    yield Ok(Event::default()
-                        .event("lobby_update")
-                        .json_data(serde_json::json!({
-                            "lobby_id": lid,
-                            "players": players,
-                            "player_names": player_names,
-                        }))
-                        .unwrap());
-                }
-                Ok(LobbyEvent::GameStart(result)) => {
-                    guard.game_started = true;
-                    let personalized = MatchResult {
-                        game_id: result.game_id,
-                        player_id,
-                        player_short_id: spades::uuid_to_short_id(player_id),
-                        player_url: spades::encode_player_url(result.game_id, player_id),
-                        player_ids: result.player_ids,
-                        player_names: result.player_names.clone(),
-                        short_id: result.short_id.clone(),
-                    };
-                    yield Ok(Event::default()
-                        .event("game_start")
-                        .json_data(&personalized)
-                        .unwrap());
-                    break;
-                }
-                Err(_) => break,
-            }
-        }
-    };
-
-    Ok(Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("keepalive"),
-    ))
-}
-
-async fn list_lobbies_handler(
-    AxumState(state): AxumState<AppState>,
-) -> Json<Vec<LobbySummary>> {
-    Json(state.matchmaker.list_lobbies())
-}
-
-async fn delete_lobby_handler(
-    AxumState(state): AxumState<AppState>,
-    Path(lobby_id): Path<Uuid>,
-    Json(request): Json<DeleteLobbyRequest>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state
-        .matchmaker
-        .delete_lobby(lobby_id, request.creator_id)
-        .map(|_| StatusCode::NO_CONTENT)
-        .map_err(|e| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: format!("{:?}", e),
-                }),
-            )
-        })
 }
 
 // --- Challenges: Drop Guard ---
@@ -1224,11 +1217,56 @@ async fn cancel_challenge_handler(
         })
 }
 
+// --- Session: Player Identity ---
+
+async fn get_player(session: Session) -> Result<Json<SessionPlayerResponse>, StatusCode> {
+    let user = match session.get::<UserSession>(SESSION_USER_KEY).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        Some(user) => user,
+        None => {
+            let user = UserSession {
+                user_id: Uuid::new_v4(),
+                display_name: None,
+            };
+            session.insert(SESSION_USER_KEY, user.clone()).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            user
+        }
+    };
+    Ok(Json(SessionPlayerResponse {
+        user_id: user.user_id,
+        display_name: user.display_name,
+    }))
+}
+
+async fn set_display_name(
+    session: Session,
+    Json(request): Json<SetDisplayNameRequest>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let mut user: UserSession = session
+        .get::<UserSession>(SESSION_USER_KEY)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: "Session error".to_string() })))?
+        .ok_or((StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: "No session. Call GET /player first.".to_string() })))?;
+
+    let validated_name = match request.name {
+        Some(raw) => Some(validate_player_name(&raw).map_err(|e| {
+            (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() }))
+        })?),
+        None => None,
+    };
+
+    user.display_name = validated_name;
+    session.insert(SESSION_USER_KEY, user).await.map_err(|_| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: "Session error".to_string() }))
+    })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum_test::TestServer;
+    use axum_test::{TestServer, TestServerConfig};
     use spades::game_manager::CreateGameResponse;
+    use tower_sessions::MemoryStore;
 
     fn test_app() -> TestServer {
         let game_manager = GameManager::new();
@@ -1238,8 +1276,22 @@ mod tests {
             game_manager,
             matchmaker,
             challenge_manager,
+            presence: PresenceTracker::new(),
         };
-        TestServer::new(build_router(state)).unwrap()
+
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store)
+            .with_secure(false);
+
+        let app = build_router(state).layer(session_layer);
+        TestServer::new_with_config(
+            app,
+            TestServerConfig {
+                save_cookies: true,
+                ..Default::default()
+            },
+        )
+        .unwrap()
     }
 
     #[tokio::test]
@@ -1545,25 +1597,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_list_lobbies() {
-        let server = test_app();
-        let response = server.get("/lobbies").await;
-        response.assert_status_ok();
-        let body: Vec<serde_json::Value> = response.json();
-        assert_eq!(body.len(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_delete_lobby_not_found() {
-        let server = test_app();
-        let response = server
-            .delete(&format!("/lobbies/{}", Uuid::new_v4()))
-            .json(&serde_json::json!({"creator_id": Uuid::new_v4()}))
-            .await;
-        response.assert_status(StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
     async fn test_list_challenges() {
         let server = test_app();
         let response = server.get("/challenges").await;
@@ -1749,7 +1782,7 @@ mod tests {
     async fn test_create_ai_game_1_human() {
         let app = test_app();
         let response = app
-            .post("/games/vs-ai")
+            .post("/games")
             .json(&serde_json::json!({ "max_points": 200, "num_humans": 1 }))
             .await;
         response.assert_status_ok();
@@ -1761,7 +1794,7 @@ mod tests {
     async fn test_create_ai_game_2_humans() {
         let app = test_app();
         let response = app
-            .post("/games/vs-ai")
+            .post("/games")
             .json(&serde_json::json!({ "max_points": 200, "num_humans": 2 }))
             .await;
         response.assert_status_ok();
@@ -1773,8 +1806,14 @@ mod tests {
     async fn test_create_ai_game_invalid_num_humans() {
         let app = test_app();
         let response = app
-            .post("/games/vs-ai")
+            .post("/games")
             .json(&serde_json::json!({ "max_points": 200, "num_humans": 3 }))
+            .await;
+        response.assert_status(StatusCode::BAD_REQUEST);
+
+        let response = app
+            .post("/games")
+            .json(&serde_json::json!({ "max_points": 200, "num_humans": 0 }))
             .await;
         response.assert_status(StatusCode::BAD_REQUEST);
     }
@@ -1783,7 +1822,7 @@ mod tests {
     async fn test_ai_game_state_after_creation() {
         let app = test_app();
         let response = app
-            .post("/games/vs-ai")
+            .post("/games")
             .json(&serde_json::json!({ "max_points": 500, "num_humans": 1 }))
             .await;
         response.assert_status_ok();
@@ -1796,5 +1835,228 @@ mod tests {
         let state: GameStateResponse = state_response.json();
         // Human is player 0 — after auto-start and AI betting, it should be the human's turn
         assert_eq!(state.current_player_id, Some(body.player_ids[0]));
+    }
+
+    // --- Session tests ---
+
+    #[tokio::test]
+    async fn test_get_player_creates_session() {
+        let server = test_app();
+        let response = server.get("/player").await;
+        response.assert_status_ok();
+        let body: serde_json::Value = response.json();
+        assert!(body["user_id"].is_string());
+        assert!(body["display_name"].is_null());
+    }
+
+    #[tokio::test]
+    async fn test_get_player_returns_same_user_id() {
+        let server = test_app();
+        let first: serde_json::Value = server.get("/player").await.json();
+        let second: serde_json::Value = server.get("/player").await.json();
+        assert_eq!(first["user_id"], second["user_id"]);
+    }
+
+    #[tokio::test]
+    async fn test_set_display_name() {
+        let server = test_app();
+        // Create session first
+        server.get("/player").await;
+
+        let response = server
+            .put("/player/name")
+            .json(&serde_json::json!({"name": "Alice"}))
+            .await;
+        response.assert_status(StatusCode::NO_CONTENT);
+
+        // Verify via GET /player
+        let body: serde_json::Value = server.get("/player").await.json();
+        assert_eq!(body["display_name"], "Alice");
+    }
+
+    #[tokio::test]
+    async fn test_set_display_name_invalid() {
+        let server = test_app();
+        server.get("/player").await;
+
+        let response = server
+            .put("/player/name")
+            .json(&serde_json::json!({"name": ""}))
+            .await;
+        response.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_set_display_name_clear() {
+        let server = test_app();
+        server.get("/player").await;
+
+        // Set name
+        server
+            .put("/player/name")
+            .json(&serde_json::json!({"name": "Alice"}))
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+
+        // Clear name
+        server
+            .put("/player/name")
+            .json(&serde_json::json!({"name": null}))
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+
+        let body: serde_json::Value = server.get("/player").await.json();
+        assert!(body["display_name"].is_null());
+    }
+
+    #[tokio::test]
+    async fn test_set_display_name_no_session() {
+        let server = test_app();
+        // Don't call GET /player first
+        let response = server
+            .put("/player/name")
+            .json(&serde_json::json!({"name": "Alice"}))
+            .await;
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    // --- Presence Tracker unit tests ---
+
+    #[test]
+    fn test_presence_tracker_connect_disconnect() {
+        let tracker = PresenceTracker::new();
+        let game_id = Uuid::new_v4();
+        let p1 = Uuid::new_v4();
+        let p2 = Uuid::new_v4();
+
+        tracker.ensure_game(game_id, &[p1, p2]);
+
+        // Initially all disconnected
+        let snap = tracker.get_snapshot(game_id).unwrap();
+        assert!(snap.players.iter().all(|p| !p.connected));
+
+        // Connect p1
+        let snap = tracker.player_connected(game_id, p1).unwrap();
+        let p1_entry = snap.players.iter().find(|p| p.player_id == p1).unwrap();
+        assert!(p1_entry.connected);
+        let p2_entry = snap.players.iter().find(|p| p.player_id == p2).unwrap();
+        assert!(!p2_entry.connected);
+
+        // Disconnect p1
+        let snap = tracker.player_disconnected(game_id, p1).unwrap();
+        let p1_entry = snap.players.iter().find(|p| p.player_id == p1).unwrap();
+        assert!(!p1_entry.connected);
+    }
+
+    #[test]
+    fn test_presence_multiple_connections() {
+        let tracker = PresenceTracker::new();
+        let game_id = Uuid::new_v4();
+        let p1 = Uuid::new_v4();
+
+        tracker.ensure_game(game_id, &[p1]);
+
+        // Two connections
+        tracker.player_connected(game_id, p1);
+        let snap = tracker.player_connected(game_id, p1).unwrap();
+        assert!(snap.players[0].connected);
+
+        // Disconnect one — still connected
+        let snap = tracker.player_disconnected(game_id, p1).unwrap();
+        assert!(snap.players[0].connected);
+
+        // Disconnect second — now disconnected
+        let snap = tracker.player_disconnected(game_id, p1).unwrap();
+        assert!(!snap.players[0].connected);
+    }
+
+    #[test]
+    fn test_presence_spectator_ignored() {
+        let tracker = PresenceTracker::new();
+        let game_id = Uuid::new_v4();
+        let p1 = Uuid::new_v4();
+        let spectator = Uuid::new_v4();
+
+        tracker.ensure_game(game_id, &[p1]);
+
+        // Spectator connect returns None (not in game)
+        assert!(tracker.player_connected(game_id, spectator).is_none());
+        // Spectator disconnect returns None
+        assert!(tracker.player_disconnected(game_id, spectator).is_none());
+
+        // Original player unaffected
+        let snap = tracker.get_snapshot(game_id).unwrap();
+        assert!(!snap.players[0].connected);
+    }
+
+    #[test]
+    fn test_presence_remove_game() {
+        let tracker = PresenceTracker::new();
+        let game_id = Uuid::new_v4();
+        let p1 = Uuid::new_v4();
+
+        tracker.ensure_game(game_id, &[p1]);
+        assert!(tracker.get_snapshot(game_id).is_some());
+
+        tracker.remove_game(game_id);
+        assert!(tracker.get_snapshot(game_id).is_none());
+        assert!(tracker.subscribe(game_id).is_none());
+    }
+
+    // --- Presence integration tests ---
+
+    #[tokio::test]
+    async fn test_get_presence_endpoint() {
+        let server = test_app();
+        let create_resp: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+
+        let response = server
+            .get(&format!("/games/{}/presence", create_resp.game_id))
+            .await;
+        response.assert_status_ok();
+        let snap: PresenceSnapshot = response.json();
+        assert_eq!(snap.game_id, create_resp.game_id);
+        assert_eq!(snap.players.len(), 4);
+        // All players should be disconnected initially
+        assert!(snap.players.iter().all(|p| !p.connected));
+    }
+
+    #[tokio::test]
+    async fn test_get_presence_not_found() {
+        let server = test_app();
+        let response = server
+            .get(&format!("/games/{}/presence", Uuid::new_v4()))
+            .await;
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_ai_game_presence() {
+        let server = test_app();
+        let create_resp: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500, "num_humans": 1}))
+            .await
+            .json();
+
+        let response = server
+            .get(&format!("/games/{}/presence", create_resp.game_id))
+            .await;
+        response.assert_status_ok();
+        let snap: PresenceSnapshot = response.json();
+        assert_eq!(snap.players.len(), 4);
+        // Player 0 is human (disconnected), players 1-3 are AI (connected)
+        let human_pid = create_resp.player_ids[0];
+        let human_entry = snap.players.iter().find(|p| p.player_id == human_pid).unwrap();
+        assert!(!human_entry.connected);
+        // All 3 AI players should be connected
+        let ai_connected: Vec<_> = snap.players.iter()
+            .filter(|p| p.player_id != human_pid && p.connected)
+            .collect();
+        assert_eq!(ai_connected.len(), 3);
     }
 }
