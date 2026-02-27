@@ -88,6 +88,31 @@ pub fn short_id_to_uuid(short_id: &str) -> Option<Uuid> {
     Some(Uuid::from_bytes(bytes))
 }
 
+pub fn encode_player_url(game_id: Uuid, player_id: Uuid) -> String {
+    let gb = game_id.as_bytes();
+    let pb = player_id.as_bytes();
+    sqids_instance().encode(&[
+        u64::from_be_bytes(gb[0..8].try_into().unwrap()),
+        u64::from_be_bytes(gb[8..16].try_into().unwrap()),
+        u64::from_be_bytes(pb[0..8].try_into().unwrap()),
+        u64::from_be_bytes(pb[8..16].try_into().unwrap()),
+    ]).expect("sqids encode")
+}
+
+pub fn decode_player_url(s: &str) -> Option<(Uuid, Uuid)> {
+    let nums = sqids_instance().decode(s);
+    if nums.len() != 4 {
+        return None;
+    }
+    let mut gb = [0u8; 16];
+    gb[0..8].copy_from_slice(&nums[0].to_be_bytes());
+    gb[8..16].copy_from_slice(&nums[1].to_be_bytes());
+    let mut pb = [0u8; 16];
+    pb[0..8].copy_from_slice(&nums[2].to_be_bytes());
+    pb[8..16].copy_from_slice(&nums[3].to_be_bytes());
+    Some((Uuid::from_bytes(gb), Uuid::from_bytes(pb)))
+}
+
 /// The primary way to interface with a spades game. Used as an argument to [Game::play](struct.Game.html#method.play).
 pub enum GameTransition {
     Bet(i32),

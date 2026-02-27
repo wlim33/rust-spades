@@ -385,6 +385,8 @@ impl ChallengeManager {
                         let _ = broadcast_tx.send(ChallengeEvent::GameStart(MatchResult {
                             game_id: response.game_id,
                             player_id: Uuid::nil(),
+                            player_short_id: String::new(),
+                            player_url: String::new(),
                             player_ids,
                             player_names,
                             short_id: crate::uuid_to_short_id(response.game_id),

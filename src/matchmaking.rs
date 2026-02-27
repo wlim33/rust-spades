@@ -11,6 +11,8 @@ use crate::{GameTransition, TimerConfig};
 pub struct MatchResult {
     pub game_id: Uuid,
     pub player_id: Uuid,
+    pub player_short_id: String,
+    pub player_url: String,
     pub player_ids: [Uuid; 4],
     pub player_names: [Option<String>; 4],
     pub short_id: String,
@@ -218,6 +220,8 @@ impl Matchmaker {
             let result = MatchResult {
                 game_id: response.game_id,
                 player_id: seek.player_id,
+                player_short_id: crate::uuid_to_short_id(seek.player_id),
+                player_url: crate::encode_player_url(response.game_id, seek.player_id),
                 player_ids,
                 player_names: player_names.clone(),
                 short_id: crate::uuid_to_short_id(response.game_id),
@@ -312,6 +316,8 @@ impl Matchmaker {
                         let _ = broadcast_tx.send(LobbyEvent::GameStart(MatchResult {
                             game_id: response.game_id,
                             player_id: Uuid::nil(),
+                            player_short_id: String::new(),
+                            player_url: String::new(),
                             player_ids,
                             player_names,
                             short_id: crate::uuid_to_short_id(response.game_id),

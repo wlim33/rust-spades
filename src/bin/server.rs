@@ -55,9 +55,22 @@ enum TransitionType {
     Card { card: Card },
 }
 
+fn parse_uuid_or_short_id(s: &str) -> Option<Uuid> {
+    Uuid::parse_str(s).ok().or_else(|| spades::short_id_to_uuid(s))
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct ErrorResponse {
     error: String,
+}
+
+#[derive(Debug, Serialize)]
+struct PlayerUrlResponse {
+    game_id: Uuid,
+    player_id: Uuid,
+    player_short_id: String,
+    game: GameStateResponse,
+    hand: HandResponse,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -127,6 +140,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/lobbies/:lobby_id/join", post(join_lobby_handler))
         .route("/lobbies/:lobby_id", delete(delete_lobby_handler))
         .route("/games/by-short-id/:short_id", get(get_game_by_short_id_handler))
+        .route("/games/by-player-url/:url_id", get(get_game_by_player_url))
         .route("/challenges", post(create_challenge_handler))
         .route("/challenges", get(list_challenges_handler))
         .route("/challenges/by-short-id/:short_id", get(get_challenge_by_short_id_handler))
@@ -300,6 +314,31 @@ async fn get_game_by_short_id_handler(
         })
 }
 
+async fn get_game_by_player_url(
+    AxumState(state): AxumState<AppState>,
+    Path(url_id): Path<String>,
+) -> Result<Json<PlayerUrlResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let (game_id, player_id) = spades::decode_player_url(&url_id).ok_or((
+        StatusCode::NOT_FOUND,
+        Json(ErrorResponse { error: "Invalid player URL".to_string() }),
+    ))?;
+    let game = state.game_manager.get_game_state(game_id).map_err(|_| (
+        StatusCode::NOT_FOUND,
+        Json(ErrorResponse { error: "Game not found".to_string() }),
+    ))?;
+    let hand = state.game_manager.get_hand(game_id, player_id).map_err(|_| (
+        StatusCode::NOT_FOUND,
+        Json(ErrorResponse { error: "Player not found in game".to_string() }),
+    ))?;
+    Ok(Json(PlayerUrlResponse {
+        game_id,
+        player_id,
+        player_short_id: spades::uuid_to_short_id(player_id),
+        game,
+        hand,
+    }))
+}
+
 async fn delete_game(
     AxumState(state): AxumState<AppState>,
     Path(game_id): Path<Uuid>,
@@ -358,8 +397,12 @@ async fn make_transition(
 
 async fn get_hand(
     AxumState(state): AxumState<AppState>,
-    Path((game_id, player_id)): Path<(Uuid, Uuid)>,
+    Path((game_id, player_id_raw)): Path<(Uuid, String)>,
 ) -> Result<Json<HandResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let player_id = parse_uuid_or_short_id(&player_id_raw).ok_or((
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse { error: "Invalid player ID".to_string() }),
+    ))?;
     state
         .game_manager
         .get_hand(game_id, player_id)
@@ -380,9 +423,13 @@ async fn get_hand(
 
 async fn set_player_name(
     AxumState(state): AxumState<AppState>,
-    Path((game_id, player_id)): Path<(Uuid, Uuid)>,
+    Path((game_id, player_id_raw)): Path<(Uuid, String)>,
     Json(request): Json<SetNameRequest>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let player_id = parse_uuid_or_short_id(&player_id_raw).ok_or((
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse { error: "Invalid player ID".to_string() }),
+    ))?;
     let validated_name = match request.name {
         Some(raw) => Some(validate_player_name(&raw).map_err(|e| {
             (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() }))
@@ -412,7 +459,7 @@ async fn set_player_name(
 
 #[derive(Debug, Deserialize)]
 struct WsQuery {
-    player_id: Option<Uuid>,
+    player_id: Option<String>,
 }
 
 async fn game_ws(
@@ -436,7 +483,7 @@ async fn game_ws(
         )
     })?;
 
-    let player_id = query.player_id;
+    let player_id = query.player_id.as_deref().and_then(parse_uuid_or_short_id);
     Ok(ws.on_upgrade(move |socket| handle_game_ws(socket, initial_state, rx, player_id)))
 }
 
@@ -640,6 +687,8 @@ async fn create_lobby(
                     let personalized = MatchResult {
                         game_id: result.game_id,
                         player_id,
+                        player_short_id: spades::uuid_to_short_id(player_id),
+                        player_url: spades::encode_player_url(result.game_id, player_id),
                         player_ids: result.player_ids,
                         player_names: result.player_names.clone(),
                         short_id: result.short_id.clone(),
@@ -724,6 +773,8 @@ async fn join_lobby_handler(
                     let personalized = MatchResult {
                         game_id: result.game_id,
                         player_id,
+                        player_short_id: spades::uuid_to_short_id(player_id),
+                        player_url: spades::encode_player_url(result.game_id, player_id),
                         player_ids: result.player_ids,
                         player_names: result.player_names.clone(),
                         short_id: result.short_id.clone(),
@@ -877,9 +928,12 @@ async fn create_challenge_handler(
                     if let Some(guard) = _guard.as_mut() {
                         guard.game_started = true;
                     }
+                    let pid = creator_player_id.unwrap_or(Uuid::nil());
                     let personalized = MatchResult {
                         game_id: result.game_id,
-                        player_id: creator_player_id.unwrap_or(Uuid::nil()),
+                        player_id: pid,
+                        player_short_id: spades::uuid_to_short_id(pid),
+                        player_url: spades::encode_player_url(result.game_id, pid),
                         player_ids: result.player_ids,
                         player_names: result.player_names.clone(),
                         short_id: result.short_id.clone(),
@@ -1039,6 +1093,8 @@ async fn join_challenge_handler(
                     let personalized = MatchResult {
                         game_id: result.game_id,
                         player_id,
+                        player_short_id: spades::uuid_to_short_id(player_id),
+                        player_url: spades::encode_player_url(result.game_id, player_id),
                         player_ids: result.player_ids,
                         player_names: result.player_names.clone(),
                         short_id: result.short_id.clone(),
