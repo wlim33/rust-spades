@@ -1,9 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 use tokio::sync::broadcast;
 use crate::{Game, GameTransition, State, Card, TimerConfig};
+use crate::ai::AiStrategy;
 use crate::result::TransitionSuccess;
 use crate::sqlite_store::SqliteStore;
 use serde::{Serialize, Deserialize};
@@ -25,6 +26,12 @@ struct ActiveTurnTimer {
     expected_player_index: usize,
 }
 
+/// Configuration for AI players in a game
+pub struct AiPlayerConfig {
+    pub ai_players: HashSet<usize>,
+    pub strategy: Arc<dyn AiStrategy>,
+}
+
 /// Manages multiple concurrent spades games
 #[derive(Clone)]
 pub struct GameManager {
@@ -32,6 +39,7 @@ pub struct GameManager {
     broadcasters: Arc<RwLock<HashMap<Uuid, broadcast::Sender<GameEvent>>>>,
     db: Option<Arc<SqliteStore>>,
     active_timers: Arc<Mutex<HashMap<Uuid, ActiveTurnTimer>>>,
+    ai_configs: Arc<RwLock<HashMap<Uuid, AiPlayerConfig>>>,
 }
 
 /// Response for creating a new game
@@ -116,6 +124,7 @@ impl GameManager {
             broadcasters: Arc::new(RwLock::new(HashMap::new())),
             db: None,
             active_timers: Arc::new(Mutex::new(HashMap::new())),
+            ai_configs: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -138,6 +147,7 @@ impl GameManager {
             broadcasters: Arc::new(RwLock::new(broadcasters_map)),
             db: Some(Arc::new(store)),
             active_timers: Arc::new(Mutex::new(HashMap::new())),
+            ai_configs: Arc::new(RwLock::new(HashMap::new())),
         };
 
         // Restart timers for in-progress timed games
@@ -243,6 +253,77 @@ impl GameManager {
             game_id,
             player_ids,
         })
+    }
+
+    /// Create a game with AI players filling non-human seats.
+    /// `human_seats` specifies which seat indices (0-3) are human.
+    pub fn create_ai_game(
+        &self,
+        human_seats: HashSet<usize>,
+        max_points: i32,
+        timer_config: Option<TimerConfig>,
+        strategy: Arc<dyn AiStrategy>,
+    ) -> Result<CreateGameResponse, GameManagerError> {
+        let response = self.create_game(max_points, timer_config)?;
+        let game_id = response.game_id;
+
+        let ai_players: HashSet<usize> = (0..4)
+            .filter(|i| !human_seats.contains(i))
+            .collect();
+
+        let config = AiPlayerConfig {
+            ai_players,
+            strategy,
+        };
+        let mut configs = self.ai_configs.write().map_err(|_| GameManagerError::LockError)?;
+        configs.insert(game_id, config);
+
+        Ok(response)
+    }
+
+    /// After a transition, auto-play consecutive AI turns until a human's turn or game end.
+    pub fn play_ai_turns(&self, game_id: Uuid) -> Result<(), GameManagerError> {
+        loop {
+            let (state, player_index) = {
+                let games = self.games.read().map_err(|_| GameManagerError::LockError)?;
+                let game_lock = games.get(&game_id).ok_or(GameManagerError::GameNotFound)?;
+                let game = game_lock.read().map_err(|_| GameManagerError::LockError)?;
+                (game.get_state().clone(), game.get_current_player_index_num())
+            };
+
+            match state {
+                State::Completed | State::Aborted | State::NotStarted => break,
+                State::Betting(_) | State::Trick(_) => {}
+            }
+
+            let transition = {
+                let configs = self.ai_configs.read().map_err(|_| GameManagerError::LockError)?;
+                let config = match configs.get(&game_id) {
+                    Some(c) => c,
+                    None => break, // no AI config = all human
+                };
+                if !config.ai_players.contains(&player_index) {
+                    break; // human's turn
+                }
+
+                let games = self.games.read().map_err(|_| GameManagerError::LockError)?;
+                let game_lock = games.get(&game_id).ok_or(GameManagerError::GameNotFound)?;
+                let game = game_lock.read().map_err(|_| GameManagerError::LockError)?;
+
+                match state {
+                    State::Betting(_) => {
+                        GameTransition::Bet(config.strategy.choose_bet(&game, player_index))
+                    }
+                    State::Trick(_) => {
+                        GameTransition::Card(config.strategy.choose_card(&game, player_index))
+                    }
+                    _ => break,
+                }
+            };
+
+            self.make_transition_internal(game_id, transition, false)?;
+        }
+        Ok(())
     }
 
     fn build_state_response(game_id: Uuid, game: &Game, active_timer: Option<&ActiveTurnTimer>) -> GameStateResponse {
@@ -606,6 +687,10 @@ impl GameManager {
 
         if let Ok(mut broadcasters) = self.broadcasters.write() {
             broadcasters.remove(&game_id);
+        }
+
+        if let Ok(mut configs) = self.ai_configs.write() {
+            configs.remove(&game_id);
         }
 
         Ok(())
