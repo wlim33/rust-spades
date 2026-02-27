@@ -12,7 +12,7 @@ use crate::GameTransition;
 use crate::TimerConfig;
 
 /// A seat position in a 4-player spades game. Teams: A+C vs B+D.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, oasgen::OaSchema)]
 pub enum Seat {
     A,
     B,
@@ -68,7 +68,7 @@ impl fmt::Display for Seat {
 }
 
 /// Configuration for creating a challenge.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, oasgen::OaSchema)]
 pub struct ChallengeConfig {
     #[serde(default = "default_max_points")]
     pub max_points: i32,
@@ -91,7 +91,7 @@ fn default_expiry_secs() -> u64 {
 }
 
 /// Per-seat snapshot sent in SSE events.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, oasgen::OaSchema)]
 pub struct SeatInfo {
     pub seat: Seat,
     pub player_id: Uuid,
@@ -122,7 +122,7 @@ pub enum ChallengeEvent {
 }
 
 /// Status kind of a challenge.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, oasgen::OaSchema)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum ChallengeStatusKind {
     Open,

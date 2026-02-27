@@ -1,4 +1,6 @@
 use serde::{Serialize, Deserialize};
+#[cfg(feature = "server")]
+use oasgen::OaSchema;
 
 /// Current game stage, field of `Game`. 
 /// 
@@ -8,6 +10,7 @@ use serde::{Serialize, Deserialize};
 /// 
 /// **Example:** `State::Trick(2)` means the game is in the card playing stage, and two players have played their cards.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "server", derive(oasgen::OaSchema))]
 pub enum State {
     NotStarted,
     Betting(usize),
