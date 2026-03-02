@@ -125,7 +125,7 @@ pub enum GameTransition {
 }
 
 /// Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "server", derive(oasgen::OaSchema))]
 pub struct TimerConfig {
     pub initial_time_secs: u64,

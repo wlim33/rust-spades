@@ -2075,7 +2075,7 @@ dependencies = [
 
 [[package]]
 name = "spades"
-version = "1.2.6"
+version = "1.2.7"
 dependencies = [
  "async-stream",
  "axum 0.8.8",
