@@ -20,7 +20,7 @@ use spades::challenges::{
     ChallengeConfig, ChallengeError, ChallengeEvent, ChallengeManager,
     ChallengeStatus, ChallengeSummary, Seat,
 };
-use spades::matchmaking::{MatchResult, Matchmaker, SeekEvent, SeekSummary};
+use spades::matchmaking::{MatchResult, Matchmaker, QueueSizeEntry, SeekEvent, SeekSummary};
 use spades::validation::validate_player_name;
 use spades::{Card, GameTransition, TimerConfig};
 use std::collections::HashMap;
@@ -159,6 +159,7 @@ pub fn build_router(state: AppState) -> Router {
         .get("/games/{game_id}/presence", get_presence)
         // Matchmaking
         .get("/matchmaking/seeks", list_seeks_handler)
+        .get("/matchmaking/queue-sizes", queue_sizes_handler)
         // Challenges
         .get("/challenges", list_challenges_handler)
         .get("/challenges/{challenge_id}", get_challenge_handler)
@@ -256,6 +257,7 @@ async fn main() {
     println!("  DELETE /games/:game_id                          - Delete a game");
     println!("  POST /matchmaking/seek                          - Quick match (SSE)");
     println!("  GET  /matchmaking/seeks                         - List active seeks");
+    println!("  GET  /matchmaking/queue-sizes                   - Queue sizes by config");
     println!("  POST /challenges                                - Create challenge (SSE)");
     println!("  GET  /challenges                                - List open challenges");
     println!("  GET  /challenges/by-short-id/:short_id          - Get challenge by short ID");
@@ -283,6 +285,7 @@ async fn root() -> Json<serde_json::Value> {
             "delete_game": "DELETE /games/:game_id",
             "seek": "POST /matchmaking/seek",
             "list_seeks": "GET /matchmaking/seeks",
+            "queue_sizes": "GET /matchmaking/queue-sizes",
         }
     }))
 }
@@ -924,6 +927,13 @@ async fn list_seeks_handler(
     AxumState(state): AxumState<AppState>,
 ) -> Json<Vec<SeekSummary>> {
     Json(state.matchmaker.list_seeks())
+}
+
+#[oasgen]
+async fn queue_sizes_handler(
+    AxumState(state): AxumState<AppState>,
+) -> Json<Vec<QueueSizeEntry>> {
+    Json(state.matchmaker.queue_sizes())
 }
 
 // --- Challenges: Drop Guard ---
@@ -1634,6 +1644,15 @@ mod tests {
     async fn test_list_seeks() {
         let server = test_app();
         let response = server.get("/matchmaking/seeks").await;
+        response.assert_status_ok();
+        let body: Vec<serde_json::Value> = response.json();
+        assert_eq!(body.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_queue_sizes() {
+        let server = test_app();
+        let response = server.get("/matchmaking/queue-sizes").await;
         response.assert_status_ok();
         let body: Vec<serde_json::Value> = response.json();
         assert_eq!(body.len(), 0);

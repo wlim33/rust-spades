@@ -33,6 +33,14 @@ pub struct SeekSummary {
     pub waiting: usize,
 }
 
+/// Queue size for a specific game configuration (max_points + timer_config).
+#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
+pub struct QueueSizeEntry {
+    pub max_points: i32,
+    pub timer_config: TimerConfig,
+    pub waiting: usize,
+}
+
 struct PendingSeek {
     player_id: Uuid,
     max_points: i32,
@@ -101,6 +109,23 @@ impl Matchmaker {
         counts
             .into_iter()
             .map(|(max_points, waiting)| SeekSummary { max_points, waiting })
+            .collect()
+    }
+
+    /// List queue sizes grouped by game configuration (max_points + timer_config).
+    pub fn queue_sizes(&self) -> Vec<QueueSizeEntry> {
+        let queue = self.seek_queue.lock().unwrap();
+        let mut counts: HashMap<(i32, TimerConfig), usize> = HashMap::new();
+        for seek in queue.iter() {
+            *counts.entry((seek.max_points, seek.timer_config)).or_insert(0) += 1;
+        }
+        counts
+            .into_iter()
+            .map(|((max_points, timer_config), waiting)| QueueSizeEntry {
+                max_points,
+                timer_config,
+                waiting,
+            })
             .collect()
     }
 
@@ -315,6 +340,29 @@ mod tests {
         let summary = mm.list_seeks();
         assert_eq!(summary.len(), 1);
         assert_eq!(summary[0].waiting, 2);
+    }
+
+    #[tokio::test]
+    async fn test_queue_sizes_groups_by_config() {
+        let mm = make_matchmaker();
+        let fast_timer = TimerConfig { initial_time_secs: 180, increment_secs: 2 };
+        let slow_timer = TimerConfig { initial_time_secs: 600, increment_secs: 5 };
+
+        // 2 seeks: 500 pts + fast timer
+        let (_p1, _rx1) = mm.add_seek(500, fast_timer, None);
+        let (_p2, _rx2) = mm.add_seek(500, fast_timer, None);
+        // 1 seek: 500 pts + slow timer
+        let (_p3, _rx3) = mm.add_seek(500, slow_timer, None);
+        // 1 seek: 300 pts + fast timer
+        let (_p4, _rx4) = mm.add_seek(300, fast_timer, None);
+
+        let sizes = mm.queue_sizes();
+        assert_eq!(sizes.len(), 3);
+
+        let find = |mp: i32, tc: TimerConfig| sizes.iter().find(|e| e.max_points == mp && e.timer_config == tc);
+        assert_eq!(find(500, fast_timer).unwrap().waiting, 2);
+        assert_eq!(find(500, slow_timer).unwrap().waiting, 1);
+        assert_eq!(find(300, fast_timer).unwrap().waiting, 1);
     }
 
 }
