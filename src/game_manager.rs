@@ -82,6 +82,8 @@ pub struct GameStateResponse {
     pub player_tricks_won: Option<[i32; 4]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_trick_winner_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_completed_trick: Option<[Card; 4]>,
 }
 
 /// Response for getting a player's hand
@@ -376,6 +378,7 @@ impl GameManager {
             player_bets: game.get_player_bets(),
             player_tricks_won: game.get_player_tricks_won(),
             last_trick_winner_id: game.get_last_trick_winner_id(),
+            last_completed_trick: game.get_last_completed_trick().cloned(),
         }
     }
 
@@ -970,6 +973,7 @@ mod tests {
             player_bets: None,
             player_tricks_won: None,
             last_trick_winner_id: None,
+            last_completed_trick: None,
         };
         let event = GameEvent::StateChanged(state);
         let json = serde_json::to_string(&event).unwrap();

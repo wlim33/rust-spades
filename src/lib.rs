@@ -178,6 +178,8 @@ pub struct Game {
     turn_started_at_epoch_ms: Option<u64>,
     #[serde(default)]
     last_trick_winner: Option<usize>,
+    #[serde(default)]
+    last_completed_trick: Option<[cards::Card; 4]>,
 }
 
 impl Game {
@@ -201,6 +203,7 @@ impl Game {
             player_clocks,
             turn_started_at_epoch_ms: None,
             last_trick_winner: None,
+            last_completed_trick: None,
         }
     }
 
@@ -338,6 +341,7 @@ impl Game {
     /// 
     /// Start -> Bet * 4 -> Card * 13 -> Bet * 4 -> Card * 13 -> Bet * 4 -> ...
     pub fn play(&mut self, entry: GameTransition) -> Result<TransitionSuccess, TransitionError> {
+        self.last_completed_trick = None;
         match entry {
             GameTransition::Bet(bet) => {
                 match self.state {
@@ -407,6 +411,7 @@ impl Game {
                         if rotation_status == 3 {
                             let winner = self.scoring.trick(self.current_player_index, self.hands_played.last().unwrap());
                             self.last_trick_winner = Some(winner);
+                            self.last_completed_trick = Some(self.hands_played.last().unwrap().clone());
                             if self.scoring.is_over {
                                 self.state = State::Completed;
                                 return Ok(TransitionSuccess::GameOver);
@@ -515,6 +520,10 @@ impl Game {
             2 => self.player_c.id,
             _ => self.player_d.id,
         })
+    }
+
+    pub fn get_last_completed_trick(&self) -> Option<&[cards::Card; 4]> {
+        self.last_completed_trick.as_ref()
     }
 
     /// Set the game state directly (used by GameManager for abort).
