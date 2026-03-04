@@ -49,6 +49,7 @@ impl OaSchema for crate::game_manager::GameStateResponse {
         object_property(&mut obj, "player_bets", array_schema::<i32>(), false);
         object_property(&mut obj, "player_tricks_won", array_schema::<i32>(), false);
         object_property(&mut obj, "last_trick_winner_id", <Option<uuid::Uuid>>::schema(), false);
+        object_property(&mut obj, "last_completed_trick", array_schema::<crate::Card>(), false);
         make_object(obj)
     }
 }
