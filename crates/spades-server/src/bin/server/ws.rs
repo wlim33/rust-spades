@@ -106,6 +106,11 @@ async fn handle_game_ws(
         if let Some(snapshot) = presence.player_connected(game_id, pid) {
             presence.broadcast(game_id, snapshot);
         }
+    } else if let Some(snapshot) = presence.spectator_connected(game_id) {
+        // No `player_id` query param → this WS is a spectator. Bump the
+        // per-game spectator count and broadcast so other subscribers see
+        // the updated viewer count.
+        presence.broadcast(game_id, snapshot);
     }
 
     let mut presence_rx = presence_rx;
@@ -180,5 +185,7 @@ async fn handle_game_ws(
         if let Some(snapshot) = presence.player_disconnected(game_id, pid) {
             presence.broadcast(game_id, snapshot);
         }
+    } else if let Some(snapshot) = presence.spectator_disconnected(game_id) {
+        presence.broadcast(game_id, snapshot);
     }
 }

@@ -125,6 +125,11 @@ pub struct PlayerPresenceEntry {
 pub struct PresenceSnapshot {
     pub game_id: Uuid,
     pub players: Vec<PlayerPresenceEntry>,
+    /// Active WS connections without a `player_id` — i.e., subscribers who
+    /// are watching without claiming a seat. Additive vs. the older shape;
+    /// existing clients that ignore unknown fields keep working.
+    #[serde(default)]
+    pub spectator_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
