@@ -62,6 +62,41 @@ pub(super) fn parse_card(token: &str) -> Option<Card> {
     Some(Card { rank, suit })
 }
 
+/// Escape a tag value for emission: `"` -> `\"`, `\` -> `\\`. Nothing else.
+pub(super) fn escape_tag_value(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Unescape a tag value. Returns None on any unrecognized backslash sequence
+/// or trailing backslash.
+pub(super) fn unescape_tag_value(s: &str) -> Option<String> {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            match chars.next()? {
+                '"' => out.push('"'),
+                '\\' => out.push('\\'),
+                _ => return None,
+            }
+        } else if ch == '"' {
+            // bare unescaped quote inside value: invalid
+            return None;
+        } else {
+            out.push(ch);
+        }
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,5 +141,45 @@ mod tests {
         assert!(parse_card("Ac").is_none(), "lowercase suit not accepted");
         assert!(parse_card("0S").is_none());
         assert!(parse_card("TT").is_none());
+    }
+
+    #[test]
+    fn escape_passthrough_for_safe_strings() {
+        assert_eq!(escape_tag_value("Alice"), "Alice");
+        assert_eq!(escape_tag_value(""), "");
+        assert_eq!(escape_tag_value("hello world"), "hello world");
+    }
+
+    #[test]
+    fn escape_handles_quotes_and_backslash() {
+        assert_eq!(escape_tag_value("a\"b"), "a\\\"b");
+        assert_eq!(escape_tag_value("a\\b"), "a\\\\b");
+        assert_eq!(escape_tag_value("\\\""), "\\\\\\\"");
+    }
+
+    #[test]
+    fn escape_unescape_round_trip() {
+        for s in [
+            "",
+            "Alice",
+            "a\"b",
+            "a\\b",
+            "\\",
+            "\"",
+            "a\"b\\c\"d",
+            "Carol \"the queen\" Q",
+        ] {
+            let esc = escape_tag_value(s);
+            assert_eq!(unescape_tag_value(&esc).as_deref(), Some(s), "round trip {:?}", s);
+        }
+    }
+
+    #[test]
+    fn unescape_rejects_bad_sequences() {
+        assert_eq!(unescape_tag_value("\\n"), None, "\\n not allowed");
+        assert_eq!(unescape_tag_value("\\t"), None);
+        assert_eq!(unescape_tag_value("\\"), None, "trailing backslash");
+        assert_eq!(unescape_tag_value("\"bare"), None, "bare quote inside value");
+        assert_eq!(unescape_tag_value("safe\""), None);
     }
 }
