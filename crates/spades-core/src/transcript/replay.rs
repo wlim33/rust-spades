@@ -73,7 +73,7 @@ pub fn replay(t: &Transcript) -> Result<Game, ReplayError> {
                 for i in 0..4 {
                     by_seat[(lead + i) % 4] = trick[i];
                 }
-                lead = get_trick_winner((lead + 3) % 4, &by_seat);
+                lead = get_trick_winner(lead, &by_seat);
             }
         }
 
@@ -229,7 +229,7 @@ mod tests {
         let g = Game::new(u(1), [u(10), u(11), u(12), u(13)], 500, None);
         let encoded = encode(&g)
             .replace("InProgress", "Completed")
-            .replace("\"*\"", "\"100-50\"");
+            .replace("\"*\"", "\"100 50\"");
         let parsed = decode(&encoded).unwrap();
         assert!(matches!(
             replay(&parsed),

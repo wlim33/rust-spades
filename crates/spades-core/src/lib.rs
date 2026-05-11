@@ -447,7 +447,11 @@ impl Game {
                                 trick[2].unwrap(),
                                 trick[3].unwrap(),
                             ];
-                            let winner = self.scoring.trick(self.current_player_index, &played);
+                            // Trick complete: current_player_index is the LAST seat that played;
+                            // the lead seat is the next-in-rotation (winner of the trick is computed
+                            // from the lead's perspective, since the lead's card sets the trick suit).
+                            let lead = (self.current_player_index + 1) % 4;
+                            let winner = self.scoring.trick(lead, &played);
                             self.last_trick_winner = Some(winner);
                             self.last_completed_trick = Some(played);
                             if self.scoring.is_over {

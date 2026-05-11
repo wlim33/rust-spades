@@ -337,3 +337,33 @@ fn history_preserved_across_round_boundary() {
         }
     }
 }
+
+#[test]
+fn trick_winner_uses_lead_not_last() {
+    // Regression test: the engine previously passed the LAST seat to get_trick_winner,
+    // giving wrong results when the last seat played a non-spade discard with no trump.
+    //
+    // Construct a trick where:
+    // - Lead (seat 0): high heart -> leading suit is heart
+    // - Seat 1: low heart
+    // - Seat 2: low heart
+    // - Seat 3: a diamond (can't follow suit, no spade played)
+    // Expected winner: seat 0 (highest heart wins the leading suit).
+    // With the old buggy code: would have returned seat 3 (last) because max_card started
+    // at last's diamond and no spade overrode it.
+    use crate::cards::{get_trick_winner, Card, Rank, Suit};
+
+    let trick: [Card; 4] = [
+        Card { suit: Suit::Heart, rank: Rank::King },   // seat 0 (lead)
+        Card { suit: Suit::Heart, rank: Rank::Two },    // seat 1
+        Card { suit: Suit::Heart, rank: Rank::Three },  // seat 2
+        Card { suit: Suit::Diamond, rank: Rank::Ace },  // seat 3 (discard, can't follow)
+    ];
+    let lead_seat = 0;
+    let winner_using_lead = get_trick_winner(lead_seat, &trick);
+    assert_eq!(winner_using_lead, 0, "lead's KH should win when no trump is played");
+
+    // Sanity: passing the last seat (the bug) would return seat 3 (the diamond).
+    let buggy_winner = get_trick_winner(3, &trick);
+    assert_eq!(buggy_winner, 3, "buggy call would have given diamond seat 3 as winner");
+}

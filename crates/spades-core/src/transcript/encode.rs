@@ -43,7 +43,7 @@ fn encode_headers(out: &mut String, g: &Game) {
         State::Completed | State::Aborted => {
             let a = g.get_team_a_score().copied().unwrap_or(0);
             let b = g.get_team_b_score().copied().unwrap_or(0);
-            format!("{}-{}", a, b)
+            format!("{} {}", a, b)
         }
         _ => "*".to_string(),
     };
@@ -226,7 +226,7 @@ fn tricks_for_round(g: &Game, round_idx: usize) -> Vec<Vec<Card>> {
                 trick[2].unwrap(),
                 trick[3].unwrap(),
             ];
-            lead = get_trick_winner((lead + 3) % 4, &by_seat);
+            lead = get_trick_winner(lead, &by_seat);
         }
         out.push(play_order);
     }
@@ -344,7 +344,7 @@ mod tests {
         assert!(s.contains("[Round \"1\"]\n"));
 
         let result_line = s.lines().find(|l| l.starts_with("[Result \"")).unwrap();
-        assert!(result_line.contains("-"));
+        assert!(result_line.contains(" "));
         assert_ne!(result_line, "[Result \"*\"]");
 
         for seat in 0..4 {
