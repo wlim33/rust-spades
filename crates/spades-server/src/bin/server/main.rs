@@ -254,6 +254,24 @@ async fn main() {
         });
     }
 
+    {
+        // Sweep expired OAuth `csrf` and `pending` state every 5 min so a
+        // drive-by attacker hitting `/auth/<provider>/login` can't grow the
+        // in-memory maps without bound. csrf entries typically live ~10 min
+        // (the OAuth client's `state` lifetime); a 5-min sweep catches most
+        // within one window.
+        let oauth = auth_state.oauth.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(5 * 60)).await;
+                let removed = oauth.sweep_expired();
+                if removed > 0 {
+                    tracing::debug!(removed, "swept expired OAuth state entries");
+                }
+            }
+        });
+    }
+
     let app_state = AppState {
         game_manager,
         matchmaker,

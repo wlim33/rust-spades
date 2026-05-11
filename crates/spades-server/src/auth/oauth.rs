@@ -1,5 +1,6 @@
 //! Google + GitHub OAuth flow, state CSRF, PKCE, pending-signup store.
 
+use crate::lock_util::MutexExt;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use time::OffsetDateTime;
@@ -62,6 +63,33 @@ pub fn github_client(state: &OauthState) -> Option<BasicClient> {
 }
 
 impl OauthState {
+    /// Drop entries whose `expires_at` is in the past from both `csrf` and
+    /// `pending`. Returns the total number of entries removed.
+    ///
+    /// Without this, every `/auth/<provider>/login` hit leaks one csrf entry
+    /// (and OAuth-init that lands on the signup-pending path leaks one
+    /// pending entry) until the process restarts. Drive-by attackers
+    /// hitting the login URL turn this into an unbounded `HashMap` —
+    /// `sweep_expired` is meant to be called periodically from the
+    /// background.
+    pub fn sweep_expired(&self) -> usize {
+        let now = OffsetDateTime::now_utc();
+        let mut removed = 0;
+        {
+            let mut csrf = self.csrf.lock_or_recover();
+            let before = csrf.len();
+            csrf.retain(|_, (_, expires_at, _)| *expires_at > now);
+            removed += before - csrf.len();
+        }
+        {
+            let mut pending = self.pending.lock_or_recover();
+            let before = pending.len();
+            pending.retain(|_, p| p.expires_at > now);
+            removed += before - pending.len();
+        }
+        removed
+    }
+
     pub fn from_env() -> Self {
         let google = match (std::env::var("GOOGLE_OAUTH_CLIENT_ID"), std::env::var("GOOGLE_OAUTH_CLIENT_SECRET")) {
             (Ok(id), Ok(sec)) => Some(OauthProviderConfig { client_id: id, client_secret: sec }),
@@ -80,5 +108,72 @@ impl OauthState {
             csrf: Mutex::new(HashMap::new()),
             pending: Mutex::new(HashMap::new()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::Duration as TimeDuration;
+
+    fn state() -> OauthState {
+        OauthState::default()
+    }
+
+    fn pending(expires_at: OffsetDateTime) -> PendingSignup {
+        PendingSignup {
+            provider: "google".into(),
+            provider_uid: "uid".into(),
+            email: "a@example.com".into(),
+            email_verified: false,
+            suggested_username: "Alice".into(),
+            expires_at,
+        }
+    }
+
+    #[test]
+    fn sweep_expired_removes_expired_csrf_only() {
+        let s = state();
+        let past = OffsetDateTime::now_utc() - TimeDuration::seconds(60);
+        let future = OffsetDateTime::now_utc() + TimeDuration::seconds(60);
+        s.csrf.lock_or_recover().insert("expired".into(), (Uuid::nil(), past, "v".into()));
+        s.csrf.lock_or_recover().insert("fresh".into(), (Uuid::nil(), future, "v".into()));
+        assert_eq!(s.sweep_expired(), 1);
+        let csrf = s.csrf.lock_or_recover();
+        assert_eq!(csrf.len(), 1);
+        assert!(csrf.contains_key("fresh"));
+    }
+
+    #[test]
+    fn sweep_expired_removes_expired_pending_only() {
+        let s = state();
+        let past = OffsetDateTime::now_utc() - TimeDuration::seconds(60);
+        let future = OffsetDateTime::now_utc() + TimeDuration::seconds(60);
+        s.pending.lock_or_recover().insert("expired".into(), pending(past));
+        s.pending.lock_or_recover().insert("fresh".into(), pending(future));
+        assert_eq!(s.sweep_expired(), 1);
+        let pending_map = s.pending.lock_or_recover();
+        assert_eq!(pending_map.len(), 1);
+        assert!(pending_map.contains_key("fresh"));
+    }
+
+    #[test]
+    fn sweep_expired_counts_across_both_maps() {
+        let s = state();
+        let past = OffsetDateTime::now_utc() - TimeDuration::seconds(60);
+        s.csrf.lock_or_recover().insert("c".into(), (Uuid::nil(), past, "v".into()));
+        s.pending.lock_or_recover().insert("p".into(), pending(past));
+        assert_eq!(s.sweep_expired(), 2);
+    }
+
+    #[test]
+    fn sweep_expired_is_a_noop_when_nothing_expired() {
+        let s = state();
+        let future = OffsetDateTime::now_utc() + TimeDuration::seconds(60);
+        s.csrf.lock_or_recover().insert("c".into(), (Uuid::nil(), future, "v".into()));
+        s.pending.lock_or_recover().insert("p".into(), pending(future));
+        assert_eq!(s.sweep_expired(), 0);
+        assert_eq!(s.csrf.lock_or_recover().len(), 1);
+        assert_eq!(s.pending.lock_or_recover().len(), 1);
     }
 }
