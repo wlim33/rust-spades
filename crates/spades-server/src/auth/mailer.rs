@@ -233,6 +233,76 @@ mod tests {
         assert_eq!(sent[2].to, "u2@example.com");
     }
 
+    #[test]
+    fn smtp_mailer_new_constructs_for_relay_and_starttls() {
+        let cfg = SmtpConfig {
+            host: "smtp.example.com".into(),
+            port: 587,
+            username: "u".into(),
+            password: "p".into(),
+            from: "from@example.com".into(),
+            starttls: false,
+        };
+        assert!(SmtpMailer::new(cfg).is_ok());
+
+        let cfg = SmtpConfig {
+            host: "smtp.example.com".into(),
+            port: 587,
+            username: "u".into(),
+            password: "p".into(),
+            from: "from@example.com".into(),
+            starttls: true,
+        };
+        assert!(SmtpMailer::new(cfg).is_ok());
+    }
+
+    #[tokio::test]
+    async fn smtp_mailer_send_rejects_invalid_from_address() {
+        // The send() method parses both `from` and `to` as Mailbox before
+        // attempting any network I/O. A garbage `from` returns Internal —
+        // a misconfigured server, not user input — without touching SMTP.
+        let cfg = SmtpConfig {
+            host: "smtp.example.com".into(),
+            port: 587,
+            username: "u".into(),
+            password: "p".into(),
+            from: "not a real email".into(),
+            starttls: false,
+        };
+        let mailer = SmtpMailer::new(cfg).unwrap();
+        let result = mailer
+            .send(Email {
+                to: "valid@example.com".into(),
+                subject: "s".into(),
+                body: "b".into(),
+            })
+            .await;
+        assert!(matches!(result, Err(AuthError::Internal(_))));
+    }
+
+    #[tokio::test]
+    async fn smtp_mailer_send_rejects_invalid_to_address() {
+        // Bad `to` is user-supplied, not config — mapped to Validation, not
+        // Internal. Test confirms the differentiation in the error mapping.
+        let cfg = SmtpConfig {
+            host: "smtp.example.com".into(),
+            port: 587,
+            username: "u".into(),
+            password: "p".into(),
+            from: "from@example.com".into(),
+            starttls: false,
+        };
+        let mailer = SmtpMailer::new(cfg).unwrap();
+        let result = mailer
+            .send(Email {
+                to: "not a real email".into(),
+                subject: "s".into(),
+                body: "b".into(),
+            })
+            .await;
+        assert!(matches!(result, Err(AuthError::Validation(_))));
+    }
+
     #[tokio::test]
     async fn mailer_queue_send_returns_ok_without_awaiting_backing() {
         // Build a queue whose backing mailer would deadlock if awaited

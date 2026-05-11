@@ -688,6 +688,85 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn chat_rejects_inappropriate_content() {
+        // `rustrict::CensorStr::is_inappropriate()` flags severe profanity.
+        // The handler must return 400 with a content-filter-specific error
+        // before even checking seat ownership — the message never reaches
+        // the broadcast.
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        let resp = server
+            .post(&format!("/games/{}/chat", create.game_id))
+            .json(&serde_json::json!({
+                "player_id": create.player_ids[0],
+                "content": "fuck you cunt",
+            }))
+            .await;
+        assert_eq!(resp.status_code(), StatusCode::BAD_REQUEST);
+        let body: serde_json::Value = resp.json();
+        assert!(
+            body["error"].as_str().unwrap_or("").contains("content filter"),
+            "expected content-filter error, got: {:?}",
+            body["error"],
+        );
+    }
+
+    #[tokio::test]
+    async fn chat_returns_404_for_unknown_player_id() {
+        // Player UUID is well-formed but not seated in any game → 400 from
+        // the seat lookup, never reaches the broadcast.
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        let resp = server
+            .post(&format!("/games/{}/chat", create.game_id))
+            .json(&serde_json::json!({
+                "player_id": Uuid::new_v4(),
+                "content": "ready",
+            }))
+            .await;
+        assert_eq!(resp.status_code(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn idempotency_key_replays_cached_error_outcome() {
+        // The cache stores both success and failure outcomes — so a retry
+        // after a 4xx returns the same 4xx, never re-running the transition
+        // against drifted state. Bet-before-start fails with BAD_REQUEST;
+        // a retry with the same idempotency-key must match status + body.
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+
+        let first = server
+            .post(&format!("/games/{}/transition", create.game_id))
+            .add_header("idempotency-key", "retry-err")
+            .json(&serde_json::json!({"type": "bet", "amount": 3}))
+            .await;
+        assert_eq!(first.status_code(), StatusCode::BAD_REQUEST);
+        let first_body: serde_json::Value = first.json();
+
+        let second = server
+            .post(&format!("/games/{}/transition", create.game_id))
+            .add_header("idempotency-key", "retry-err")
+            .json(&serde_json::json!({"type": "bet", "amount": 3}))
+            .await;
+        assert_eq!(second.status_code(), StatusCode::BAD_REQUEST);
+        let second_body: serde_json::Value = second.json();
+        assert_eq!(first_body, second_body, "cached error replays identically");
+    }
+
+    #[tokio::test]
     async fn replay_returns_404_for_missing_game() {
         let server = test_app();
         let resp = server.get(&format!("/games/{}/replay", Uuid::new_v4())).await;

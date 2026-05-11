@@ -1095,6 +1095,117 @@ mod tests {
     }
 
     #[test]
+    fn game_seat_crud_and_lookups() {
+        // Cover the seat CRUD surface: insert → read → update owner → lookup
+        // by player → list by user → count by user. All operations target
+        // the per-(game, seat) row that auth-gates hand reads and chat.
+        let store = SqliteStore::open(":memory:").unwrap();
+        let alice = store.insert_user(&new_user("alice", "alice@x.com")).unwrap();
+        let bob = store.insert_user(&new_user("bob", "bob@x.com")).unwrap();
+
+        let game_id = Uuid::new_v4();
+        let alice_player = Uuid::new_v4();
+        let bob_player = Uuid::new_v4();
+
+        // Insert seats for both users at seats 0 and 1.
+        store.insert_game_seat(
+            game_id, 0, alice_player,
+            crate::auth::game_seats::SeatOwner {
+                user_id: Some(alice), anon_user_id: None, is_bot: false,
+            },
+        ).unwrap();
+        store.insert_game_seat(
+            game_id, 1, bob_player,
+            crate::auth::game_seats::SeatOwner {
+                user_id: Some(bob), anon_user_id: None, is_bot: false,
+            },
+        ).unwrap();
+
+        // Lookups round-trip:
+        let s = store.game_seat(game_id, 0).unwrap().unwrap();
+        assert_eq!(s.seat_index, 0);
+        assert_eq!(s.user_id, Some(alice));
+        let s = store.game_seat_by_player_id(game_id, bob_player).unwrap().unwrap();
+        assert_eq!(s.seat_index, 1);
+
+        // Missing rows return None, not error:
+        assert!(store.game_seat(game_id, 2).unwrap().is_none());
+        assert!(store.game_seat_by_player_id(game_id, Uuid::new_v4()).unwrap().is_none());
+
+        // Update Bob's seat to anon ownership (e.g., he logged out mid-game).
+        let new_anon = Uuid::new_v4();
+        store.update_game_seat_owner(
+            game_id, 1,
+            crate::auth::game_seats::SeatOwner {
+                user_id: None, anon_user_id: Some(new_anon), is_bot: false,
+            },
+        ).unwrap();
+        let s = store.game_seat(game_id, 1).unwrap().unwrap();
+        assert_eq!(s.user_id, None);
+        assert_eq!(s.anon_user_id, Some(new_anon));
+
+        // Per-user pagination + count:
+        assert_eq!(store.count_game_seats_for_user(alice).unwrap(), 1);
+        assert_eq!(store.count_game_seats_for_user(bob).unwrap(), 0,
+                   "bob's seat ownership was transferred away");
+        let alice_seats = store.game_seats_for_user(alice, 10, 0).unwrap();
+        assert_eq!(alice_seats.len(), 1);
+        assert_eq!(alice_seats[0].game_id, game_id);
+        // Offset past the end is empty.
+        assert!(store.game_seats_for_user(alice, 10, 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn oauth_account_insert_and_find() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let alice = store.insert_user(&new_user("alice", "alice@x.com")).unwrap();
+
+        // No row before insertion.
+        assert!(store.find_oauth_account("google", "google-uid-123").unwrap().is_none());
+
+        store.insert_oauth_account("google", "google-uid-123", alice, "alice@x.com").unwrap();
+
+        // Round-trip works.
+        let found = store.find_oauth_account("google", "google-uid-123").unwrap();
+        assert_eq!(found, Some(alice));
+
+        // Unknown provider/uid still returns None.
+        assert!(store.find_oauth_account("github", "google-uid-123").unwrap().is_none());
+        assert!(store.find_oauth_account("google", "other-uid").unwrap().is_none());
+    }
+
+    #[test]
+    fn cleanup_expired_tokens_removes_expired_and_used_keeps_valid() {
+        // Three rows: one valid (1 hr in future, unused), one backdated to
+        // be expired, one consumed. Sweep removes the latter two and leaves
+        // the valid one untouched.
+        let store = SqliteStore::open(":memory:").unwrap();
+        let alice = store.insert_user(&new_user("alice", "alice@x.com")).unwrap();
+
+        store.insert_auth_token("hash-valid", alice, "verify_email", 3600).unwrap();
+        store.insert_auth_token("hash-expired", alice, "verify_email", 3600).unwrap();
+        store.insert_auth_token("hash-consumed", alice, "verify_email", 3600).unwrap();
+        // Backdate `hash-expired` by direct SQL — the public API only
+        // accepts non-negative TTLs.
+        store.with_tx(|conn| {
+            conn.execute(
+                "UPDATE auth_tokens SET expires_at = datetime('now', '-1 hour') WHERE token_hash = 'hash-expired'",
+                [],
+            ).map_err(|e| e.to_string())?;
+            Ok(())
+        }).unwrap();
+        store.consume_auth_token("hash-consumed", "verify_email").unwrap();
+
+        let removed = store.cleanup_expired_tokens().unwrap();
+        assert_eq!(removed, 2, "sweep removes expired + consumed");
+
+        // Consuming an already-swept token errors out (no row found).
+        assert!(store.consume_auth_token("hash-expired", "verify_email").is_err());
+        // The valid one still works.
+        assert!(store.consume_auth_token("hash-valid", "verify_email").is_ok());
+    }
+
+    #[test]
     fn with_tx_rolls_back_on_late_constraint_violation() {
         // Realistic atomicity case from the register flow: insert succeeds,
         // a later write inside the same tx violates a constraint, and the
