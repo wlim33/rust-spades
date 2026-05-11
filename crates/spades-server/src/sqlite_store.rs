@@ -14,6 +14,10 @@ impl SqliteStore {
         let conn = Connection::open(path).map_err(|e| e.to_string())?;
         conn.execute("PRAGMA foreign_keys = ON", []).map_err(|e| e.to_string())?;
         conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(())).map_err(|e| e.to_string())?;
+        // 5s budget for the writer lock instead of failing fast with SQLITE_BUSY.
+        // synchronous=NORMAL is safe under WAL and removes an fsync per commit.
+        conn.pragma_update(None, "busy_timeout", 5000_i64).map_err(|e| e.to_string())?;
+        conn.pragma_update(None, "synchronous", "NORMAL").map_err(|e| e.to_string())?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS games (
                 id TEXT PRIMARY KEY,
@@ -511,6 +515,25 @@ mod tests {
         let store = SqliteStore::open(":memory:").unwrap();
         let games = store.load_all_games().unwrap();
         assert!(games.is_empty());
+    }
+
+    #[test]
+    fn pragmas_applied_on_open() {
+        // Note: journal_mode=WAL is set in `open`, but `:memory:` databases
+        // silently fall back to `memory` mode (WAL needs file backing). We
+        // verify the file-agnostic pragmas here; journal_mode WAL is exercised
+        // implicitly by every real-disk run.
+        let store = SqliteStore::open(":memory:").unwrap();
+        let conn = store.conn.lock().unwrap_or_else(|p| p.into_inner());
+        let busy: i64 = conn
+            .pragma_query_value(None, "busy_timeout", |row| row.get(0))
+            .unwrap();
+        // synchronous returns the enum value: OFF=0, NORMAL=1, FULL=2, EXTRA=3
+        let sync: i64 = conn
+            .pragma_query_value(None, "synchronous", |row| row.get(0))
+            .unwrap();
+        assert_eq!(busy, 5000);
+        assert_eq!(sync, 1);
     }
 
     #[test]
