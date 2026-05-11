@@ -14,35 +14,35 @@
 
 ## Files this plan creates
 
-| Path | Responsibility |
-|---|---|
-| `package.json` | Project manifest, scripts, deps |
-| `pnpm-lock.yaml` | Locked dependency tree |
-| `tsconfig.json` | Strict TS for `src/` |
-| `tsconfig.node.json` | TS for Vite config and Node tooling |
-| `vite.config.ts` | Vite config, env injection |
-| `.eslintrc.cjs` | Lint config |
-| `.prettierrc.json` | Format config |
-| `.gitignore` | Standard ignores |
-| `.env.development` | `VITE_API_URL=http://localhost:3000` |
-| `.env.production` | `VITE_API_URL=https://spades.wlim.dev` |
-| `index.html` | Vite entry, mounts `<main id="root">` |
-| `src/main.ts` | Bootstraps router |
-| `src/router.ts` | `navaid` wrapper; `mount(routes)`, `navigate(path)` |
-| `src/lib/util.ts` | `navigateTo`, env helpers |
-| `src/ui/design.css` | CSS variables (color/space/radius/type), reset, base body |
-| `src/ui/templates.ts` | `appShell(children)` lit-html template (header + main slot) |
-| `src/ui/components/header.ts` | Site header (`Spades` title, placeholder sign-in slot) |
-| `src/ui/components/button.ts` | `button({ variant, onClick }, label)` lit-html template |
-| `src/routes/home.ts` | `render() → cleanup` — menu shell, buttons wired to `console.log` |
-| `src/routes/notfound.ts` | 404 |
-| `tests/unit/router.spec.ts` | Vitest unit test for the router wrapper |
-| `tests/component/home.spec.ts` | Component test asserting Home renders the four menu items |
-| `tests/e2e/smoke.spec.ts` | Playwright: open `/`, assert title and four menu buttons |
-| `playwright.config.ts` | Playwright config |
-| `vitest.config.ts` | Vitest config (workspaces: unit + component) |
-| `happydom.setup.ts` | Component test setup |
-| `README.md` | Minimal — repo purpose, dev workflow |
+| Path                           | Responsibility                                                    |
+| ------------------------------ | ----------------------------------------------------------------- |
+| `package.json`                 | Project manifest, scripts, deps                                   |
+| `pnpm-lock.yaml`               | Locked dependency tree                                            |
+| `tsconfig.json`                | Strict TS for `src/`                                              |
+| `tsconfig.node.json`           | TS for Vite config and Node tooling                               |
+| `vite.config.ts`               | Vite config, env injection                                        |
+| `.eslintrc.cjs`                | Lint config                                                       |
+| `.prettierrc.json`             | Format config                                                     |
+| `.gitignore`                   | Standard ignores                                                  |
+| `.env.development`             | `VITE_API_URL=http://localhost:3000`                              |
+| `.env.production`              | `VITE_API_URL=https://spades.wlim.dev`                            |
+| `index.html`                   | Vite entry, mounts `<main id="root">`                             |
+| `src/main.ts`                  | Bootstraps router                                                 |
+| `src/router.ts`                | `navaid` wrapper; `mount(routes)`, `navigate(path)`               |
+| `src/lib/util.ts`              | `navigateTo`, env helpers                                         |
+| `src/ui/design.css`            | CSS variables (color/space/radius/type), reset, base body         |
+| `src/ui/templates.ts`          | `appShell(children)` lit-html template (header + main slot)       |
+| `src/ui/components/header.ts`  | Site header (`Spades` title, placeholder sign-in slot)            |
+| `src/ui/components/button.ts`  | `button({ variant, onClick }, label)` lit-html template           |
+| `src/routes/home.ts`           | `render() → cleanup` — menu shell, buttons wired to `console.log` |
+| `src/routes/notfound.ts`       | 404                                                               |
+| `tests/unit/router.spec.ts`    | Vitest unit test for the router wrapper                           |
+| `tests/component/home.spec.ts` | Component test asserting Home renders the four menu items         |
+| `tests/e2e/smoke.spec.ts`      | Playwright: open `/`, assert title and four menu buttons          |
+| `playwright.config.ts`         | Playwright config                                                 |
+| `vitest.config.ts`             | Vitest config (workspaces: unit + component)                      |
+| `happydom.setup.ts`            | Component test setup                                              |
+| `README.md`                    | Minimal — repo purpose, dev workflow                              |
 
 No card/game/auth code in this plan.
 
@@ -51,6 +51,7 @@ No card/game/auth code in this plan.
 ## Task 1: Initialize the repo and tooling
 
 **Files:**
+
 - Create: `package.json`, `pnpm-lock.yaml`, `.gitignore`, `tsconfig.json`, `tsconfig.node.json`, `.eslintrc.cjs`, `.prettierrc.json`, `vite.config.ts`, `vitest.config.ts`, `playwright.config.ts`, `index.html`, `.env.development`, `.env.production`, `src/main.ts`, `src/ui/design.css`
 
 This task gets the project to "vite dev runs and serves an empty `#root`".
@@ -173,11 +174,7 @@ module.exports = {
   parser: '@typescript-eslint/parser',
   parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
   plugins: ['@typescript-eslint'],
-  extends: [
-    'eslint:recommended',
-    'plugin:@typescript-eslint/recommended',
-    'prettier',
-  ],
+  extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended', 'prettier'],
   ignorePatterns: ['dist', 'node_modules', 'coverage', 'playwright-report'],
   rules: {
     '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
@@ -201,11 +198,13 @@ module.exports = {
 - [ ] **Step 8: Create env files**
 
 `.env.development`:
+
 ```
 VITE_API_URL=http://localhost:3000
 ```
 
 `.env.production`:
+
 ```
 VITE_API_URL=https://spades.wlim.dev
 ```
@@ -275,16 +274,23 @@ export default defineConfig({
   --radius-md: 8px;
   --radius-lg: 12px;
 
-  --font-family-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-    Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  --font-family-sans:
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
+    'Open Sans', 'Helvetica Neue', sans-serif;
   --font-size-base: 1rem;
   --font-size-sm: 0.875rem;
   --font-size-lg: 1.125rem;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html, body { margin: 0; padding: 0; }
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
 
 body {
   font-family: var(--font-family-sans);
@@ -338,6 +344,7 @@ git commit -m "chore: scaffold vite + ts + lint + format"
 ## Task 2: Wire Vitest with unit + component projects
 
 **Files:**
+
 - Create: `vitest.config.ts`, `happydom.setup.ts`, `tests/unit/sanity.spec.ts`, `tests/component/sanity.spec.ts`
 
 Two Vitest "projects" so unit tests are fast (node env) and component tests get `happy-dom`.
@@ -383,6 +390,7 @@ export {};
 - [ ] **Step 3: Write sanity unit test**
 
 `tests/unit/sanity.spec.ts`:
+
 ```ts
 import { describe, it, expect } from 'vitest';
 
@@ -397,6 +405,7 @@ describe('sanity', () => {
 - [ ] **Step 4: Write sanity component test**
 
 `tests/component/sanity.spec.ts`:
+
 ```ts
 import { describe, it, expect } from 'vitest';
 
@@ -427,6 +436,7 @@ git commit -m "test: configure vitest unit + component projects"
 ## Task 3: Add Playwright with a placeholder smoke test
 
 **Files:**
+
 - Create: `playwright.config.ts`, `tests/e2e/smoke.spec.ts`
 
 The smoke test is intentionally trivial here — Task 6 will rewrite it once the Home route exists.
@@ -468,6 +478,7 @@ export default defineConfig({
 - [ ] **Step 3: Write placeholder smoke test**
 
 `tests/e2e/smoke.spec.ts`:
+
 ```ts
 import { test, expect } from '@playwright/test';
 
@@ -495,6 +506,7 @@ git commit -m "test: add playwright with smoke test"
 ## Task 4: Router wrapper with unit test
 
 **Files:**
+
 - Create: `src/router.ts`, `src/lib/util.ts`, `tests/unit/router.spec.ts`
 
 The router is responsible for: mapping a URL to a route module's `render` function, calling the previous route's `cleanup` before mounting the next, and re-rendering on `popstate`/`navigate`.
@@ -517,6 +529,7 @@ export function navigateTo(path: string): void {
 - [ ] **Step 2: Write failing router test**
 
 `tests/unit/router.spec.ts`:
+
 ```ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createRouter, type RouteModule } from '../../src/router';
@@ -622,7 +635,9 @@ export function createRouter(routes: Routes): Router {
 
   function runRoute(mod: RouteModule, params: Record<string, string>, fullPath: string): void {
     if (currentCleanup) currentCleanup();
-    const search = new URLSearchParams(fullPath.includes('?') ? fullPath.slice(fullPath.indexOf('?')) : '');
+    const search = new URLSearchParams(
+      fullPath.includes('?') ? fullPath.slice(fullPath.indexOf('?')) : '',
+    );
     currentCleanup = mod.render(params, { path: fullPath, search });
   }
 
@@ -662,6 +677,7 @@ git commit -m "feat: add router wrapper with cleanup semantics"
 ## Task 5: App shell + header + Home route
 
 **Files:**
+
 - Create: `src/ui/templates.ts`, `src/ui/components/header.ts`, `src/ui/components/button.ts`, `src/routes/home.ts`, `src/routes/notfound.ts`
 - Modify: `src/main.ts`
 
@@ -714,13 +730,15 @@ import { html, type TemplateResult } from 'lit-html';
 import { header } from './components/header';
 
 export function appShell(children: TemplateResult): TemplateResult {
-  return html`${header()}<section class="page">${children}</section>`;
+  return html`${header()}
+    <section class="page">${children}</section>`;
 }
 ```
 
 - [ ] **Step 4: Add minimal styles for shell + buttons to `src/ui/design.css`**
 
 Append:
+
 ```css
 .site-header {
   width: 100%;
@@ -728,8 +746,8 @@ Append:
   align-items: center;
   justify-content: space-between;
   padding: var(--space-3) var(--space-6);
-  border-bottom: 1px solid rgba(0,0,0,0.08);
-  background: rgba(255,255,255,0.4);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.4);
 }
 .site-title {
   font-weight: 600;
@@ -737,7 +755,10 @@ Append:
   color: var(--color-fg);
   text-decoration: none;
 }
-.site-nav { display: flex; gap: var(--space-3); }
+.site-nav {
+  display: flex;
+  gap: var(--space-3);
+}
 
 .page {
   width: 100%;
@@ -756,10 +777,22 @@ Append:
   font: inherit;
   cursor: pointer;
 }
-.btn--primary { background: var(--color-fg); color: white; }
-.btn--secondary { background: rgba(0,0,0,0.06); color: var(--color-fg); }
-.btn--danger { background: var(--color-danger); color: white; }
-.btn[disabled] { opacity: 0.5; cursor: default; }
+.btn--primary {
+  background: var(--color-fg);
+  color: white;
+}
+.btn--secondary {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--color-fg);
+}
+.btn--danger {
+  background: var(--color-danger);
+  color: white;
+}
+.btn[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
 
 .menu {
   display: flex;
@@ -923,6 +956,7 @@ git commit -m "feat: render home menu via lit-html + router"
 ## Task 6: Component test for Home
 
 **Files:**
+
 - Create: `tests/component/home.spec.ts`
 
 - [ ] **Step 1: Write the failing test**
@@ -996,6 +1030,7 @@ git commit -m "test: component test for home menu"
 ## Task 7: Rewrite the Playwright smoke test for the real Home view
 
 **Files:**
+
 - Modify: `tests/e2e/smoke.spec.ts`
 
 - [ ] **Step 1: Replace `tests/e2e/smoke.spec.ts`**
@@ -1042,11 +1077,12 @@ git commit -m "test: e2e smoke covers menu + 404"
 ## Task 8: README
 
 **Files:**
+
 - Create: `README.md`
 
 - [ ] **Step 1: Write `README.md`**
 
-```markdown
+````markdown
 # spades-ts
 
 TypeScript SPA front-end for the [rust-spades](https://github.com/wlim/rust-spades) game server.
@@ -1061,6 +1097,7 @@ Scaffold only. See `docs/superpowers/specs/2026-05-11-spades-ts-design.md` for t
 pnpm install
 pnpm dev        # http://localhost:5173
 ```
+````
 
 Requires a running rust-spades server at `VITE_API_URL` (defaults to `http://localhost:3000` in dev).
 
@@ -1072,29 +1109,31 @@ cargo run -p spades-server -- --port 3000 --insecure-cookies \
 
 ## Scripts
 
-| | |
-|---|---|
-| `pnpm dev` | Vite dev server |
-| `pnpm build` | Type-check + production build → `dist/` |
-| `pnpm preview` | Serve the production build locally |
-| `pnpm test` | Unit + component tests |
-| `pnpm test:e2e` | Playwright end-to-end tests |
-| `pnpm lint` | ESLint |
-| `pnpm format` | Prettier write |
-```
+|                 |                                         |
+| --------------- | --------------------------------------- |
+| `pnpm dev`      | Vite dev server                         |
+| `pnpm build`    | Type-check + production build → `dist/` |
+| `pnpm preview`  | Serve the production build locally      |
+| `pnpm test`     | Unit + component tests                  |
+| `pnpm test:e2e` | Playwright end-to-end tests             |
+| `pnpm lint`     | ESLint                                  |
+| `pnpm format`   | Prettier write                          |
+
+````
 
 - [ ] **Step 2: Commit**
 
 ```bash
 git add README.md
 git commit -m "docs: add readme"
-```
+````
 
 ---
 
 ## Self-review
 
 **Spec coverage (Phase 1 of the design doc):**
+
 - Vite + TS + lint + format → Task 1 ✓
 - Vitest unit + component → Task 2, Task 6 ✓
 - Playwright → Task 3, Task 7 ✓
@@ -1113,6 +1152,7 @@ git commit -m "docs: add readme"
 **Type consistency:** `RouteModule.render` returns `() => void` everywhere. Used identically in `home.ts`, `notfound.ts`, router test. `RouteContext` shape is `{ path, search }` in `router.ts`; `home.ts` and `notfound.ts` ignore it (params are `{}` for unparam routes). The component test for home passes `{ path: '/', search: new URLSearchParams() }` — matches.
 
 **Open caveats for the reviewer:**
+
 - I assumed `pnpm` as the package manager. If you prefer `npm`, drop `packageManager` from `package.json` and replace `pnpm` with `npm` in scripts/docs.
 - `noUncheckedIndexedAccess: true` is strict but recommended — flips the type of `array[i]` to `T | undefined`. Catches a class of bugs at the cost of more `if (x)` guards. Easy to turn off if it bites.
 - `eslint v9` uses the flat config by default; I'm using legacy `.eslintrc.cjs` because it's simpler and well-supported. If you want flat config later, easy migration.

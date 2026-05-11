@@ -17,49 +17,50 @@
 
 ## Files this plan creates or modifies
 
-| Path | Action | Responsibility |
-|---|---|---|
-| `openapi/openapi.json` | create | Committed snapshot |
-| `openapi/fetch.sh` | create | Refresh snapshot from a running server |
-| `openapi/generate.sh` | create | Run openapi-typescript → `src/api/schema.d.ts` |
-| `src/api/schema.d.ts` | generate | Generated; committed |
-| `src/api/client.ts` | create | openapi-fetch instance + `ApiError` |
-| `src/api/sse.ts` | create | SSE helper |
-| `src/api/ws.ts` | create | WS helper |
-| `src/api/hand-written.ts` | create | Empty after Phase 0; reserved for future use |
-| `src/state/helpers.ts` | create | Pure card/game helpers |
-| `src/state/game.ts` | create | `createGameStore()` |
-| `src/state/menu.ts` | create | Queue sizes signal + poller |
-| `src/cards/card-el.ts` | create | DOM factories |
-| `src/cards/animation.ts` | create | `animateTo`, easings |
-| `src/cards/hand-manager.ts` | create | Hand DOM subtrees |
-| `src/cards/trick-manager.ts` | create | Trick slots |
-| `src/cards/drag.ts` | create | Pointer-based drag |
-| `src/cards/orchestrator.ts` | create | Public surface, composes the above |
-| `src/lib/storage.ts` | create | Game-session localStorage |
-| `src/routes/play.ts` | create | Lobby + in-game + game-over |
-| `src/routes/home.ts` | modify | Replace `console.log` with real wiring |
-| `src/main.ts` | modify | Register `/play/:shortId` route |
-| `src/ui/design.css` | modify | Game-table layout + card classes |
-| `package.json` | modify | Add `openapi-fetch`, `openapi-typescript`, generate scripts |
-| `tests/unit/helpers.spec.ts` | create | All pure helpers |
-| `tests/unit/sse.spec.ts` | create | Parser |
-| `tests/unit/game-store.spec.ts` | create | applyState + applyWsEvent against fixtures |
-| `tests/unit/api-client.spec.ts` | create | ApiError wrapping |
-| `tests/component/card-el.spec.ts` | create | DOM factories |
-| `tests/component/hand-manager.spec.ts` | create | Mount/replace/unmount |
-| `tests/component/trick-manager.spec.ts` | create | Slot fill |
-| `tests/component/drag.spec.ts` | create | Pointer events |
-| `tests/e2e/ai-game.spec.ts` | create | Anonymous AI happy path + reload reconnect |
-| `tests/e2e/quickplay.spec.ts` | create | 4-context quickplay match |
-| `tests/e2e/friends.spec.ts` | create | Create challenge + 3 joins |
-| `tests/fixtures/ws-events/*.json` | create | Recorded WS payloads for game-store tests |
+| Path                                    | Action   | Responsibility                                              |
+| --------------------------------------- | -------- | ----------------------------------------------------------- |
+| `openapi/openapi.json`                  | create   | Committed snapshot                                          |
+| `openapi/fetch.sh`                      | create   | Refresh snapshot from a running server                      |
+| `openapi/generate.sh`                   | create   | Run openapi-typescript → `src/api/schema.d.ts`              |
+| `src/api/schema.d.ts`                   | generate | Generated; committed                                        |
+| `src/api/client.ts`                     | create   | openapi-fetch instance + `ApiError`                         |
+| `src/api/sse.ts`                        | create   | SSE helper                                                  |
+| `src/api/ws.ts`                         | create   | WS helper                                                   |
+| `src/api/hand-written.ts`               | create   | Empty after Phase 0; reserved for future use                |
+| `src/state/helpers.ts`                  | create   | Pure card/game helpers                                      |
+| `src/state/game.ts`                     | create   | `createGameStore()`                                         |
+| `src/state/menu.ts`                     | create   | Queue sizes signal + poller                                 |
+| `src/cards/card-el.ts`                  | create   | DOM factories                                               |
+| `src/cards/animation.ts`                | create   | `animateTo`, easings                                        |
+| `src/cards/hand-manager.ts`             | create   | Hand DOM subtrees                                           |
+| `src/cards/trick-manager.ts`            | create   | Trick slots                                                 |
+| `src/cards/drag.ts`                     | create   | Pointer-based drag                                          |
+| `src/cards/orchestrator.ts`             | create   | Public surface, composes the above                          |
+| `src/lib/storage.ts`                    | create   | Game-session localStorage                                   |
+| `src/routes/play.ts`                    | create   | Lobby + in-game + game-over                                 |
+| `src/routes/home.ts`                    | modify   | Replace `console.log` with real wiring                      |
+| `src/main.ts`                           | modify   | Register `/play/:shortId` route                             |
+| `src/ui/design.css`                     | modify   | Game-table layout + card classes                            |
+| `package.json`                          | modify   | Add `openapi-fetch`, `openapi-typescript`, generate scripts |
+| `tests/unit/helpers.spec.ts`            | create   | All pure helpers                                            |
+| `tests/unit/sse.spec.ts`                | create   | Parser                                                      |
+| `tests/unit/game-store.spec.ts`         | create   | applyState + applyWsEvent against fixtures                  |
+| `tests/unit/api-client.spec.ts`         | create   | ApiError wrapping                                           |
+| `tests/component/card-el.spec.ts`       | create   | DOM factories                                               |
+| `tests/component/hand-manager.spec.ts`  | create   | Mount/replace/unmount                                       |
+| `tests/component/trick-manager.spec.ts` | create   | Slot fill                                                   |
+| `tests/component/drag.spec.ts`          | create   | Pointer events                                              |
+| `tests/e2e/ai-game.spec.ts`             | create   | Anonymous AI happy path + reload reconnect                  |
+| `tests/e2e/quickplay.spec.ts`           | create   | 4-context quickplay match                                   |
+| `tests/e2e/friends.spec.ts`             | create   | Create challenge + 3 joins                                  |
+| `tests/fixtures/ws-events/*.json`       | create   | Recorded WS payloads for game-store tests                   |
 
 ---
 
 ## Task 1: Add openapi tooling and generate schema
 
 **Files:**
+
 - Modify: `package.json`
 - Create: `openapi/fetch.sh`, `openapi/generate.sh`, `openapi/openapi.json` (committed snapshot), `src/api/schema.d.ts` (generated, committed), `src/api/hand-written.ts`
 
@@ -71,6 +72,7 @@ Expected: both added; lockfile updated.
 - [ ] **Step 2: Add scripts to `package.json`**
 
 Replace the `"scripts"` block with:
+
 ```json
 {
   "dev": "vite",
@@ -147,11 +149,13 @@ git commit -m "build: add openapi tooling and generated schema"
 ## Task 2: API client (openapi-fetch wrapper + ApiError)
 
 **Files:**
+
 - Create: `src/api/client.ts`, `tests/unit/api-client.spec.ts`
 
 - [ ] **Step 1: Write failing test**
 
 `tests/unit/api-client.spec.ts`:
+
 ```ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ApiError, request } from '../../src/api/client';
@@ -164,11 +168,12 @@ describe('api client', () => {
   it('throws ApiError on 4xx with parsed JSON message', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        new Response(JSON.stringify({ error: 'bad name' }), {
-          status: 400,
-          headers: { 'content-type': 'application/json' },
-        }),
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: 'bad name' }), {
+            status: 400,
+            headers: { 'content-type': 'application/json' },
+          }),
       ),
     );
     await expect(request('/games/foo', { method: 'GET' })).rejects.toMatchObject({
@@ -180,11 +185,12 @@ describe('api client', () => {
   it('throws ApiError on 5xx with statusText fallback', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        new Response('boom', {
-          status: 503,
-          statusText: 'Service Unavailable',
-        }),
+      vi.fn(
+        async () =>
+          new Response('boom', {
+            status: 503,
+            statusText: 'Service Unavailable',
+          }),
       ),
     );
     await expect(request('/games/foo', { method: 'GET' })).rejects.toMatchObject({
@@ -196,11 +202,12 @@ describe('api client', () => {
   it('returns parsed JSON on 2xx', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }),
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
       ),
     );
     const data = await request<{ ok: boolean }>('/games/foo', { method: 'GET' });
@@ -208,7 +215,10 @@ describe('api client', () => {
   });
 
   it('sends credentials: include', async () => {
-    const spy = vi.fn(async () => new Response('null', { status: 200, headers: { 'content-type': 'application/json' } }));
+    const spy = vi.fn(
+      async () =>
+        new Response('null', { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
     vi.stubGlobal('fetch', spy);
     await request('/foo', { method: 'GET' });
     const init = spy.mock.calls[0]![1] as RequestInit;
@@ -294,11 +304,13 @@ git commit -m "feat: api client with ApiError + credentials:include"
 ## Task 3: SSE helper
 
 **Files:**
+
 - Create: `src/api/sse.ts`, `tests/unit/sse.spec.ts`
 
 - [ ] **Step 1: Write failing test**
 
 `tests/unit/sse.spec.ts`:
+
 ```ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { openSse } from '../../src/api/sse';
@@ -321,10 +333,15 @@ describe('openSse', () => {
   beforeEach(() => vi.unstubAllGlobals());
 
   it('parses event + data pairs across chunk boundaries', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => makeStreamingResponse([
-      'event: queue_status\ndata: {"waiti',
-      'ng":2}\n\nevent: game_start\ndata: {"game_id":"abc"}\n\n',
-    ])));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        makeStreamingResponse([
+          'event: queue_status\ndata: {"waiti',
+          'ng":2}\n\nevent: game_start\ndata: {"game_id":"abc"}\n\n',
+        ]),
+      ),
+    );
 
     const events: Array<{ type: string; data: string }> = [];
     await new Promise<void>((resolve) => {
@@ -345,15 +362,23 @@ describe('openSse', () => {
   });
 
   it('close() is idempotent and suppresses AbortError', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
-      const signal = (init as RequestInit).signal as AbortSignal;
-      const stream = new ReadableStream<Uint8Array>({
-        start(controller) {
-          signal.addEventListener('abort', () => controller.error(new DOMException('aborted', 'AbortError')));
-        },
-      });
-      return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url, init) => {
+        const signal = (init as RequestInit).signal as AbortSignal;
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            signal.addEventListener('abort', () =>
+              controller.error(new DOMException('aborted', 'AbortError')),
+            );
+          },
+        });
+        return new Response(stream, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        });
+      }),
+    );
 
     const errors: unknown[] = [];
     const sse = openSse('/x', undefined, {
@@ -386,11 +411,7 @@ export type SseOptions = {
   onError?: (err: unknown) => void;
 };
 
-export function openSse<Body>(
-  path: string,
-  body: Body | undefined,
-  opts: SseOptions,
-): SseHandle {
+export function openSse<Body>(path: string, body: Body | undefined, opts: SseOptions): SseHandle {
   const controller = new AbortController();
   let closed = false;
 
@@ -462,6 +483,7 @@ git commit -m "feat: typed SSE helper"
 ## Task 4: WS helper
 
 **Files:**
+
 - Create: `src/api/ws.ts`
 
 No unit test — WebSocket isn't ergonomic to test in happy-dom. Behavior is covered by E2E tests in later tasks. The wrapper is small enough that the type contract carries most of the weight.
@@ -487,11 +509,7 @@ export type WsOptions = {
  * Maintains an internal async queue so consumers can `await` per-event work
  * without dropping subsequent messages.
  */
-export function openGameWs(
-  gameId: string,
-  playerId: string | null,
-  opts: WsOptions,
-): WsHandle {
+export function openGameWs(gameId: string, playerId: string | null, opts: WsOptions): WsHandle {
   const wsUrl = `${API_URL.replace(/^https/, 'wss').replace(/^http/, 'ws')}/games/${encodeURIComponent(
     gameId,
   )}/ws${playerId ? `?player_id=${encodeURIComponent(playerId)}` : ''}`;
@@ -565,6 +583,7 @@ git commit -m "feat: typed WS helper with serialized event queue"
 ## Task 5: Pure state helpers
 
 **Files:**
+
 - Create: `src/state/helpers.ts`, `tests/unit/helpers.spec.ts`
 
 These match `personal-site/spades/index.html` lines 308-326 (`cardLabel`, `formatClock`, `sortCards`) and 451-705 (`getLeadSuit`, `isCardValid`, `seatName`, `oppCardCount`, etc.).
@@ -572,6 +591,7 @@ These match `personal-site/spades/index.html` lines 308-326 (`cardLabel`, `forma
 - [ ] **Step 1: Write failing tests**
 
 `tests/unit/helpers.spec.ts`:
+
 ```ts
 import { describe, it, expect } from 'vitest';
 import {
@@ -679,28 +699,70 @@ describe('isCardValid', () => {
   it('must follow lead suit if held', () => {
     const myHand: Card[] = [c('Heart', 'Two'), c('Spade', 'Ace')];
     expect(
-      isCardValid({ hand: myHand, leadSuit: 'Heart', spadesBroken: true, card: c('Spade', 'Ace'), isMyTurn: true, phase: 'PLAYING' }),
+      isCardValid({
+        hand: myHand,
+        leadSuit: 'Heart',
+        spadesBroken: true,
+        card: c('Spade', 'Ace'),
+        isMyTurn: true,
+        phase: 'PLAYING',
+      }),
     ).toBe(false);
     expect(
-      isCardValid({ hand: myHand, leadSuit: 'Heart', spadesBroken: true, card: c('Heart', 'Two'), isMyTurn: true, phase: 'PLAYING' }),
+      isCardValid({
+        hand: myHand,
+        leadSuit: 'Heart',
+        spadesBroken: true,
+        card: c('Heart', 'Two'),
+        isMyTurn: true,
+        phase: 'PLAYING',
+      }),
     ).toBe(true);
   });
   it('any suit if void in lead suit', () => {
     const myHand: Card[] = [c('Diamond', 'Two')];
     expect(
-      isCardValid({ hand: myHand, leadSuit: 'Heart', spadesBroken: false, card: c('Diamond', 'Two'), isMyTurn: true, phase: 'PLAYING' }),
+      isCardValid({
+        hand: myHand,
+        leadSuit: 'Heart',
+        spadesBroken: false,
+        card: c('Diamond', 'Two'),
+        isMyTurn: true,
+        phase: 'PLAYING',
+      }),
     ).toBe(true);
   });
   it('cannot lead spade unless broken or hand is spades-only', () => {
     const myHand: Card[] = [c('Spade', 'Ace'), c('Heart', 'Two')];
     expect(
-      isCardValid({ hand: myHand, leadSuit: null, spadesBroken: false, card: c('Spade', 'Ace'), isMyTurn: true, phase: 'PLAYING' }),
+      isCardValid({
+        hand: myHand,
+        leadSuit: null,
+        spadesBroken: false,
+        card: c('Spade', 'Ace'),
+        isMyTurn: true,
+        phase: 'PLAYING',
+      }),
     ).toBe(false);
     expect(
-      isCardValid({ hand: myHand, leadSuit: null, spadesBroken: true, card: c('Spade', 'Ace'), isMyTurn: true, phase: 'PLAYING' }),
+      isCardValid({
+        hand: myHand,
+        leadSuit: null,
+        spadesBroken: true,
+        card: c('Spade', 'Ace'),
+        isMyTurn: true,
+        phase: 'PLAYING',
+      }),
     ).toBe(true);
     expect(
-      isCardValid({ hand: [c('Spade', 'Ace')], leadSuit: null, spadesBroken: false, card: c('Spade', 'Ace'), isMyTurn: true, phase: 'PLAYING' }),
+      isCardValid({
+        hand: [c('Spade', 'Ace')],
+        leadSuit: null,
+        spadesBroken: false,
+        card: c('Spade', 'Ace'),
+        isMyTurn: true,
+        phase: 'PLAYING',
+      }),
     ).toBe(true);
   });
 });
@@ -713,7 +775,9 @@ describe('oppCardCount', () => {
     expect(oppCardCount('MENU', null, [null, null, null, null], 1)).toBe(0);
   });
   it('decrements for played card at the seat', () => {
-    expect(oppCardCount('PLAYING', { Trick: 3 }, [null, c('Spade', 'Two'), null, null], 1)).toBe(13 - 3 - 1);
+    expect(oppCardCount('PLAYING', { Trick: 3 }, [null, c('Spade', 'Two'), null, null], 1)).toBe(
+      13 - 3 - 1,
+    );
   });
 });
 ```
@@ -728,24 +792,39 @@ Expected: FAIL — `src/state/helpers.ts` not found.
 ```ts
 export type Suit = 'Spade' | 'Heart' | 'Diamond' | 'Club';
 export type Rank =
-  | 'Two' | 'Three' | 'Four' | 'Five' | 'Six' | 'Seven'
-  | 'Eight' | 'Nine' | 'Ten' | 'Jack' | 'Queen' | 'King' | 'Ace';
+  | 'Two'
+  | 'Three'
+  | 'Four'
+  | 'Five'
+  | 'Six'
+  | 'Seven'
+  | 'Eight'
+  | 'Nine'
+  | 'Ten'
+  | 'Jack'
+  | 'Queen'
+  | 'King'
+  | 'Ace';
 
 export type Card = { suit: Suit; rank: Rank };
 
-export type Phase =
-  | 'MENU'
-  | 'CREATE'
-  | 'WAITING'
-  | 'LOBBY'
-  | 'BETTING'
-  | 'PLAYING'
-  | 'GAME_OVER';
+export type Phase = 'MENU' | 'CREATE' | 'WAITING' | 'LOBBY' | 'BETTING' | 'PLAYING' | 'GAME_OVER';
 
 const SUIT_ORDER: Suit[] = ['Spade', 'Heart', 'Diamond', 'Club'];
 const RANK_ORDER: Rank[] = [
-  'Two', 'Three', 'Four', 'Five', 'Six', 'Seven',
-  'Eight', 'Nine', 'Ten', 'Jack', 'Queen', 'King', 'Ace',
+  'Two',
+  'Three',
+  'Four',
+  'Five',
+  'Six',
+  'Seven',
+  'Eight',
+  'Nine',
+  'Ten',
+  'Jack',
+  'Queen',
+  'King',
+  'Ace',
 ];
 
 export function cardEq(a: Card | null | undefined, b: Card | null | undefined): boolean {
@@ -764,7 +843,7 @@ export function sortCards(cards: readonly Card[]): Card[] {
 export type RelativeSeat = 'south' | 'east' | 'north' | 'west';
 
 export function seatRel(absIdx: number, myIdx: number): RelativeSeat {
-  const rel = ((absIdx - myIdx) % 4 + 4) % 4;
+  const rel = (((absIdx - myIdx) % 4) + 4) % 4;
   return (['south', 'east', 'north', 'west'] as const)[rel]!;
 }
 
@@ -792,7 +871,7 @@ export function getLeadSuit(
     if (c && (c as { suit?: string }).suit !== 'Blank') n++;
   }
   if (n === 0) return null;
-  const leaderSeat = ((currentPlayerSeatIdx - n) % 4 + 4) % 4;
+  const leaderSeat = (((currentPlayerSeatIdx - n) % 4) + 4) % 4;
   const leadCard = tableCards[leaderSeat];
   return leadCard ? leadCard.suit : null;
 }
@@ -817,9 +896,7 @@ export function isCardValid(args: {
   return args.card.suit !== 'Spade';
 }
 
-type GameStateValue =
-  | string
-  | { Betting?: number; Trick?: number; Completed?: unknown };
+type GameStateValue = string | { Betting?: number; Trick?: number; Completed?: unknown };
 
 export function oppCardCount(
   phase: Phase,
@@ -857,11 +934,13 @@ git commit -m "feat: pure state helpers (sort, validate, lead suit, etc.)"
 ## Task 6: Card DOM factories + animation primitive
 
 **Files:**
+
 - Create: `src/cards/card-el.ts`, `src/cards/animation.ts`, `tests/component/card-el.spec.ts`, `tests/unit/animation.spec.ts`
 
 - [ ] **Step 1: Write failing component test for card-el**
 
 `tests/component/card-el.spec.ts`:
+
 ```ts
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createFront, createBack, setFront } from '../../src/cards/card-el';
@@ -901,6 +980,7 @@ describe('card-el', () => {
 - [ ] **Step 2: Write failing unit test for animation**
 
 `tests/unit/animation.spec.ts`:
+
 ```ts
 import { describe, it, expect } from 'vitest';
 import { EASE } from '../../src/cards/animation';
@@ -934,8 +1014,19 @@ import type { Card } from '../state/helpers';
 
 const SUIT_SYMBOL = { Spade: '♠', Heart: '♥', Diamond: '♦', Club: '♣' } as const;
 const RANK_DISPLAY = {
-  Two: '2', Three: '3', Four: '4', Five: '5', Six: '6', Seven: '7',
-  Eight: '8', Nine: '9', Ten: '10', Jack: 'J', Queen: 'Q', King: 'K', Ace: 'A',
+  Two: '2',
+  Three: '3',
+  Four: '4',
+  Five: '5',
+  Six: '6',
+  Seven: '7',
+  Eight: '8',
+  Nine: '9',
+  Ten: '10',
+  Jack: 'J',
+  Queen: 'Q',
+  King: 'K',
+  Ace: 'A',
 } as const;
 const SUIT_COLOR = { Spade: 'black', Heart: 'red', Diamond: 'red', Club: 'black' } as const;
 
@@ -1048,6 +1139,7 @@ git commit -m "feat: card DOM factories + animate-to primitive"
 ## Task 7: HandManager
 
 **Files:**
+
 - Create: `src/cards/hand-manager.ts`, `tests/component/hand-manager.spec.ts`
 
 This is the south/north/east/west hand DOM ownership. Owns mount/replace/unmount; does not animate. Source reference: `card-manager.js` lines 193-242 + 572-595 (initial setup).
@@ -1055,6 +1147,7 @@ This is the south/north/east/west hand DOM ownership. Owns mount/replace/unmount
 - [ ] **Step 1: Write failing component test**
 
 `tests/component/hand-manager.spec.ts`:
+
 ```ts
 import { describe, it, expect, beforeEach } from 'vitest';
 import { HandManager } from '../../src/cards/hand-manager';
@@ -1240,6 +1333,7 @@ git commit -m "feat: HandManager for player + opponent DOM"
 ## Task 8: TrickManager
 
 **Files:**
+
 - Create: `src/cards/trick-manager.ts`, `tests/component/trick-manager.spec.ts`
 
 Owns the 4-slot trick layout. Source reference: `card-manager.js` lines 149-175.
@@ -1247,6 +1341,7 @@ Owns the 4-slot trick layout. Source reference: `card-manager.js` lines 149-175.
 - [ ] **Step 1: Write failing test**
 
 `tests/component/trick-manager.spec.ts`:
+
 ```ts
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TrickManager } from '../../src/cards/trick-manager';
@@ -1377,6 +1472,7 @@ git commit -m "feat: TrickManager owns the 4-slot trick layout"
 ## Task 9: Drag controller
 
 **Files:**
+
 - Create: `src/cards/drag.ts`, `tests/component/drag.spec.ts`
 
 Pointer-based drag with a "drag-up threshold or click = play" gesture. Source reference: `card-manager.js` lines 430-543.
@@ -1384,6 +1480,7 @@ Pointer-based drag with a "drag-up threshold or click = play" gesture. Source re
 - [ ] **Step 1: Write failing test**
 
 `tests/component/drag.spec.ts`:
+
 ```ts
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { attachDrag } from '../../src/cards/drag';
@@ -1398,7 +1495,8 @@ describe('attachDrag', () => {
   let onPlay: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    document.body.innerHTML = '<div id="parent"><div id="card" style="width:50px;height:70px"></div></div>';
+    document.body.innerHTML =
+      '<div id="parent"><div id="card" style="width:50px;height:70px"></div></div>';
     parent = document.getElementById('parent')!;
     el = document.getElementById('card')!;
     onPlay = vi.fn();
@@ -1442,7 +1540,9 @@ describe('attachDrag', () => {
     pointer(el, 'pointerdown', { clientX: 0, clientY: 0 });
     pointer(el, 'pointermove', { clientX: 0, clientY: -80 });
     pointer(el, 'pointerup', { clientX: 0, clientY: -80 });
-    expect(onPlay).toHaveBeenCalledWith(expect.objectContaining({ width: expect.any(Number), height: expect.any(Number) }));
+    expect(onPlay).toHaveBeenCalledWith(
+      expect.objectContaining({ width: expect.any(Number), height: expect.any(Number) }),
+    );
   });
 });
 ```
@@ -1564,6 +1664,7 @@ git commit -m "feat: pointer-based drag controller"
 ## Task 10: Card orchestrator (glue layer)
 
 **Files:**
+
 - Create: `src/cards/orchestrator.ts`
 
 The orchestrator's public surface matches the existing `CardManager` so `routes/play.ts` reads like the current Alpine component's calls. Composition: `HandManager` + `TrickManager` + `attachDrag` + `animateTo`.
@@ -1632,8 +1733,10 @@ export class CardOrchestrator {
       [args.eastIdx]: 'east',
     };
     this.trick.clear();
-    const n = args.tableCards.filter((tc) => tc && (tc as { suit?: string }).suit !== 'Blank').length;
-    const leaderSeat = ((args.currentPlayerSeatIdx - n) % 4 + 4) % 4;
+    const n = args.tableCards.filter(
+      (tc) => tc && (tc as { suit?: string }).suit !== 'Blank',
+    ).length;
+    const leaderSeat = (((args.currentPlayerSeatIdx - n) % 4) + 4) % 4;
     for (let i = 0; i < 4; i++) {
       const absIdx = (leaderSeat + i) % 4;
       const tc = args.tableCards[absIdx];
@@ -1720,10 +1823,17 @@ export class CardOrchestrator {
       });
 
       // Absolutely position all slots so layout doesn't shift during fade
-      const allSlots = [0, 1, 2, 3].map((i) => this.trick.slotEl(i)).filter((x): x is CardEl => !!x);
+      const allSlots = [0, 1, 2, 3]
+        .map((i) => this.trick.slotEl(i))
+        .filter((x): x is CardEl => !!x);
       const allPositions = allSlots.map((el) => {
         const r = el.getBoundingClientRect();
-        return { left: r.left - containerRect.left, top: r.top - containerRect.top, width: r.width, height: r.height };
+        return {
+          left: r.left - containerRect.left,
+          top: r.top - containerRect.top,
+          width: r.width,
+          height: r.height,
+        };
       });
       allSlots.forEach((el, i) => {
         el.style.position = 'absolute';
@@ -1860,11 +1970,13 @@ git commit -m "feat: CardOrchestrator glues hand/trick/drag/animation"
 ## Task 11: localStorage helper for game sessions
 
 **Files:**
+
 - Create: `src/lib/storage.ts`, `tests/unit/storage.spec.ts`
 
 - [ ] **Step 1: Write failing test**
 
 `tests/unit/storage.spec.ts`:
+
 ```ts
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { saveSession, loadSession, clearSession } from '../../src/lib/storage';
@@ -1961,6 +2073,7 @@ git commit -m "feat: localStorage helper for game sessions"
 ## Task 12: Game store with fixture-driven tests
 
 **Files:**
+
 - Create: `src/state/game.ts`, `tests/fixtures/ws-events/{betting,trick,trick-complete,completed}.json`, `tests/unit/game-store.spec.ts`
 
 The store is the most consequential pure module. Cover `applyState` for the three live phases (BETTING, PLAYING mid-trick, GAME_OVER) and `applyPresence`. `applyWsEvent` is exercised via the same payloads — it dispatches to either `applyState` (for `StateChanged`) or a presence update.
@@ -2056,6 +2169,7 @@ You'll create the fixtures by running rust-spades against a recorded game and ca
 - [ ] **Step 4: Write failing test**
 
 `tests/unit/game-store.spec.ts`:
+
 ```ts
 import { describe, it, expect } from 'vitest';
 import { createGameStore } from '../../src/state/game';
@@ -2123,9 +2237,7 @@ import { signal, type Signal } from '@preact/signals-core';
 import type { Card, Phase, Suit } from './helpers';
 import { getLeadSuit } from './helpers';
 
-export type GameStateValue =
-  | string
-  | { Betting?: number; Trick?: number; Completed?: unknown };
+export type GameStateValue = string | { Betting?: number; Trick?: number; Completed?: unknown };
 
 export type PlayerNameEntry = { player_id: string; name: string | null };
 export type TimerConfig = { initial_time_secs: number; increment_secs: number } | null;
@@ -2313,6 +2425,7 @@ git commit -m "feat: signal-based game store + fixture tests"
 ## Task 13: Menu queue-sizes signal
 
 **Files:**
+
 - Create: `src/state/menu.ts`
 
 - [ ] **Step 1: Implement `src/state/menu.ts`**
@@ -2378,6 +2491,7 @@ git commit -m "feat: queue-sizes signal + polling"
 ## Task 14: Play route — AI / Computers happy path
 
 **Files:**
+
 - Create: `src/routes/play.ts`, `src/ui/components/scores.ts`, `src/ui/components/game-table.ts`
 - Modify: `src/main.ts`, `src/routes/home.ts`, `src/ui/design.css`
 
@@ -2388,13 +2502,14 @@ The route is large because it owns the entire in-game template plus the boot/rec
 - [ ] **Step 1: Add game-table styles to `src/ui/design.css`**
 
 Append:
+
 ```css
 .card {
   width: 46px;
   height: 64px;
   border-radius: var(--radius-sm);
   background: white;
-  border: 1px solid rgba(0,0,0,0.15);
+  border: 1px solid rgba(0, 0, 0, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2403,34 +2518,82 @@ Append:
   user-select: none;
   position: relative;
 }
-.card-red { color: var(--color-card-red); }
-.card-black { color: var(--color-card-black); }
-.card-back { background: repeating-linear-gradient(45deg, #2a9d8f, #2a9d8f 4px, #1f7e74 4px, #1f7e74 8px); }
-.trick-placeholder { background: transparent; border: 1px dashed rgba(0,0,0,0.15); }
-.card.dragging { position: fixed; z-index: 999; }
-.card-will-play { box-shadow: 0 -4px 12px rgba(42,157,143,0.4); }
-.cm-clickable { cursor: pointer; }
-.card-placeholder { opacity: 0; }
+.card-red {
+  color: var(--color-card-red);
+}
+.card-black {
+  color: var(--color-card-black);
+}
+.card-back {
+  background: repeating-linear-gradient(45deg, #2a9d8f, #2a9d8f 4px, #1f7e74 4px, #1f7e74 8px);
+}
+.trick-placeholder {
+  background: transparent;
+  border: 1px dashed rgba(0, 0, 0, 0.15);
+}
+.card.dragging {
+  position: fixed;
+  z-index: 999;
+}
+.card-will-play {
+  box-shadow: 0 -4px 12px rgba(42, 157, 143, 0.4);
+}
+.cm-clickable {
+  cursor: pointer;
+}
+.card-placeholder {
+  opacity: 0;
+}
 
 .spades-table {
   display: grid;
   grid-template-columns: 1fr 2fr 1fr;
   grid-template-rows: auto 1fr auto;
-  grid-template-areas: "north north north" "west center east" "south south south";
+  grid-template-areas: 'north north north' 'west center east' 'south south south';
   gap: var(--space-3);
   width: 100%;
   max-width: 720px;
   min-height: 480px;
 }
-.seat-north { grid-area: north; justify-self: center; }
-.seat-south { grid-area: south; justify-self: center; }
-.seat-west  { grid-area: west;  align-self: center; }
-.seat-east  { grid-area: east;  align-self: center; justify-self: end; }
-.spades-table-center { grid-area: center; display: flex; align-items: center; justify-content: center; }
+.seat-north {
+  grid-area: north;
+  justify-self: center;
+}
+.seat-south {
+  grid-area: south;
+  justify-self: center;
+}
+.seat-west {
+  grid-area: west;
+  align-self: center;
+}
+.seat-east {
+  grid-area: east;
+  align-self: center;
+  justify-self: end;
+}
+.spades-table-center {
+  grid-area: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
-.card-container { display: flex; gap: 2px; flex-wrap: wrap; justify-content: center; }
-.hand-container { gap: 4px; }
-.trick-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-2); min-width: 240px; }
+.card-container {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.hand-container {
+  gap: 4px;
+}
+.trick-container {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+  min-width: 240px;
+}
 
 .spades-scores {
   display: flex;
@@ -2441,8 +2604,14 @@ Append:
   padding: var(--space-3) 0;
   font-size: var(--font-size-sm);
 }
-.spades-score-team { display: flex; flex-direction: column; align-items: flex-start; }
-.spades-scores-center { color: var(--color-muted); }
+.spades-score-team {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.spades-scores-center {
+  color: var(--color-muted);
+}
 
 .spades-bets {
   display: grid;
@@ -2452,7 +2621,9 @@ Append:
   width: 100%;
   max-width: 480px;
 }
-.spades-bet { padding: var(--space-2); }
+.spades-bet {
+  padding: var(--space-2);
+}
 ```
 
 - [ ] **Step 2: Create `src/ui/components/scores.ts`**
@@ -2543,7 +2714,9 @@ export function gameTable(args: {
     ${seat('seat-east', args.east, args.refs.east)}
     <div class="spades-seat seat-south${args.south.active ? ' active' : ''}">
       <span class="spades-seat-label">${args.south.connected ? '● ' : '○ '}${args.south.name}</span>
-      ${args.south.clockText ? html`<span class="spades-clock">${args.south.clockText}</span>` : null}
+      ${args.south.clockText
+        ? html`<span class="spades-clock">${args.south.clockText}</span>`
+        : null}
       <span class="spades-seat-info">${args.south.betInfo}</span>
       <div class="card-container hand-container" ${ref(args.refs.hand)}></div>
     </div>
@@ -2591,25 +2764,34 @@ function disposeResources(r: Resources): void {
   r.cleanups = [];
 }
 
-async function startAIGame(shortIdHint: string | null): Promise<{ gameId: string; playerId: string; shortId: string }> {
+async function startAIGame(
+  shortIdHint: string | null,
+): Promise<{ gameId: string; playerId: string; shortId: string }> {
   // POST /games with max_points + num_humans=1
   // openapi-fetch typing for this route is set up by Phase 0; if not present yet, use `request`.
   const created = await request<{ game_id: string; player_ids: string[] }>('/games', {
     method: 'POST',
     body: JSON.stringify({ max_points: 500, num_humans: 1 }),
   });
-  const state = await request<{ short_id?: string | null }>(`/games/${created.game_id}`, { method: 'GET' });
+  const state = await request<{ short_id?: string | null }>(`/games/${created.game_id}`, {
+    method: 'GET',
+  });
   const shortId = state.short_id ?? shortIdHint ?? created.game_id;
   return { gameId: created.game_id, playerId: created.player_ids[0]!, shortId };
 }
 
-async function bootFromUrl(shortId: string, resources: Resources): Promise<{ store: GameStore; gameId: string; playerId: string } | { error: string }> {
+async function bootFromUrl(
+  shortId: string,
+  resources: Resources,
+): Promise<{ store: GameStore; gameId: string; playerId: string } | { error: string }> {
   // 1. localStorage
   const saved = loadSession(shortId);
   if (saved) {
     try {
       const state = await request<never>(`/games/${saved.gid}`, { method: 'GET' });
-      const hand = await request<never>(`/games/${saved.gid}/players/${saved.pid}/hand`, { method: 'GET' });
+      const hand = await request<never>(`/games/${saved.gid}/players/${saved.pid}/hand`, {
+        method: 'GET',
+      });
       const store = createGameStore(saved.pid);
       store.applyState(state, hand);
       try {
@@ -2706,13 +2888,13 @@ function renderInGame(args: {
         ? store.teamAScore.value === store.teamBScore.value
           ? "It's a tie!"
           : store.teamAScore.value > store.teamBScore.value
-          ? 'Team A wins!'
-          : 'Team B wins!'
+            ? 'Team A wins!'
+            : 'Team B wins!'
         : store.phase.value === 'BETTING'
-        ? isMyTurn
-          ? 'Place your bet!'
-          : `Waiting for ${seatName(store.playerIds.value.indexOf(store.currentPlayerId.value ?? ''))}…`
-        : '';
+          ? isMyTurn
+            ? 'Place your bet!'
+            : `Waiting for ${seatName(store.playerIds.value.indexOf(store.currentPlayerId.value ?? ''))}…`
+          : '';
 
     const playAgain =
       store.phase.value === 'GAME_OVER'
@@ -2733,54 +2915,62 @@ function renderInGame(args: {
         teamABags: store.teamABags.value,
         teamBBags: store.teamBBags.value,
         myTeam: teamA,
-        centerText: store.phase.value === 'PLAYING' ? `Trick ${
-          typeof store.gameState.value === 'object' && store.gameState.value && 'Trick' in store.gameState.value
-            ? (store.gameState.value as { Trick: number }).Trick
-            : 0
-        }/13` : '',
+        centerText:
+          store.phase.value === 'PLAYING'
+            ? `Trick ${
+                typeof store.gameState.value === 'object' &&
+                store.gameState.value &&
+                'Trick' in store.gameState.value
+                  ? (store.gameState.value as { Trick: number }).Trick
+                  : 0
+              }/13`
+            : '',
       })}
       ${gameTable({
         north: {
           name: seatName(north),
           active: store.playerIds.value[north] === store.currentPlayerId.value,
           connected: store.playerConnected.value[north] ?? true,
-          betInfo: store.playerBets.value[north] != null
-            ? `Bet ${store.playerBets.value[north]} / Won ${store.playerTricksWon.value[north]}`
-            : '',
+          betInfo:
+            store.playerBets.value[north] != null
+              ? `Bet ${store.playerBets.value[north]} / Won ${store.playerTricksWon.value[north]}`
+              : '',
           clockText: null,
         },
         west: {
           name: seatName(west),
           active: store.playerIds.value[west] === store.currentPlayerId.value,
           connected: store.playerConnected.value[west] ?? true,
-          betInfo: store.playerBets.value[west] != null
-            ? `Bet ${store.playerBets.value[west]} / Won ${store.playerTricksWon.value[west]}`
-            : '',
+          betInfo:
+            store.playerBets.value[west] != null
+              ? `Bet ${store.playerBets.value[west]} / Won ${store.playerTricksWon.value[west]}`
+              : '',
           clockText: null,
         },
         east: {
           name: seatName(east),
           active: store.playerIds.value[east] === store.currentPlayerId.value,
           connected: store.playerConnected.value[east] ?? true,
-          betInfo: store.playerBets.value[east] != null
-            ? `Bet ${store.playerBets.value[east]} / Won ${store.playerTricksWon.value[east]}`
-            : '',
+          betInfo:
+            store.playerBets.value[east] != null
+              ? `Bet ${store.playerBets.value[east]} / Won ${store.playerTricksWon.value[east]}`
+              : '',
           clockText: null,
         },
         south: {
           name: seatName(i),
           active: store.playerIds.value[i] === store.currentPlayerId.value,
           connected: store.playerConnected.value[i] ?? true,
-          betInfo: store.playerBets.value[i] != null
-            ? `Bet ${store.playerBets.value[i]} / Won ${store.playerTricksWon.value[i]}`
-            : '',
+          betInfo:
+            store.playerBets.value[i] != null
+              ? `Bet ${store.playerBets.value[i]} / Won ${store.playerTricksWon.value[i]}`
+              : '',
           clockText: null,
         },
         centerText,
         refs,
       })}
-      ${betButtons()}
-      ${playAgain}
+      ${betButtons()} ${playAgain}
     `);
   };
 
@@ -2822,17 +3012,27 @@ function renderInGame(args: {
         northIdx: (i + 2) % 4,
         westIdx: (i + 3) % 4,
         eastIdx: (i + 1) % 4,
-        currentPlayerSeatIdx: store.playerIds.value.indexOf(currentPlayerId ?? '') >= 0
-          ? store.playerIds.value.indexOf(currentPlayerId ?? '')
-          : 0,
+        currentPlayerSeatIdx:
+          store.playerIds.value.indexOf(currentPlayerId ?? '') >= 0
+            ? store.playerIds.value.indexOf(currentPlayerId ?? '')
+            : 0,
       });
     }
 
     if (orchestrator.isInitialized()) {
       orchestrator.updatePlayerHand(sortCards(hand));
-      orchestrator.updateOpponentCount('north', oppCardCount(phase, store.gameState.value, tableCards, (i + 2) % 4));
-      orchestrator.updateOpponentCount('west', oppCardCount(phase, store.gameState.value, tableCards, (i + 3) % 4));
-      orchestrator.updateOpponentCount('east', oppCardCount(phase, store.gameState.value, tableCards, (i + 1) % 4));
+      orchestrator.updateOpponentCount(
+        'north',
+        oppCardCount(phase, store.gameState.value, tableCards, (i + 2) % 4),
+      );
+      orchestrator.updateOpponentCount(
+        'west',
+        oppCardCount(phase, store.gameState.value, tableCards, (i + 3) % 4),
+      );
+      orchestrator.updateOpponentCount(
+        'east',
+        oppCardCount(phase, store.gameState.value, tableCards, (i + 1) % 4),
+      );
     }
 
     // Interaction
@@ -2844,7 +3044,7 @@ function renderInGame(args: {
         let n = 0;
         for (const c of tableCards) if (c && (c as { suit?: string }).suit !== 'Blank') n++;
         if (n === 0) return null;
-        const leaderSeat = ((currentSeat - n) % 4 + 4) % 4;
+        const leaderSeat = (((currentSeat - n) % 4) + 4) % 4;
         return tableCards[leaderSeat]?.suit ?? null;
       })();
       const validCards = sortCards(hand).filter((card) =>
@@ -2884,10 +3084,14 @@ function renderInGame(args: {
 async function pollOnce(store: GameStore, gameId: string, playerId: string): Promise<void> {
   try {
     const state = await request<never>(`/games/${gameId}`, { method: 'GET' });
-    const hand = await request<never>(`/games/${gameId}/players/${playerId}/hand`, { method: 'GET' });
+    const hand = await request<never>(`/games/${gameId}/players/${playerId}/hand`, {
+      method: 'GET',
+    });
     store.applyState(state, hand);
     try {
-      const presence = await request<{ players: never[] }>(`/games/${gameId}/presence`, { method: 'GET' });
+      const presence = await request<{ players: never[] }>(`/games/${gameId}/presence`, {
+        method: 'GET',
+      });
       store.applyPresence(presence.players);
     } catch {
       // optional
@@ -2929,7 +3133,13 @@ export const play: RouteModule<{ shortId: string }> = {
 
       const result = await bootFromUrl(params.shortId, resources);
       if ('error' in result) {
-        render(appShell(html`<p>${result.error}</p><p><a href="/" data-link>Back home</a></p>`), root);
+        render(
+          appShell(
+            html`<p>${result.error}</p>
+              <p><a href="/" data-link>Back home</a></p>`,
+          ),
+          root,
+        );
         return;
       }
       store = result.store;
@@ -2948,10 +3158,9 @@ export const play: RouteModule<{ shortId: string }> = {
           // Hand update is needed too; fetch lazily.
           void (async () => {
             try {
-              const hand = await request<never>(
-                `/games/${gameId}/players/${playerId}/hand`,
-                { method: 'GET' },
-              );
+              const hand = await request<never>(`/games/${gameId}/players/${playerId}/hand`, {
+                method: 'GET',
+              });
               store!.applyState(wsData, hand);
             } catch {
               // ignore
@@ -2960,7 +3169,10 @@ export const play: RouteModule<{ shortId: string }> = {
         },
         onClose: () => {
           if (store!.phase.value !== 'GAME_OVER') {
-            resources.pollTimer = setInterval(() => void pollOnce(store!, gameId, playerId), POLL_INTERVAL);
+            resources.pollTimer = setInterval(
+              () => void pollOnce(store!, gameId, playerId),
+              POLL_INTERVAL,
+            );
           }
         },
       });
@@ -2974,6 +3186,7 @@ export const play: RouteModule<{ shortId: string }> = {
 - [ ] **Step 5: Wire `play` route in `src/main.ts`**
 
 Replace the routes object:
+
 ```ts
 import { play } from './routes/play';
 // ...
@@ -2987,6 +3200,7 @@ const router = createRouter({
 - [ ] **Step 6: Wire "Play with Computers" in `src/routes/home.ts`**
 
 Replace `onComputers`:
+
 ```ts
 function onComputers(): void {
   navigateTo('/play/new-ai');
@@ -3013,12 +3227,14 @@ git commit -m "feat: play route + Play with Computers end-to-end"
 ## Task 15: Quickplay (matchmaking SSE)
 
 **Files:**
+
 - Modify: `src/routes/home.ts`, `src/state/menu.ts` (already covered)
 - Create: `src/routes/play.ts` extension for `WAITING` phase (in-line)
 
 - [ ] **Step 1: Wire quickplay buttons in `src/routes/home.ts`**
 
 Replace `onSeek`:
+
 ```ts
 import { openSse, type SseHandle } from '../api/sse';
 import { saveSession } from '../lib/storage';
@@ -3063,13 +3279,15 @@ function onSeek(timer: TimerCfg): void {
 - [ ] **Step 2: Add the status element to the home template**
 
 In `template()`, add below the `.menu`:
+
 ```ts
-html`<p id="quickplay-status" class="menu__label"></p>`
+html`<p id="quickplay-status" class="menu__label"></p>`;
 ```
 
 - [ ] **Step 3: Add a Cancel handler**
 
 After the status element:
+
 ```ts
 html`<button
   type="button"
@@ -3080,7 +3298,9 @@ html`<button
     activeSeek = null;
     document.getElementById('quickplay-status')!.textContent = '';
   }}
->Cancel</button>`
+>
+  Cancel
+</button>`;
 ```
 
 (Since `home.ts` is currently stateless and re-renders per route mount, the simplest fix is to keep `activeSeek` at module scope and re-render when it changes. For brevity, you can also keep the status text as the only signal of "in queue" and skip a dedicated button — the user just navigates away to cancel via SSE drop guard.)
@@ -3101,6 +3321,7 @@ git commit -m "feat: quickplay via matchmaking SSE"
 ## Task 16: Friends — create challenge + lobby + join
 
 **Files:**
+
 - Create: `src/routes/create.ts` (challenge creation form), and `src/routes/play.ts` already handles lobby via the "challenge open" branch — extend it.
 
 This task is substantial; treat it as four sub-commits.
@@ -3138,83 +3359,102 @@ export const create: RouteModule = {
     let timerIdx = 0;
     let errorMsg = '';
 
-    const template = (): ReturnType<typeof html> => appShell(html`
-      <h2>Create Challenge</h2>
-      ${errorMsg ? html`<p style="color: var(--color-danger)">${errorMsg}</p>` : null}
-      <label>Your name <input
-        type="text" maxlength="20"
-        @input=${(e: Event) => { name = (e.target as HTMLInputElement).value; }}
-      /></label>
-      <fieldset>
-        <legend>Pick seat</legend>
-        ${(['A', 'B', 'C', 'D'] as const).map((s) =>
-          button({
-            label: `Seat ${s}`,
-            onClick: () => { seat = seat === s ? null : s; rerender(); },
-            variant: seat === s ? 'primary' : 'secondary',
-          }),
-        )}
-      </fieldset>
-      <fieldset>
-        <legend>Points</legend>
-        ${[200, 300, 500].map((p) =>
-          button({
-            label: String(p),
-            onClick: () => { points = p; rerender(); },
-            variant: points === p ? 'primary' : 'secondary',
-          }),
-        )}
-      </fieldset>
-      <fieldset>
-        <legend>Timer</legend>
-        ${TIMER_PRESETS.map((t, i) =>
-          button({
-            label: t.label,
-            onClick: () => { timerIdx = i; rerender(); },
-            variant: timerIdx === i ? 'primary' : 'secondary',
-          }),
-        )}
-      </fieldset>
-      ${button({
-        label: 'Create',
-        onClick: () => {
-          errorMsg = '';
-          sse = openSse(
-            '/challenges',
-            {
-              max_points: points,
-              creator_name: name || undefined,
-              creator_seat: seat ?? undefined,
-              timer_config: TIMER_PRESETS[timerIdx]!.value ?? undefined,
-            },
-            {
-              onEvent: (type, data) => {
-                try {
-                  const parsed = JSON.parse(data);
-                  if (type === 'challenge_created') {
-                    saveSession(parsed.short_id, parsed.challenge_id, parsed.creator_player_id ?? '');
-                    sse?.close();
-                    sse = null;
-                    navigateTo(`/play/${parsed.short_id}`);
-                  } else if (type === 'cancelled') {
-                    errorMsg = 'Challenge cancelled.';
-                    rerender();
-                  }
-                } catch {
-                  // ignore
-                }
-              },
-              onError: () => {
-                errorMsg = 'Failed to create challenge.';
+    const template = (): ReturnType<typeof html> =>
+      appShell(html`
+        <h2>Create Challenge</h2>
+        ${errorMsg ? html`<p style="color: var(--color-danger)">${errorMsg}</p>` : null}
+        <label
+          >Your name
+          <input
+            type="text"
+            maxlength="20"
+            @input=${(e: Event) => {
+              name = (e.target as HTMLInputElement).value;
+            }}
+        /></label>
+        <fieldset>
+          <legend>Pick seat</legend>
+          ${(['A', 'B', 'C', 'D'] as const).map((s) =>
+            button({
+              label: `Seat ${s}`,
+              onClick: () => {
+                seat = seat === s ? null : s;
                 rerender();
               },
-            },
-          );
-          rerender();
-        },
-        variant: 'primary',
-      })}
-    `);
+              variant: seat === s ? 'primary' : 'secondary',
+            }),
+          )}
+        </fieldset>
+        <fieldset>
+          <legend>Points</legend>
+          ${[200, 300, 500].map((p) =>
+            button({
+              label: String(p),
+              onClick: () => {
+                points = p;
+                rerender();
+              },
+              variant: points === p ? 'primary' : 'secondary',
+            }),
+          )}
+        </fieldset>
+        <fieldset>
+          <legend>Timer</legend>
+          ${TIMER_PRESETS.map((t, i) =>
+            button({
+              label: t.label,
+              onClick: () => {
+                timerIdx = i;
+                rerender();
+              },
+              variant: timerIdx === i ? 'primary' : 'secondary',
+            }),
+          )}
+        </fieldset>
+        ${button({
+          label: 'Create',
+          onClick: () => {
+            errorMsg = '';
+            sse = openSse(
+              '/challenges',
+              {
+                max_points: points,
+                creator_name: name || undefined,
+                creator_seat: seat ?? undefined,
+                timer_config: TIMER_PRESETS[timerIdx]!.value ?? undefined,
+              },
+              {
+                onEvent: (type, data) => {
+                  try {
+                    const parsed = JSON.parse(data);
+                    if (type === 'challenge_created') {
+                      saveSession(
+                        parsed.short_id,
+                        parsed.challenge_id,
+                        parsed.creator_player_id ?? '',
+                      );
+                      sse?.close();
+                      sse = null;
+                      navigateTo(`/play/${parsed.short_id}`);
+                    } else if (type === 'cancelled') {
+                      errorMsg = 'Challenge cancelled.';
+                      rerender();
+                    }
+                  } catch {
+                    // ignore
+                  }
+                },
+                onError: () => {
+                  errorMsg = 'Failed to create challenge.';
+                  rerender();
+                },
+              },
+            );
+            rerender();
+          },
+          variant: 'primary',
+        })}
+      `);
 
     const rerender = (): void => render(template(), root);
     rerender();
@@ -3229,6 +3469,7 @@ export const create: RouteModule = {
 - [ ] **Step 2: Register the `/create` route**
 
 In `src/main.ts`:
+
 ```ts
 import { create } from './routes/create';
 // ...
@@ -3251,6 +3492,7 @@ function onFriends(): void {
 - [ ] **Step 4: Extend `src/routes/play.ts` to render a lobby when boot finds a challenge**
 
 In `bootFromUrl`, when status is `open`, return the challenge state rather than an error. Add a lobby renderer that:
+
 - Shows the four seat slots (open / taken / mine)
 - Provides a join modal for open seats
 - Subscribes to `/challenges/:id/join/:seat` SSE for joining and `seat_update` events
@@ -3261,6 +3503,7 @@ In `bootFromUrl`, when status is `open`, return the challenge state rather than 
 This is mechanically a translation of `index.html` lines 84-131 (template) + 1031-1100 (`joinChallenge`/`handleJoinSSE`/`cancelChallenge`). Faithful port — preserve seat-A/B/C/D mapping and team labels. Keep the lobby renderer inside `play.ts` (consistent with the design's "lobby is a sub-render" decision).
 
 The full ported listing for the lobby is too long to inline here verbatim; the engineer should port it methodically using these rules:
+
 - Replace `x-show` / `x-for` with conditional `html` and `.map`.
 - Replace `@click` with `@click=${...}` (lit-html event binding).
 - Replace `this.X` with `store.X.value` for reactive bits; non-reactive UI state (joinNameValue, joiningSeat) lives as local `let` in the route, with `rerender()` on changes.
@@ -3284,6 +3527,7 @@ git commit -m "feat: challenge lobby + join SSE in play route"
 ## Task 17: WS event handler (presence + game_aborted)
 
 **Files:**
+
 - Modify: `src/routes/play.ts`
 
 Today's WS payloads include `event: 'presence_changed'` and `event: 'game_aborted'` in addition to `StateChanged` snapshots. Handle them.
@@ -3331,6 +3575,7 @@ git commit -m "feat: WS handler covers presence + game_aborted"
 ## Task 18: E2E — anonymous AI happy path + reload reconnect
 
 **Files:**
+
 - Create: `tests/e2e/ai-game.spec.ts`
 
 Each E2E test in this plan needs `rust-spades` running. CI runs it from a pinned git sha; locally, the test assumes it's on `http://localhost:3000`. The `playwright.config.ts` already starts the frontend dev server.
@@ -3340,6 +3585,7 @@ Each E2E test in this plan needs `rust-spades` running. CI runs it from a pinned
 Update `playwright.config.ts` `webServer` block — leave Vite as-is. Add a setup file:
 
 `tests/e2e/setup.ts`:
+
 ```ts
 import { test as base } from '@playwright/test';
 
@@ -3399,6 +3645,7 @@ git commit -m "test: e2e AI game happy path + reconnect"
 ## Task 19: E2E — quickplay 4-context match and friends challenge
 
 **Files:**
+
 - Create: `tests/e2e/quickplay.spec.ts`, `tests/e2e/friends.spec.ts`
 
 - [ ] **Step 1: `tests/e2e/quickplay.spec.ts`**
@@ -3407,7 +3654,12 @@ git commit -m "test: e2e AI game happy path + reconnect"
 import { test, expect } from './setup';
 
 test('four players matched via quickplay', async ({ browser }) => {
-  const contexts = await Promise.all([browser.newContext(), browser.newContext(), browser.newContext(), browser.newContext()]);
+  const contexts = await Promise.all([
+    browser.newContext(),
+    browser.newContext(),
+    browser.newContext(),
+    browser.newContext(),
+  ]);
   const pages = await Promise.all(contexts.map((c) => c.newPage()));
 
   try {
@@ -3416,7 +3668,11 @@ test('four players matched via quickplay', async ({ browser }) => {
     // All four should reach a /play/:shortId URL within a few seconds.
     await Promise.all(pages.map((p) => p.waitForURL(/\/play\/[^/]+$/, { timeout: 10_000 })));
     // And reach BETTING phase.
-    await Promise.all(pages.map((p) => expect(p.locator('.spades-bets, .hand-container')).toBeVisible({ timeout: 5_000 })));
+    await Promise.all(
+      pages.map((p) =>
+        expect(p.locator('.spades-bets, .hand-container')).toBeVisible({ timeout: 5_000 }),
+      ),
+    );
   } finally {
     await Promise.all(contexts.map((c) => c.close()));
   }
@@ -3429,7 +3685,12 @@ test('four players matched via quickplay', async ({ browser }) => {
 import { test, expect } from './setup';
 
 test('create + join via friends challenge', async ({ browser }) => {
-  const ctxs = await Promise.all([browser.newContext(), browser.newContext(), browser.newContext(), browser.newContext()]);
+  const ctxs = await Promise.all([
+    browser.newContext(),
+    browser.newContext(),
+    browser.newContext(),
+    browser.newContext(),
+  ]);
   const pages = await Promise.all(ctxs.map((c) => c.newPage()));
   const [creator, ...joiners] = pages;
 
@@ -3452,7 +3713,11 @@ test('create + join via friends challenge', async ({ browser }) => {
     }
 
     // Everyone reaches BETTING.
-    await Promise.all(pages.map((p) => expect(p.locator('.spades-bets, .hand-container')).toBeVisible({ timeout: 10_000 })));
+    await Promise.all(
+      pages.map((p) =>
+        expect(p.locator('.spades-bets, .hand-container')).toBeVisible({ timeout: 10_000 }),
+      ),
+    );
   } finally {
     await Promise.all(ctxs.map((c) => c.close()));
   }
@@ -3476,6 +3741,7 @@ git commit -m "test: e2e quickplay + friends"
 ## Self-review
 
 **Spec coverage (Phase 2 of the design doc):**
+
 - `state/helpers.ts` → Task 5 ✓
 - Card layer (`cards/*`) → Tasks 6-10 ✓
 - `api/{client,sse,ws}.ts` → Tasks 2-4 ✓
@@ -3491,16 +3757,19 @@ git commit -m "test: e2e quickplay + friends"
 **Out of scope, deferred to Plan 3:** session store, login/signup, settings, profile, OAuth.
 
 **Placeholder scan:**
+
 - Task 16 Step 4 says "The full ported listing for the lobby is too long to inline here verbatim" — this is the one deliberate exception, with explicit guidance for the porter (rules + source line ranges + behavior pinned by E2E in Task 19). All other tasks have full code.
 - "Plan 2 Task 17 ('WS event handler') expands this" comment in Task 14 — points forward, not a placeholder.
 
 **Type consistency:**
+
 - `Seat = 'south' | 'north' | 'east' | 'west'` — used identically in `hand-manager.ts`, `trick-manager.ts`, `orchestrator.ts`.
 - `RelativeSeat` (helpers) ≡ `Seat` (cards) — same string union. Two names are intentional: `helpers.ts` doesn't import from `cards/`, so they're kept structural.
 - `Card`, `Phase`, `Suit`, `Rank` defined once in `state/helpers.ts`; re-exported by `state/game.ts` indirectly via TypeScript's structural typing.
 - `RouteModule.render` signature in `home`, `play`, `notfound`, `create` all return `() => void`.
 
 **Open caveats for the reviewer:**
+
 - Task 14 includes a fair bit of inline logic (~250 LOC). Splitting into smaller routes is possible but would multiply boilerplate; I kept it together because state is shared.
 - The challenge lobby ported in Task 16 Step 4 is the one place this plan defers code volume to the implementer. The pattern is mechanical and the E2E covers it; if you want every line spelled out, that's a 5-commit task on its own (~300 lines of template + handlers).
 - I did not write a separate component test for the orchestrator. happy-dom's lack of real layout + the rAF mocking complexity make it more cost than benefit; E2E covers it.

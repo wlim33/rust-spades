@@ -27,20 +27,20 @@
 
 ### Decisions log
 
-| Topic | Decision |
-|---|---|
-| Stack | Vite + Vanilla TypeScript |
-| Reactivity | `@preact/signals-core` |
-| Templating | `lit-html` (template package only) |
-| Routing | `navaid` (small router lib) |
-| Styling | Clean design tokens via CSS variables |
-| API types | Generated from `/openapi.json` via `openapi-typescript`; typed client via `openapi-fetch` |
-| API config | `VITE_API_URL` env var; dev = `http://localhost:3000`, prod = `https://spades.wlim.dev` |
-| Repo | `/Users/wlim/Projects/spades-ts` (standalone) |
-| Deploy | Same origin as API (`spades.wlim.dev/`) |
-| Card layer | Port proven design from `card-manager.js`, rewrite in TS as separate modules |
-| Anon play | First-class; accounts are optional |
-| Testing | Unit + component + full E2E |
+| Topic      | Decision                                                                                  |
+| ---------- | ----------------------------------------------------------------------------------------- |
+| Stack      | Vite + Vanilla TypeScript                                                                 |
+| Reactivity | `@preact/signals-core`                                                                    |
+| Templating | `lit-html` (template package only)                                                        |
+| Routing    | `navaid` (small router lib)                                                               |
+| Styling    | Clean design tokens via CSS variables                                                     |
+| API types  | Generated from `/openapi.json` via `openapi-typescript`; typed client via `openapi-fetch` |
+| API config | `VITE_API_URL` env var; dev = `http://localhost:3000`, prod = `https://spades.wlim.dev`   |
+| Repo       | `/Users/wlim/Projects/spades-ts` (standalone)                                             |
+| Deploy     | Same origin as API (`spades.wlim.dev/`)                                                   |
+| Card layer | Port proven design from `card-manager.js`, rewrite in TS as separate modules              |
+| Anon play  | First-class; accounts are optional                                                        |
+| Testing    | Unit + component + full E2E                                                               |
 
 ---
 
@@ -106,16 +106,16 @@ spades-ts/
 
 ### Routes
 
-| Path | Module | Auth |
-|---|---|---|
-| `/` | `routes/home.ts` | no |
-| `/play/:shortId` | `routes/play.ts` | no |
-| `/login` | `routes/login.ts` | no |
-| `/signup` | `routes/signup.ts` | no |
-| `/auth/oauth/complete` | `routes/oauth-complete.ts` | no |
-| `/me` | `routes/settings.ts` | **yes** (→ `/login?next=/me`) |
-| `/u/:username` | `routes/profile.ts` | no |
-| `*` | `routes/notfound.ts` | no |
+| Path                   | Module                     | Auth                          |
+| ---------------------- | -------------------------- | ----------------------------- |
+| `/`                    | `routes/home.ts`           | no                            |
+| `/play/:shortId`       | `routes/play.ts`           | no                            |
+| `/login`               | `routes/login.ts`          | no                            |
+| `/signup`              | `routes/signup.ts`         | no                            |
+| `/auth/oauth/complete` | `routes/oauth-complete.ts` | no                            |
+| `/me`                  | `routes/settings.ts`       | **yes** (→ `/login?next=/me`) |
+| `/u/:username`         | `routes/profile.ts`        | no                            |
+| `*`                    | `routes/notfound.ts`       | no                            |
 
 ### Data flow
 
@@ -155,6 +155,7 @@ Configured `openapi-fetch` instance plus a thin wrapper that normalizes errors t
 ### `src/state/session.ts`
 
 Exposes:
+
 - `currentUser: Signal<User | null>`
 - `refresh()` — calls `GET /auth/me`; sets to user on 200, null on 401, surfaces non-401 errors via toast.
 - `loginWithPassword(email, password)`
@@ -167,6 +168,7 @@ Drives the header chrome (sign-in button vs. avatar menu) and route guards.
 ### `src/state/game.ts`
 
 Factory `createGameStore()` per active game. Signals:
+
 - `phase: Signal<'MENU'|'CREATE'|'WAITING'|'LOBBY'|'BETTING'|'PLAYING'|'GAME_OVER'>`
 - `gameState`, `playerIds`, `playerNames`, `playerConnected`
 - `hand`, `tableCards`, `playerBets`, `playerTricksWon`, `lastTrickWinnerId`
@@ -175,6 +177,7 @@ Factory `createGameStore()` per active game. Signals:
 - `currentPlayerId`, `spadesBroken`
 
 Methods:
+
 - `applyState(state, hand)`
 - `applyPresence(players)`
 - `applyWsEvent(data)` — orchestrates trick-completion detection and triggers opponent-play animations via the orchestrator handle.
@@ -258,13 +261,13 @@ Each exports `render(params) → cleanup`. Use small `FormField`/`Button` lit-ht
 Each route's `render(params)` returns a `cleanup` closure:
 
 ```ts
-const dispose = effect(() => litRender(template(state), root))
+const dispose = effect(() => litRender(template(state), root));
 return () => {
-  dispose()
-  orchestrator?.destroy()
-  ws?.close()
-  sse?.close()
-}
+  dispose();
+  orchestrator?.destroy();
+  ws?.close();
+  sse?.close();
+};
 ```
 
 One top-level effect per route. Inside the effect, `signal.value` reads are auto-tracked.
@@ -361,7 +364,7 @@ Each test starts `rust-spades` against an ephemeral SQLite DB on a random port; 
 
 ### Same-origin in prod
 
-Build output (`dist/`) must be served by *something* on `spades.wlim.dev`. Two viable paths (the user is patching rust-spades anyway):
+Build output (`dist/`) must be served by _something_ on `spades.wlim.dev`. Two viable paths (the user is patching rust-spades anyway):
 
 - **(a) default in this spec** — rust-spades serves `dist/` as static via `tower-http`'s `ServeDir`, with SPA fallback to `index.html` for unknown paths that aren't API routes. Single binary, single deploy.
 - **(b) alternative** — Caddy/nginx in front; static for `/`, proxy API paths to rust-spades.
