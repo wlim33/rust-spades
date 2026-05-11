@@ -278,4 +278,36 @@ mod tests {
             other => panic!("expected replay error, got {:?}", other),
         }
     }
+
+    #[test]
+    fn round_trip_with_nil_bid_in_first_round() {
+        // Seat 0 bids nil (Bet(0)). Plays 13 tricks (whoever the engine routes
+        // to). Verify encode -> decode -> replay round-trips cleanly without
+        // requiring the game to reach a terminal state. Captures the nil-bid
+        // path that the property test can't sample (random nil play diverges
+        // beyond max_points and the engine never terminates).
+        let mut g = Game::new(u(1), [u(10), u(11), u(12), u(13)], 500, None);
+        g.play(GameTransition::Start).unwrap();
+        g.play(GameTransition::Bet(0)).unwrap();
+        g.play(GameTransition::Bet(3)).unwrap();
+        g.play(GameTransition::Bet(3)).unwrap();
+        g.play(GameTransition::Bet(3)).unwrap();
+        for _ in 0..13 {
+            for _ in 0..4 {
+                let legal = g.get_legal_cards().unwrap();
+                g.play(GameTransition::Card(legal[0])).unwrap();
+            }
+        }
+        let encoded = encode(&g);
+        // Sanity: the [Bets ...] line should contain a 0 in the first slot.
+        assert!(
+            encoded.contains("[Bets \"0 3 3 3\"]"),
+            "expected nil bid in encoded bets line, got:\n{}",
+            encoded
+        );
+        let parsed = decode(&encoded).unwrap();
+        let replayed = replay(&parsed).unwrap();
+        assert_eq!(replayed.get_state(), g.get_state());
+        assert_eq!(encode(&replayed), encoded, "round-trip idempotence for nil-bid game");
+    }
 }
