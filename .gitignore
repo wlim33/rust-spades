@@ -1,2 +1,8 @@
 /target
 **/*.rs.bk
+
+# Deploy plumbing — never check this into the repo.
+/bin/deploy
+/deploy/
+/.deploy.env
+*.deploy.env
