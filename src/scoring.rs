@@ -6,9 +6,24 @@ pub struct GameConfig {
     max_points: i32
 }
 
+fn deser_tricks_won<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i32, D::Error> {
+    use serde::Deserialize;
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Repr {
+        Scalar(i32),
+        Array(Vec<i32>),
+    }
+    Ok(match Repr::deserialize(d)? {
+        Repr::Scalar(n) => n,
+        Repr::Array(v) => v.iter().sum(),
+    })
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TeamState {
-    pub current_round_tricks_won: [i32 ; 13],
+    #[serde(deserialize_with = "deser_tricks_won")]
+    pub current_round_tricks_won: i32,
     pub bags: i32,
     pub cumulative_points: i32,
 }
@@ -16,14 +31,14 @@ pub struct TeamState {
 impl TeamState {
     fn new() -> TeamState {
         TeamState {
-            current_round_tricks_won: [0; 13],
+            current_round_tricks_won: 0,
             bags: 0,
             cumulative_points: 0,
         }
     }
 
     fn calculate_round_totals(&mut self, first_bet: i32, first_nil: bool, second_bet:i32, second_nil: bool) {
-        let team_tricks : i32 = self.current_round_tricks_won.iter().sum();
+        let team_tricks: i32 = self.current_round_tricks_won;
 
         let team_bets = first_bet + second_bet;
         
@@ -106,9 +121,9 @@ impl Scoring {
         self.player_tricks_won[winner] += 1;
 
         if winner.is_multiple_of(2) {
-            self.team_a.current_round_tricks_won[self.trick] += 1;
+            self.team_a.current_round_tricks_won += 1;
         } else {
-            self.team_b.current_round_tricks_won[self.trick] += 1;
+            self.team_b.current_round_tricks_won += 1;
         }
 
         if self.trick == 12 {
@@ -117,8 +132,8 @@ impl Scoring {
             self.nil_check = [false; 4];
             self.player_tricks_won = [0; 4];
             self.in_betting_stage = true;
-            self.team_a.current_round_tricks_won = [0; 13];
-            self.team_b.current_round_tricks_won = [0; 13];
+            self.team_a.current_round_tricks_won = 0;
+            self.team_b.current_round_tricks_won = 0;
 
             let a_reached = self.team_a.cumulative_points >= self.config.max_points;
             let b_reached = self.team_b.cumulative_points >= self.config.max_points;
@@ -544,7 +559,7 @@ mod tests {
         // Each crossing of 10 must trigger a -100 penalty, not just one.
         let mut t = TeamState::new();
         t.bags = 9;
-        t.current_round_tricks_won = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]; // 12 tricks
+        t.current_round_tricks_won = 12; // 12 tricks won this round
         // Bid 1+0=1, won 12 -> +10 (bid) + 11 (bags) = +21 points, bags 9+11=20
         // Two bag penalties (-200), plus nil bonus (+100 for second_bet=0, second_nil=false)
         // Net: 21 - 200 + 100 = -79
@@ -570,8 +585,8 @@ mod tests {
         // After 13 tricks, should be back in betting stage
         assert!(s.in_betting_stage);
         assert_eq!(s.round, 1);
-        assert_eq!(s.team_a.current_round_tricks_won, [0; 13]);
-        assert_eq!(s.team_b.current_round_tricks_won, [0; 13]);
+        assert_eq!(s.team_a.current_round_tricks_won, 0);
+        assert_eq!(s.team_b.current_round_tricks_won, 0);
         assert_eq!(s.nil_check, [false; 4]);
     }
 }
