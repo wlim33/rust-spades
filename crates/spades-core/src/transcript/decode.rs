@@ -132,8 +132,110 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_rounds(&mut self) -> Result<Vec<Round>, DecodeError> {
-        // Implemented in task 8.
-        Ok(Vec::new())
+        let mut rounds: Vec<Round> = Vec::new();
+        while let Some((ln, line)) = self.peek().copied() {
+            if line.is_empty() {
+                self.advance();
+                continue;
+            }
+            if !line.starts_with("[Round ") {
+                break;
+            }
+
+            let (key, value) = parse_tag_line(ln, line)?;
+            self.advance();
+            if key != "Round" {
+                return Err(DecodeError::BadTag { line: ln, found: line.to_string() });
+            }
+            let round_num = parse_int(ln, &value)?;
+            if round_num < 1 {
+                return Err(DecodeError::BadInteger { line: ln, value });
+            }
+            let expected = rounds.len() + 1;
+            if (round_num as usize) != expected {
+                return Err(DecodeError::NonMonotonicRound {
+                    expected,
+                    found: round_num as usize,
+                });
+            }
+
+            // 4 [HandN] lines
+            let mut hands: [Vec<crate::cards::Card>; 4] = Default::default();
+            for seat in 0..4 {
+                let (ln2, line2) = self.advance().copied().ok_or(DecodeError::UnexpectedEof)?;
+                let (k, v) = parse_tag_line(ln2, line2)?;
+                if k != format!("Hand{}", seat) {
+                    return Err(DecodeError::BadTag { line: ln2, found: line2.to_string() });
+                }
+                for tok in v.split_whitespace() {
+                    let c = parse_card(tok).ok_or(DecodeError::BadCard {
+                        line: ln2,
+                        token: tok.to_string(),
+                    })?;
+                    hands[seat].push(c);
+                }
+            }
+
+            // [Bets "..."]
+            let (ln3, line3) = self.advance().copied().ok_or(DecodeError::UnexpectedEof)?;
+            let (k3, v3) = parse_tag_line(ln3, line3)?;
+            if k3 != "Bets" {
+                return Err(DecodeError::BadTag { line: ln3, found: line3.to_string() });
+            }
+            let bets: Vec<i32> = if v3.is_empty() {
+                Vec::new()
+            } else {
+                let mut out = Vec::new();
+                for tok in v3.split_whitespace() {
+                    out.push(parse_int(ln3, tok)?);
+                }
+                out
+            };
+            if bets.len() > 4 {
+                return Err(DecodeError::TooManyBets { round: round_num as usize });
+            }
+
+            // Trick lines until blank/next [Round]/EOF
+            let mut tricks: Vec<Vec<crate::cards::Card>> = Vec::new();
+            while let Some((ln4, line4)) = self.peek().copied() {
+                if line4.is_empty() || line4.starts_with('[') {
+                    break;
+                }
+                let (num_str, rest) = line4
+                    .split_once('.')
+                    .ok_or_else(|| DecodeError::BadTag { line: ln4, found: line4.to_string() })?;
+                let trick_num = parse_int(ln4, num_str)?;
+                let expected_t = tricks.len() + 1;
+                if (trick_num as usize) != expected_t {
+                    return Err(DecodeError::BadTag { line: ln4, found: line4.to_string() });
+                }
+                let mut cards: Vec<crate::cards::Card> = Vec::new();
+                for tok in rest.split_whitespace() {
+                    let c = parse_card(tok).ok_or(DecodeError::BadCard {
+                        line: ln4,
+                        token: tok.to_string(),
+                    })?;
+                    cards.push(c);
+                }
+                if cards.is_empty() {
+                    return Err(DecodeError::BadTag { line: ln4, found: line4.to_string() });
+                }
+                if cards.len() > 4 {
+                    return Err(DecodeError::TooManyCardsInTrick {
+                        round: round_num as usize,
+                        trick: trick_num as usize,
+                    });
+                }
+                self.advance();
+                tricks.push(cards);
+                if tricks.len() > 13 {
+                    return Err(DecodeError::TooManyTricks { round: round_num as usize });
+                }
+            }
+
+            rounds.push(Round { hands, bets, tricks });
+        }
+        Ok(rounds)
     }
 
     fn expect_eof(&mut self) -> Result<(), DecodeError> {
@@ -187,11 +289,6 @@ fn parse_u64(ln: usize, v: &str) -> Result<u64, DecodeError> {
     v.parse::<u64>().map_err(|_| DecodeError::BadInteger { line: ln, value: v.to_string() })
 }
 
-// Keep `parse_card` in scope; task 8 will use it for trick lines.
-#[allow(dead_code)]
-fn _silence_parse_card_warning(_: fn(&str) -> Option<crate::cards::Card>) {
-    let _ = parse_card;
-}
 
 #[cfg(test)]
 mod tests {
@@ -298,5 +395,165 @@ mod tests {
 [Result \"*\"]
 ";
         assert!(matches!(decode(s), Err(DecodeError::BadUuid { .. })));
+    }
+
+    use crate::cards::{Card, Rank, Suit};
+
+    fn c(r: Rank, su: Suit) -> Card {
+        Card { rank: r, suit: su }
+    }
+
+    #[test]
+    fn decode_one_round_block() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+
+[Round \"1\"]
+[Hand0 \"2C 5C 7C TC AC 3D 8D KD 4H 9H 2S 6S QS\"]
+[Hand1 \"3C 6C 8C JC 4D 9D AD 5H TH JH 3S 7S KS\"]
+[Hand2 \"4C 7C 9C QC 5D TD 2H 6H QH 4S 8S TS AS\"]
+[Hand3 \"2C 5D JD KD 7H 8H KH 5S 9S JS QS 6D 3H\"]
+[Bets \"3 4 2 4\"]
+1. 2C 5C 7C TC
+";
+        let t = decode(s).unwrap();
+        assert_eq!(t.rounds.len(), 1);
+        let r = &t.rounds[0];
+        assert_eq!(r.hands[0].len(), 13);
+        assert_eq!(r.hands[0][0], c(Rank::Two, Suit::Club));
+        assert_eq!(r.bets, vec![3, 4, 2, 4]);
+        assert_eq!(r.tricks.len(), 1);
+        assert_eq!(r.tricks[0], vec![
+            c(Rank::Two, Suit::Club),
+            c(Rank::Five, Suit::Club),
+            c(Rank::Seven, Suit::Club),
+            c(Rank::Ten, Suit::Club),
+        ]);
+    }
+
+    #[test]
+    fn decode_partial_bets() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+
+[Round \"1\"]
+[Hand0 \"2C 5C 7C TC AC 3D 8D KD 4H 9H 2S 6S QS\"]
+[Hand1 \"3C 6C 8C JC 4D 9D AD 5H TH JH 3S 7S KS\"]
+[Hand2 \"4C 7C 9C QC 5D TD 2H 6H QH 4S 8S TS AS\"]
+[Hand3 \"2C 5D JD KD 7H 8H KH 5S 9S JS QS 6D 3H\"]
+[Bets \"3 4\"]
+";
+        let t = decode(s).unwrap();
+        assert_eq!(t.rounds[0].bets, vec![3, 4]);
+        assert!(t.rounds[0].tricks.is_empty());
+    }
+
+    #[test]
+    fn decode_rejects_non_monotonic_round() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+
+[Round \"3\"]
+[Hand0 \"2C 5C 7C TC AC 3D 8D KD 4H 9H 2S 6S QS\"]
+[Hand1 \"3C 6C 8C JC 4D 9D AD 5H TH JH 3S 7S KS\"]
+[Hand2 \"4C 7C 9C QC 5D TD 2H 6H QH 4S 8S TS AS\"]
+[Hand3 \"2C 5D JD KD 7H 8H KH 5S 9S JS QS 6D 3H\"]
+[Bets \"\"]
+";
+        assert!(matches!(
+            decode(s),
+            Err(DecodeError::NonMonotonicRound { expected: 1, found: 3 })
+        ));
+    }
+
+    #[test]
+    fn decode_rejects_too_many_bets() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+
+[Round \"1\"]
+[Hand0 \"2C 5C 7C TC AC 3D 8D KD 4H 9H 2S 6S QS\"]
+[Hand1 \"3C 6C 8C JC 4D 9D AD 5H TH JH 3S 7S KS\"]
+[Hand2 \"4C 7C 9C QC 5D TD 2H 6H QH 4S 8S TS AS\"]
+[Hand3 \"2C 5D JD KD 7H 8H KH 5S 9S JS QS 6D 3H\"]
+[Bets \"3 4 2 4 1\"]
+";
+        assert!(matches!(decode(s), Err(DecodeError::TooManyBets { round: 1 })));
+    }
+
+    #[test]
+    fn decode_rejects_too_many_cards_in_trick() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+
+[Round \"1\"]
+[Hand0 \"2C 5C 7C TC AC 3D 8D KD 4H 9H 2S 6S QS\"]
+[Hand1 \"3C 6C 8C JC 4D 9D AD 5H TH JH 3S 7S KS\"]
+[Hand2 \"4C 7C 9C QC 5D TD 2H 6H QH 4S 8S TS AS\"]
+[Hand3 \"2C 5D JD KD 7H 8H KH 5S 9S JS QS 6D 3H\"]
+[Bets \"3 4 2 4\"]
+1. 2C 5C 7C TC 8C
+";
+        assert!(matches!(
+            decode(s),
+            Err(DecodeError::TooManyCardsInTrick { round: 1, trick: 1 })
+        ));
+    }
+
+    #[test]
+    fn decode_rejects_bad_card() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+
+[Round \"1\"]
+[Hand0 \"2C 5C 7C TC AC 3D 8D KD 4H 9H 2S 6S 1X\"]
+[Hand1 \"3C 6C 8C JC 4D 9D AD 5H TH JH 3S 7S KS\"]
+[Hand2 \"4C 7C 9C QC 5D TD 2H 6H QH 4S 8S TS AS\"]
+[Hand3 \"2C 5D JD KD 7H 8H KH 5S 9S JS QS 6D 3H\"]
+[Bets \"\"]
+";
+        assert!(matches!(decode(s), Err(DecodeError::BadCard { token, .. }) if token == "1X"));
     }
 }
