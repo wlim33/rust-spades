@@ -35,7 +35,7 @@ impl TeamState {
             self.cumulative_points -= team_bets * 10;
         }
 
-        if self.bags >= 10 {
+        while self.bags >= 10 {
             self.bags -= 10;
             self.cumulative_points -= 100;
         }
@@ -536,6 +536,21 @@ mod tests {
         // nil_check[2] = true (player C won a trick) => -100 for nil failure
         // Team A: bet=6+0=6, won=6 tricks => +60 from regular - 100 from failed nil = -40
         assert_eq!(s.team_a.cumulative_points, -40);
+    }
+
+    #[test]
+    fn test_bag_penalty_applies_per_ten_bags() {
+        // Bags can cross multiple multiples of 10 in a single round.
+        // Each crossing of 10 must trigger a -100 penalty, not just one.
+        let mut t = TeamState::new();
+        t.bags = 9;
+        t.current_round_tricks_won = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]; // 12 tricks
+        // Bid 1+0=1, won 12 -> +10 (bid) + 11 (bags) = +21 points, bags 9+11=20
+        // Two bag penalties (-200), plus nil bonus (+100 for second_bet=0, second_nil=false)
+        // Net: 21 - 200 + 100 = -79
+        t.calculate_round_totals(1, false, 0, false);
+        assert_eq!(t.bags, 0, "bags should be reduced through both 10-thresholds");
+        assert_eq!(t.cumulative_points, -79);
     }
 
     #[test]
