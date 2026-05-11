@@ -371,10 +371,12 @@ pub struct OauthCompleteRequest {
 
 pub async fn oauth_complete(
     State(auth): State<AuthState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     session: Session,
     cookie_jar: axum_extra::extract::CookieJar,
     Json(req): Json<OauthCompleteRequest>,
 ) -> Result<(axum::http::StatusCode, Json<UserResponse>), AuthError> {
+    check_ip(&auth.rate.oauth_callback, addr.ip())?;
     let temp_id = cookie_jar.get("__oauth_pending")
         .ok_or(AuthError::TokenInvalid)?
         .value().to_string();
