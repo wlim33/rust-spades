@@ -12,4 +12,4 @@ pub mod mailer;
 pub mod rate_limit;
 pub mod oauth;
 
-// pub use error::AuthError; // uncommented in Task 1.3
+pub use error::AuthError;
