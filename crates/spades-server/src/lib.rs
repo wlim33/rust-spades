@@ -14,5 +14,6 @@ pub mod game_manager;
 pub mod lock_util;
 pub mod matchmaking;
 pub mod oasgen_impls;
+pub mod ratings;
 pub mod sqlite_store;
 pub mod validation;

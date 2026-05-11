@@ -30,6 +30,7 @@ use crate::game_manager::{
     AiPlayerConfig, GameEvent, GameManagerError, GameStateResponse, HandResponse,
     PlayerNameEntry, Subscription, epoch_ms_now, event_seq,
 };
+use crate::ratings::{self, Rating, DEFAULT_RATING};
 use crate::sqlite_store::SqliteStore;
 
 /// Per-game broadcast buffer capacity. The corresponding `Lagged` is
@@ -314,6 +315,7 @@ impl GameActor {
         transition: GameTransition,
         is_timeout: bool,
     ) -> Result<TransitionSuccess, GameManagerError> {
+        let was_completed = matches!(self.game.get_state(), State::Completed);
         let is_timed = self.game.get_timer_config().is_some();
         let is_start = matches!(transition, GameTransition::Start);
 
@@ -370,7 +372,35 @@ impl GameActor {
 
         let state_response = self.build_state_response();
         self.broadcast(GameEvent::StateChanged { seq: 0, state: state_response });
+
+        // If this transition was the one that completed the game, fire
+        // the Glicko-2 rating update in the background. Aborted games
+        // don't trigger updates (handle_timer_fired sets the state
+        // directly without going through apply_one_transition).
+        if !was_completed && matches!(self.game.get_state(), State::Completed) {
+            self.fire_rating_update();
+        }
+
         Ok(success)
+    }
+
+    /// Spawn a background task that loads the 4 seats' user_ids, looks up
+    /// each registered player's current rating, computes the Glicko-2
+    /// update, and writes the new ratings back. Anon / bot seats are
+    /// treated as default-rated opponents but don't get a stored update
+    /// of their own (no row to write to).
+    fn fire_rating_update(&self) {
+        let Some(db) = self.db.clone() else { return };
+        let game_id = self.game_id;
+        let team_a_score = self.game.get_team_a_score().ok().copied().unwrap_or(0);
+        let team_b_score = self.game.get_team_b_score().ok().copied().unwrap_or(0);
+        let team_a_won = team_a_score > team_b_score;
+        tokio::spawn(async move {
+            let _ = tokio::task::spawn_blocking(move || {
+                apply_glicko_update(&db, game_id, team_a_won);
+            })
+            .await;
+        });
     }
 
     fn handle_set_player_name(
@@ -631,5 +661,47 @@ impl GameActor {
             }
         };
         Subscription { rx, current_seq, initial_state, catch_up }
+    }
+}
+
+/// Pull the 4 seats, read each registered user's current rating, compute
+/// the Glicko-2 update for each, and persist. Failures log but never
+/// propagate — rating updates are best-effort. Anon / bot seats are
+/// treated as default-rated opponents but don't get a stored update.
+fn apply_glicko_update(db: &SqliteStore, game_id: Uuid, team_a_won: bool) {
+    let mut seats: [Option<crate::auth::game_seats::SeatRow>; 4] = [None, None, None, None];
+    for (i, slot) in seats.iter_mut().enumerate() {
+        *slot = match db.game_seat(game_id, i as i32) {
+            Ok(s) => s,
+            Err(e) => {
+                error!(game_id = %game_id, seat = i, error = %e, "rating update: seat lookup failed");
+                return;
+            }
+        };
+    }
+    let mut current: [Rating; 4] = [DEFAULT_RATING; 4];
+    for (slot, seat) in current.iter_mut().zip(seats.iter()) {
+        if let Some(seat) = seat
+            && let Some(user_id) = seat.user_id
+            && let Ok(Some(r)) = db.get_user_rating(user_id)
+        {
+            *slot = r;
+        }
+    }
+    // Spades partnership: seats 0+2 are team A, 1+3 are team B.
+    for (i, seat) in seats.iter().enumerate() {
+        let Some(seat) = seat else { continue };
+        let Some(user_id) = seat.user_id else { continue };
+        let on_team_a = (i % 2) == 0;
+        let opponents_idx: [usize; 2] = if on_team_a { [1, 3] } else { [0, 2] };
+        let outcome = if on_team_a == team_a_won { 1.0 } else { 0.0 };
+        let opp_slate = [
+            (current[opponents_idx[0]], outcome),
+            (current[opponents_idx[1]], outcome),
+        ];
+        let new_rating = ratings::update(current[i], &opp_slate);
+        if let Err(e) = db.set_user_rating(user_id, &new_rating) {
+            error!(game_id = %game_id, user_id = %user_id, error = %e, "rating update: write failed");
+        }
     }
 }

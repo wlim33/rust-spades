@@ -11,6 +11,12 @@ pub struct PublicProfile {
     pub created_at: String,
     pub games_played: i64,
     pub last_seen_at: Option<String>,
+    /// Glicko-2 rating. Round to integer for display; the underlying
+    /// stored value is a float.
+    pub rating: i32,
+    /// Rating deviation — lower means more confident about the rating.
+    /// Round to integer for display.
+    pub rd: i32,
 }
 
 pub async fn get_profile(
@@ -20,11 +26,15 @@ pub async fn get_profile(
     let user = auth.store.find_user_by_username(&username).map_err(AuthError::Storage)?
         .ok_or(AuthError::NotFound)?;
     let games_played = auth.store.count_game_seats_for_user(user.id).map_err(AuthError::Storage)?;
+    let rating = auth.store.get_user_rating(user.id).map_err(AuthError::Storage)?
+        .unwrap_or(crate::ratings::DEFAULT_RATING);
     Ok(Json(PublicProfile {
         username: user.username,
         created_at: user.created_at,
         games_played,
         last_seen_at: user.last_login_at,
+        rating: rating.rating.round() as i32,
+        rd: rating.rd.round() as i32,
     }))
 }
 

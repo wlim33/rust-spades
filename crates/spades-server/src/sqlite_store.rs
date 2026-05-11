@@ -18,6 +18,31 @@ impl SqliteStore {
         // synchronous=NORMAL is safe under WAL and removes an fsync per commit.
         conn.pragma_update(None, "busy_timeout", 5000_i64).map_err(|e| e.to_string())?;
         conn.pragma_update(None, "synchronous", "NORMAL").map_err(|e| e.to_string())?;
+
+        // Idempotent migration: a `users` table from before the Glicko-2
+        // ratings work doesn't have these columns. `CREATE TABLE IF NOT
+        // EXISTS` doesn't backfill; do it explicitly.
+        let table_exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='users')",
+            [],
+            |r| r.get(0),
+        ).unwrap_or(false);
+        if table_exists {
+            for (col, ddl) in [
+                ("rating",     "ALTER TABLE users ADD COLUMN rating REAL NOT NULL DEFAULT 1500.0"),
+                ("rd",         "ALTER TABLE users ADD COLUMN rd REAL NOT NULL DEFAULT 350.0"),
+                ("volatility", "ALTER TABLE users ADD COLUMN volatility REAL NOT NULL DEFAULT 0.06"),
+            ] {
+                let present: bool = conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM pragma_table_info('users') WHERE name = ?1)",
+                    rusqlite::params![col],
+                    |r| r.get(0),
+                ).unwrap_or(false);
+                if !present {
+                    conn.execute(ddl, []).map_err(|e| e.to_string())?;
+                }
+            }
+        }
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS games (
                 id TEXT PRIMARY KEY,
@@ -32,7 +57,10 @@ impl SqliteStore {
                 password_hash   TEXT,
                 token_version   INTEGER NOT NULL DEFAULT 0,
                 created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-                last_login_at   TEXT
+                last_login_at   TEXT,
+                rating          REAL NOT NULL DEFAULT 1500.0,
+                rd              REAL NOT NULL DEFAULT 350.0,
+                volatility      REAL NOT NULL DEFAULT 0.06
             );
             CREATE INDEX IF NOT EXISTS users_username_canon ON users(username_canon);
             CREATE TABLE IF NOT EXISTS oauth_accounts (
@@ -207,6 +235,48 @@ impl SqliteStore {
     pub fn touch_user_login(&self, user_id: uuid::Uuid) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         touch_user_login_in(&conn, user_id)
+    }
+
+    /// Read a user's current Glicko-2 rating. Returns `Ok(None)` if the
+    /// user row is absent — the actor's rating-update path uses this to
+    /// skip anon / bot seats that aren't claimed yet.
+    pub fn get_user_rating(
+        &self,
+        user_id: uuid::Uuid,
+    ) -> Result<Option<crate::ratings::Rating>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let row: Result<(f64, f64, f64), _> = conn.query_row(
+            "SELECT rating, rd, volatility FROM users WHERE id = ?1",
+            rusqlite::params![user_id.to_string()],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        );
+        match row {
+            Ok((rating, rd, volatility)) => {
+                Ok(Some(crate::ratings::Rating { rating, rd, volatility }))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    /// Write a user's new Glicko-2 rating. Caller is responsible for
+    /// having computed the update from the pre-game rating slate.
+    pub fn set_user_rating(
+        &self,
+        user_id: uuid::Uuid,
+        rating: &crate::ratings::Rating,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE users SET rating = ?2, rd = ?3, volatility = ?4 WHERE id = ?1",
+            rusqlite::params![
+                user_id.to_string(),
+                rating.rating,
+                rating.rd,
+                rating.volatility,
+            ],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     pub fn update_user_email(&self, user_id: uuid::Uuid, new_email: &str) -> Result<i32, String> {
@@ -863,6 +933,30 @@ mod tests {
 
         let locked = store.get_lockout(id).unwrap();
         assert!(locked.is_none() || locked.as_deref() == Some(""), "locked_until should be NULL after reset");
+    }
+
+    #[test]
+    fn user_rating_round_trips_with_defaults() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let uid = store.insert_user(&new_user("Alice", "alice@x.com")).unwrap();
+        let r = store.get_user_rating(uid).unwrap().expect("freshly created user has a rating");
+        assert_eq!(r.rating, 1500.0);
+        assert_eq!(r.rd, 350.0);
+        assert!((r.volatility - 0.06).abs() < 1e-9);
+
+        let new = crate::ratings::Rating { rating: 1623.4, rd: 142.7, volatility: 0.0598 };
+        store.set_user_rating(uid, &new).unwrap();
+        let back = store.get_user_rating(uid).unwrap().unwrap();
+        assert!((back.rating - new.rating).abs() < 1e-9);
+        assert!((back.rd - new.rd).abs() < 1e-9);
+        assert!((back.volatility - new.volatility).abs() < 1e-9);
+    }
+
+    #[test]
+    fn user_rating_returns_none_for_missing_user() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let missing = uuid::Uuid::new_v4();
+        assert!(store.get_user_rating(missing).unwrap().is_none());
     }
 
     #[test]
