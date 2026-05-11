@@ -41,6 +41,7 @@ impl Drop for ChallengeGuard {
 
 pub async fn create_challenge_handler(
     AxumState(state): AxumState<AppState>,
+    identity: spades_server::auth::Identity,
     Json(mut config): Json<ChallengeConfig>,
 ) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<ErrorResponse>)> {
     if config.max_points <= 0 {
@@ -58,6 +59,16 @@ pub async fn create_challenge_handler(
         })?),
         None => None,
     };
+
+    config.creator_name = if let Some(user) = identity.user() {
+        Some(user.username.clone())
+    } else {
+        config.creator_name
+    };
+
+    let identity_user = identity.user().map(|u| u.id);
+    let anon = identity.anon_id();
+    let store = state.auth.store.clone();
 
     let creator_seat = config.creator_seat;
     let (challenge_id, creator_player_id, mut rx) = state
@@ -122,6 +133,18 @@ pub async fn create_challenge_handler(
                 Ok(ChallengeEvent::GameStart(result)) => {
                     if let Some(guard) = _guard.as_mut() {
                         guard.game_started = true;
+                    }
+                    if let Some(pid) = creator_player_id {
+                        if let Some(seat_index) = result.player_ids.iter().position(|p| *p == pid) {
+                            let _ = store.insert_game_seat(
+                                result.game_id, seat_index as i32, pid,
+                                spades_server::auth::game_seats::SeatOwner {
+                                    user_id: identity_user,
+                                    anon_user_id: Some(anon),
+                                    is_bot: false,
+                                },
+                            );
+                        }
                     }
                     let pid = creator_player_id.unwrap_or(Uuid::nil());
                     let personalized = MatchResult {
@@ -216,6 +239,7 @@ pub async fn get_challenge_by_short_id_handler(
 
 pub async fn join_challenge_handler(
     AxumState(state): AxumState<AppState>,
+    identity: spades_server::auth::Identity,
     Path((challenge_id, seat_str)): Path<(Uuid, String)>,
     body: Option<Json<JoinChallengeRequest>>,
 ) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<ErrorResponse>)> {
@@ -234,6 +258,16 @@ pub async fn join_challenge_handler(
         })?),
         None => None,
     };
+
+    let validated_name = if let Some(user) = identity.user() {
+        Some(user.username.clone())
+    } else {
+        validated_name
+    };
+
+    let identity_user = identity.user().map(|u| u.id);
+    let anon = identity.anon_id();
+    let store = state.auth.store.clone();
 
     let (player_id, mut rx) = state
         .challenge_manager
@@ -285,6 +319,16 @@ pub async fn join_challenge_handler(
                 }
                 Ok(ChallengeEvent::GameStart(result)) => {
                     guard.game_started = true;
+                    if let Some(seat_index) = result.player_ids.iter().position(|p| *p == player_id) {
+                        let _ = store.insert_game_seat(
+                            result.game_id, seat_index as i32, player_id,
+                            spades_server::auth::game_seats::SeatOwner {
+                                user_id: identity_user,
+                                anon_user_id: Some(anon),
+                                is_bot: false,
+                            },
+                        );
+                    }
                     let personalized = MatchResult {
                         game_id: result.game_id,
                         player_id,

@@ -32,6 +32,7 @@ impl Drop for SeekGuard {
 
 pub async fn seek(
     AxumState(state): AxumState<AppState>,
+    identity: spades_server::auth::Identity,
     Json(request): Json<SeekRequest>,
 ) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<ErrorResponse>)> {
     if request.max_points <= 0 {
@@ -49,6 +50,16 @@ pub async fn seek(
         })?),
         None => None,
     };
+
+    let validated_name = if let Some(user) = identity.user() {
+        Some(user.username.clone())
+    } else {
+        validated_name
+    };
+
+    let identity_user = identity.user().map(|u| u.id);
+    let anon = identity.anon_id();
+    let store = state.auth.store.clone();
 
     let (player_id, mut rx) =
         state.matchmaker.add_seek(request.max_points, request.timer_config, validated_name);
@@ -73,6 +84,16 @@ pub async fn seek(
                 }
                 SeekEvent::GameStart(result) => {
                     guard.matched = true;
+                    if let Some(seat_index) = result.player_ids.iter().position(|p| *p == player_id) {
+                        let _ = store.insert_game_seat(
+                            result.game_id, seat_index as i32, player_id,
+                            spades_server::auth::game_seats::SeatOwner {
+                                user_id: identity_user,
+                                anon_user_id: Some(anon),
+                                is_bot: false,
+                            },
+                        );
+                    }
                     yield Ok(Event::default()
                         .event("game_start")
                         .json_data(&result)
