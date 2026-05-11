@@ -288,6 +288,9 @@ async fn main() {
     println!("  DELETE /challenges/:challenge_id                - Cancel challenge");
     println!("  GET  /player                                    - Get/create session identity");
     println!("  PUT  /player/name                               - Set display name");
+    println!("  GET  /users/:username                           - Public user profile");
+    println!("  GET  /users/:username/games                     - User's game history (paginated)");
+    println!("  PATCH /users/me                                 - Update own email or password");
 
     if insecure_cookies {
         println!("WARNING: --insecure-cookies enabled. Session cookie lacks Secure flag. DO NOT use in production.");
