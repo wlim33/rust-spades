@@ -292,12 +292,9 @@ impl GameActor {
             }
         }
 
-        // Persist to disk (blocking call against rusqlite — Phase B #10 will
-        // move this off the actor task once that lands).
-        if let Some(db) = &self.db
-            && let Err(e) = db.update_game(&self.game) {
-                error!(game_id = %self.game_id, error = %e, "failed to persist game update");
-            }
+        // Persist off the actor task — blocking SQL on a spawn_blocking
+        // worker so we don't stall the mailbox while the row updates.
+        self.persist_async();
 
         // Start a timer for the next player.
         if is_timed {
@@ -326,10 +323,7 @@ impl GameActor {
         name: Option<String>,
     ) -> Result<(), GameManagerError> {
         self.game.set_player_name(player_id, name)?;
-        if let Some(db) = &self.db
-            && let Err(e) = db.update_game(&self.game) {
-                error!(game_id = %self.game_id, error = %e, "failed to persist game update");
-            }
+        self.persist_async();
         let state_response = self.build_state_response();
         self.broadcast(GameEvent::StateChanged { seq: 0, state: state_response });
         Ok(())
@@ -364,10 +358,7 @@ impl GameActor {
         if is_first_round_betting {
             self.game.set_state(State::Aborted);
             self.game.set_turn_started_at_epoch_ms(None);
-            if let Some(db) = &self.db
-                && let Err(e) = db.update_game(&self.game) {
-                    error!(game_id = %self.game_id, error = %e, "failed to persist abort");
-                }
+            self.persist_async();
             self.broadcast(GameEvent::GameAborted {
                 seq: 0,
                 game_id: self.game_id,
@@ -400,6 +391,34 @@ impl GameActor {
     }
 
     // -- helpers --------------------------------------------------------
+
+    /// Serialize `self.game` and hand the bytes to a `spawn_blocking`
+    /// worker for the SQL write. Returns immediately so the actor's
+    /// mailbox isn't stalled by rusqlite I/O.
+    ///
+    /// Durability is best-effort: a process crash between the in-memory
+    /// transition and the row update loses the most recent change, but
+    /// `with_graceful_shutdown` drains spawned tasks before the runtime
+    /// exits, so SIGTERM / Ctrl+C still flush pending persists.
+    fn persist_async(&self) {
+        let Some(db) = self.db.clone() else { return };
+        let game_id = self.game_id;
+        let json = match serde_json::to_string(&self.game) {
+            Ok(j) => j,
+            Err(e) => {
+                error!(game_id = %game_id, error = %e, "failed to serialize game for persist");
+                return;
+            }
+        };
+        tokio::spawn(async move {
+            let res = tokio::task::spawn_blocking(move || db.update_game_serialized(game_id, json)).await;
+            match res {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => error!(game_id = %game_id, error = %e, "persist update failed"),
+                Err(e) => error!(game_id = %game_id, error = %e, "persist task join failed"),
+            }
+        });
+    }
 
     fn cancel_timer(&mut self) -> (u64, Option<usize>) {
         if let Some(timer) = self.active_timer.take() {

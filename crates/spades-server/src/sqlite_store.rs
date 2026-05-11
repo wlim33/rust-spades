@@ -109,11 +109,19 @@ impl SqliteStore {
     /// Update an existing game.
     pub fn update_game(&self, game: &Game) -> Result<(), String> {
         let json = serde_json::to_string(game).map_err(|e| e.to_string())?;
-        let id = game.get_id().to_string();
+        let id = *game.get_id();
+        self.update_game_serialized(id, json)
+    }
+
+    /// Like `update_game` but takes a pre-serialized JSON blob. Callers
+    /// inside an async/actor context serialize on their own thread (fast)
+    /// and hand the `String` to `spawn_blocking`, so the blocking SQL
+    /// write doesn't stall a tokio worker.
+    pub fn update_game_serialized(&self, id: Uuid, json: String) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute(
             "UPDATE games SET data = ?2 WHERE id = ?1",
-            rusqlite::params![id, json],
+            rusqlite::params![id.to_string(), json],
         ).map_err(|e| e.to_string())?;
         Ok(())
     }
