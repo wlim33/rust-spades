@@ -34,6 +34,8 @@ pub struct RateLimitState {
     /// POST /challenges and POST /challenges/:id/join/:seat — challenge
     /// creation and join, per-user.
     pub challenge_action: Arc<UuidLimiter>,
+    /// POST /games/:id/chat — in-game chat, per-user.
+    pub chat_message: Arc<UuidLimiter>,
 }
 
 impl Default for RateLimitState {
@@ -56,6 +58,7 @@ impl RateLimitState {
             transition: u_lim(Quota::per_minute(NonZeroU32::new(60).unwrap()).allow_burst(NonZeroU32::new(120).unwrap())),
             create_seek: u_lim(Quota::per_minute(NonZeroU32::new(10).unwrap()).allow_burst(NonZeroU32::new(20).unwrap())),
             challenge_action: u_lim(Quota::per_minute(NonZeroU32::new(10).unwrap()).allow_burst(NonZeroU32::new(20).unwrap())),
+            chat_message: u_lim(Quota::per_minute(NonZeroU32::new(30).unwrap()).allow_burst(NonZeroU32::new(60).unwrap())),
         }
     }
 }

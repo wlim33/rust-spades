@@ -12,7 +12,7 @@ use spades::{GameTransition, decode_player_url, short_id_to_uuid, uuid_to_short_
 use uuid::Uuid;
 
 use super::super::dto::{
-    CreateGameRequest, ErrorResponse, PlayerUrlResponse, PresenceSnapshot,
+    ChatRequest, CreateGameRequest, ErrorResponse, PlayerUrlResponse, PresenceSnapshot,
     SetNameRequest, TransitionRequest, TransitionResponse, TransitionType,
 };
 use super::super::idempotency::CachedOutcome;
@@ -397,6 +397,85 @@ fn seat_matches_identity(
         return seat_anon == identity.anon_id();
     }
     false
+}
+
+/// Maximum characters per chat message. Plenty for tactical chatter; tight
+/// enough that the broadcast buffer doesn't bloat under heavy use.
+const CHAT_MAX_LEN: usize = 500;
+
+/// POST /games/:id/chat — broadcast a chat message into the game's event
+/// stream. Auth-gated to the seat owner (spectators can read chat but
+/// can't send), rate-limited per-user, validated for length + profanity.
+pub async fn post_chat(
+    AxumState(state): AxumState<AppState>,
+    Path(game_id): Path<Uuid>,
+    identity: spades_server::auth::Identity,
+    Json(request): Json<ChatRequest>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    spades_server::auth::rate_limit::check_user(&state.auth.rate.chat_message, identity.anon_id())
+        .map_err(super::super::dto::auth_err_response)?;
+
+    let content = request.content.trim();
+    if content.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse { error: "chat message must not be empty".to_string() }),
+        ));
+    }
+    if content.chars().count() > CHAT_MAX_LEN {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("chat message exceeds {CHAT_MAX_LEN} characters"),
+            }),
+        ));
+    }
+    // rustrict is already in scope for name validation — reuse the same
+    // censor for chat. `is_inappropriate` flags severe profanity / slurs;
+    // milder bits pass through.
+    use rustrict::CensorStr;
+    if content.is_inappropriate() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse { error: "chat message rejected by content filter".to_string() }),
+        ));
+    }
+
+    // Auth-gate to seat owner — only players at this table can send chat.
+    let seat = state
+        .auth
+        .store
+        .game_seat_by_player_id(game_id, request.player_id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e })))?;
+    let Some(seat) = seat else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "player not seated in this game".to_string(),
+            }),
+        ));
+    };
+    if !seat_matches_identity(&seat, &identity) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "only seated players may send chat".to_string(),
+            }),
+        ));
+    }
+
+    state
+        .game_manager
+        .send_chat(game_id, request.player_id, content.to_string())
+        .await
+        .map_err(|e| {
+            let status = match e {
+                GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
+                _ => StatusCode::BAD_REQUEST,
+            };
+            (status, Json(ErrorResponse { error: format!("{}", e) }))
+        })?;
+    Ok(StatusCode::ACCEPTED)
 }
 
 /// Return a PGN-style text transcript of a finished game. Refused for

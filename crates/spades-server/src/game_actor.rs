@@ -73,6 +73,13 @@ pub enum GameCmd {
     GetTranscript {
         reply: oneshot::Sender<Option<String>>,
     },
+    /// Broadcast a chat message to all subscribers. Auth happens at the
+    /// HTTP handler — the actor trusts the caller.
+    SendChat {
+        player_id: Uuid,
+        content: String,
+        reply: oneshot::Sender<()>,
+    },
     /// Fired by the spawned timer task. `generation` lets the actor
     /// discard messages from timers that were already cancelled by a
     /// subsequent transition (the spawn-to-mailbox-send hop is not
@@ -145,6 +152,18 @@ impl GameHandle {
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(GameCmd::GetTranscript { reply: tx })
+            .map_err(|_| GameManagerError::GameNotFound)?;
+        rx.await.map_err(|_| GameManagerError::GameNotFound)
+    }
+
+    pub async fn send_chat(
+        &self,
+        player_id: Uuid,
+        content: String,
+    ) -> Result<(), GameManagerError> {
+        let (tx, rx) = oneshot::channel();
+        self.sender
+            .send(GameCmd::SendChat { player_id, content, reply: tx })
             .map_err(|_| GameManagerError::GameNotFound)?;
         rx.await.map_err(|_| GameManagerError::GameNotFound)
     }
@@ -256,6 +275,15 @@ impl GameActor {
                     _ => None,
                 };
                 let _ = reply.send(out);
+            }
+            GameCmd::SendChat { player_id, content, reply } => {
+                self.broadcast(GameEvent::ChatMessage {
+                    seq: 0,
+                    game_id: self.game_id,
+                    player_id,
+                    content,
+                });
+                let _ = reply.send(());
             }
             GameCmd::TimerFired { generation } => {
                 self.handle_timer_fired(generation);
@@ -506,6 +534,7 @@ impl GameActor {
         match &mut event {
             GameEvent::StateChanged { seq: s, .. } => *s = seq,
             GameEvent::GameAborted { seq: s, .. } => *s = seq,
+            GameEvent::ChatMessage { seq: s, .. } => *s = seq,
         }
         self.recent.push_back(event.clone());
         while self.recent.len() > RECENT_CAP {

@@ -31,6 +31,14 @@ pub enum GameEvent {
         game_id: Uuid,
         reason: String,
     },
+    /// Public chat for the table. Spectators receive these too; only seat
+    /// owners can send (gated at the HTTP handler).
+    ChatMessage {
+        seq: u64,
+        game_id: Uuid,
+        player_id: Uuid,
+        content: String,
+    },
 }
 
 /// Extract the seq from a `GameEvent` regardless of variant.
@@ -38,6 +46,7 @@ pub fn event_seq(event: &GameEvent) -> u64 {
     match event {
         GameEvent::StateChanged { seq, .. } => *seq,
         GameEvent::GameAborted { seq, .. } => *seq,
+        GameEvent::ChatMessage { seq, .. } => *seq,
     }
 }
 
@@ -377,6 +386,15 @@ impl GameManager {
         self.handle(game_id).await?.get_transcript().await
     }
 
+    pub async fn send_chat(
+        &self,
+        game_id: Uuid,
+        player_id: Uuid,
+        content: String,
+    ) -> Result<(), GameManagerError> {
+        self.handle(game_id).await?.send_chat(player_id, content).await
+    }
+
     /// Sweep games that have been in a terminal state (Completed /
     /// Aborted) for at least `ttl`, evicting their actor from the in-memory
     /// map. The next access through `handle()` re-spawns an actor by
@@ -629,6 +647,24 @@ mod tests {
         assert_eq!(state.state, State::NotStarted);
         // Subsequent reads hit the in-memory actor.
         assert_eq!(m.list_games().unwrap(), vec![game_id]);
+    }
+
+    #[tokio::test]
+    async fn send_chat_broadcasts_to_subscribers() {
+        let m = GameManager::new();
+        let r = m.create_game(500, None).unwrap();
+        let mut sub = m.subscribe(r.game_id, None).await.unwrap();
+        m.send_chat(r.game_id, r.player_ids[0], "hello".to_string()).await.unwrap();
+        let event = sub.rx.try_recv().expect("chat event reached subscriber");
+        match event {
+            GameEvent::ChatMessage { game_id, player_id, content, seq } => {
+                assert_eq!(game_id, r.game_id);
+                assert_eq!(player_id, r.player_ids[0]);
+                assert_eq!(content, "hello");
+                assert_eq!(seq, 0, "first event on a fresh game is seq 0");
+            }
+            other => panic!("expected ChatMessage, got {other:?}"),
+        }
     }
 
     #[tokio::test]

@@ -75,6 +75,9 @@ async fn handle_game_ws(
                     GameEvent::GameAborted { seq, game_id, reason } => {
                         ServerEvent::GameAborted { seq, game_id, reason }
                     }
+                    GameEvent::ChatMessage { seq, game_id, player_id, content } => {
+                        ServerEvent::ChatMessage { seq, game_id, player_id, content }
+                    }
                 };
                 if let Ok(json) = serde_json::to_string(&server_event) {
                     if socket.send(Message::Text(json.into())).await.is_err() {
@@ -123,6 +126,9 @@ async fn handle_game_ws(
                         let server_event = match game_event {
                             GameEvent::StateChanged { seq, state } => ServerEvent::StateChanged { seq, state },
                             GameEvent::GameAborted { seq, game_id, reason } => ServerEvent::GameAborted { seq, game_id, reason },
+                            GameEvent::ChatMessage { seq, game_id, player_id, content } => {
+                                ServerEvent::ChatMessage { seq, game_id, player_id, content }
+                            }
                         };
                         if let Ok(json) = serde_json::to_string(&server_event) {
                             if socket.send(Message::Text(json.into())).await.is_err() {

@@ -102,6 +102,12 @@ pub struct JoinChallengeRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize, OaSchema)]
+pub struct ChatRequest {
+    pub player_id: Uuid,
+    pub content: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, OaSchema)]
 pub struct CancelChallengeRequest {
     pub creator_id: Uuid,
 }
@@ -153,4 +159,12 @@ pub enum ServerEvent {
     /// buffer and cannot continue cleanly. Client should reconnect to
     /// receive a fresh snapshot.
     Resync { reason: String },
+    /// Public chat message. Carries the same per-game `seq` as state
+    /// events so clients can order it in the timeline.
+    ChatMessage {
+        seq: u64,
+        game_id: Uuid,
+        player_id: Uuid,
+        content: String,
+    },
 }

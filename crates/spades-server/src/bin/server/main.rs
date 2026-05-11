@@ -17,7 +17,7 @@ use handlers::challenges::{
 };
 use handlers::games::{
     create_game, delete_game, get_game_by_player_url, get_game_by_short_id_handler,
-    get_game_state, get_hand, get_presence, get_replay, list_games, make_transition, root, set_player_name,
+    get_game_state, get_hand, get_presence, get_replay, list_games, make_transition, post_chat, root, set_player_name,
 };
 use handlers::matchmaking::{list_seeks_handler, queue_sizes_handler, seek};
 use handlers::players::{get_player, set_display_name};
@@ -108,6 +108,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/games/{game_id}/players/{player_id}/name", put(set_player_name))
         // Replay returns text/plain (oasgen wants JSON responses).
         .route("/games/{game_id}/replay", get(get_replay))
+        // Chat: POST sends a message; subscribers see it via WS.
+        .route("/games/{game_id}/chat", post(post_chat))
         .route("/challenges/{challenge_id}", delete(cancel_challenge_handler))
         // Session-based (oasgen can't handle Session extractor)
         .route("/player", get(get_player))
@@ -560,6 +562,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn chat_owner_can_send_message() {
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        let resp = server
+            .post(&format!("/games/{}/chat", create.game_id))
+            .json(&serde_json::json!({
+                "player_id": create.player_ids[0],
+                "content": "gg",
+            }))
+            .await;
+        assert_eq!(resp.status_code(), StatusCode::ACCEPTED);
+    }
+
+    #[tokio::test]
+    async fn chat_non_owner_is_forbidden() {
+        let mut server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        // Flip to a fresh anon session and try to send chat as that seat.
+        server.clear_cookies();
+        let resp = server
+            .post(&format!("/games/{}/chat", create.game_id))
+            .json(&serde_json::json!({
+                "player_id": create.player_ids[0],
+                "content": "hi",
+            }))
+            .await;
+        assert_eq!(resp.status_code(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn chat_rejects_empty_and_oversized_content() {
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        let path = format!("/games/{}/chat", create.game_id);
+
+        let empty = server
+            .post(&path)
+            .json(&serde_json::json!({"player_id": create.player_ids[0], "content": ""}))
+            .await;
+        assert_eq!(empty.status_code(), StatusCode::BAD_REQUEST);
+
+        let oversized: String = "a".repeat(501);
+        let too_big = server
+            .post(&path)
+            .json(&serde_json::json!({"player_id": create.player_ids[0], "content": oversized}))
+            .await;
+        assert_eq!(too_big.status_code(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
     async fn replay_returns_404_for_missing_game() {
         let server = test_app();
         let resp = server.get(&format!("/games/{}/replay", Uuid::new_v4())).await;
@@ -796,7 +860,9 @@ mod tests {
         let mut saw_lagged = false;
         for _ in 0..200 {
             match sub.rx.try_recv() {
-                Ok(GameEvent::StateChanged { .. }) | Ok(GameEvent::GameAborted { .. }) => continue,
+                Ok(GameEvent::StateChanged { .. })
+                | Ok(GameEvent::GameAborted { .. })
+                | Ok(GameEvent::ChatMessage { .. }) => continue,
                 Err(broadcast::error::TryRecvError::Lagged(_)) => { saw_lagged = true; break; }
                 Err(_) => break,
             }
