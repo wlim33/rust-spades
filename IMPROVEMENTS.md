@@ -93,10 +93,7 @@ Standard bids and nil bids are supported. Blind nil (commit to nil before seeing
 
 ## Code Quality Notes
 
-- `GetError` does not yet implement `std::error::Error` (Display is implemented). Planned for Phase 3.
-- `bin/server.rs` is 2150 lines in one file. Planned for Phase 3 module split.
-- `format!("{:?}", e)` is used pervasively for HTTP error bodies. Will move to `Display` in Phase 3.
-- `GameManagerError::GameError(String)` flattens typed errors into strings. Planned typed-error pass in Phase 3.
-- `Suit::Blank` and `Rank::Blank` are sentinel values mixed into the same enums as real cards. Planned removal in Phase 4 (2.0.0 break) in favor of `Option<Card>` for trick slots.
-- `TeamState::current_round_tricks_won: [i32; 13]` is only ever summed. Planned collapse to a single counter in Phase 4.
-- Single-crate layout: server feature pulls in ~12 optional deps for library consumers. Planned workspace split (`spades-core`, `spades-server`) in Phase 4.
+All Phase 3/4 cleanup items are now done: `bin/server.rs` split into a module directory, HTTP error bodies use `Display`, `GameManagerError` carries typed `Transition`/`Get` variants, `Suit::Blank`/`Rank::Blank` removed, `current_round_tricks_won` collapsed to a single counter, and the workspace split (`spades-core` + `spades-server`) is in place.
+
+Remaining nits:
+- `GetError` still uses a manual `Display` impl and does not implement `std::error::Error`. Low priority — error consumers in this repo only need `Display`.
