@@ -4,7 +4,7 @@ pub(super) fn card_to_str(c: Card) -> [u8; 2] {
     [rank_byte(c.rank), suit_byte(c.suit)]
 }
 
-pub(super) fn rank_byte(r: Rank) -> u8 {
+fn rank_byte(r: Rank) -> u8 {
     match r {
         Rank::Two => b'2',
         Rank::Three => b'3',
@@ -22,7 +22,7 @@ pub(super) fn rank_byte(r: Rank) -> u8 {
     }
 }
 
-pub(super) fn suit_byte(s: Suit) -> u8 {
+fn suit_byte(s: Suit) -> u8 {
     match s {
         Suit::Club => b'C',
         Suit::Diamond => b'D',
