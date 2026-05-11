@@ -1,4 +1,9 @@
 //! Shared test scaffolding for auth integration tests.
+//!
+//! Each integration test in `tests/` compiles this module as part of its own
+//! binary and pulls in only the helpers it needs, so items that a particular
+//! binary doesn't reference are correctly flagged as dead code. Allow it.
+#![allow(dead_code)]
 
 use axum::{extract::connect_info::MockConnectInfo, routing::{get, patch, post}, Router};
 #[allow(unused_imports)]

@@ -30,11 +30,11 @@ fn encode_headers(out: &mut String, g: &Game) {
     writeln!(out, "[MaxPoints \"{}\"]", g.get_max_points()).unwrap();
 
     let names = g.get_player_names();
-    for i in 0..4 {
-        writeln!(out, "[Player{} \"{}\"]", i, names[i].0).unwrap();
+    for (i, name) in names.iter().enumerate() {
+        writeln!(out, "[Player{} \"{}\"]", i, name.0).unwrap();
     }
-    for i in 0..4 {
-        if let Some(n) = names[i].1 {
+    for (i, name) in names.iter().enumerate() {
+        if let Some(n) = name.1 {
             writeln!(out, "[Name{} \"{}\"]", i, escape_tag_value(n)).unwrap();
         }
     }
@@ -102,10 +102,10 @@ fn encode_round(out: &mut String, g: &Game, round_idx: usize) {
     writeln!(out, "[Round \"{}\"]", round_idx + 1).unwrap();
 
     let hands = dealt_hands_for_round(g, round_idx);
-    for seat in 0..4 {
+    for (seat, hand) in hands.iter().enumerate() {
         write!(out, "[Hand{} \"", seat).unwrap();
         let mut first = true;
-        for c in &hands[seat] {
+        for c in hand {
             if !first {
                 out.push(' ');
             }
@@ -213,8 +213,7 @@ fn tricks_for_round(g: &Game, round_idx: usize) -> Vec<Vec<Card>> {
     let end = (start + 13).min(history.len());
     let mut out = Vec::new();
     let mut lead = 0usize;
-    for slot_idx in start..end {
-        let trick = &history[slot_idx];
+    for trick in &history[start..end] {
         let count = trick.iter().filter(|c| c.is_some()).count();
         if count == 0 {
             continue;
@@ -374,8 +373,8 @@ mod tests {
         let s = encode(&g);
         for line in s.lines().filter(|l| l.starts_with("[Hand")) {
             // Extract content between the first and last '"' on the line.
-            let after_first = line.splitn(2, '"').nth(1).unwrap_or("");
-            let inside = after_first.rsplitn(2, '"').nth(1).unwrap_or("");
+            let after_first = line.split_once('"').map(|x| x.1).unwrap_or("");
+            let inside = after_first.rsplit_once('"').map(|x| x.0).unwrap_or("");
             let cards: Vec<Card> = inside
                 .split_whitespace()
                 .map(|tok| super::super::format::parse_card(tok).unwrap())

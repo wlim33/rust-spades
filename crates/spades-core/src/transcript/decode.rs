@@ -168,7 +168,7 @@ impl<'a> Parser<'a> {
 
             // 4 [HandN] lines
             let mut hands: [Vec<crate::cards::Card>; 4] = Default::default();
-            for seat in 0..4 {
+            for (seat, hand) in hands.iter_mut().enumerate() {
                 let (ln2, line2) = self.advance().copied().ok_or(DecodeError::UnexpectedEof)?;
                 let (k, v) = parse_tag_line(ln2, line2)?;
                 if k != format!("Hand{}", seat) {
@@ -179,7 +179,7 @@ impl<'a> Parser<'a> {
                         line: ln2,
                         token: tok.to_string(),
                     })?;
-                    hands[seat].push(c);
+                    hand.push(c);
                 }
             }
 

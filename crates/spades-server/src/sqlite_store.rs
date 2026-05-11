@@ -619,7 +619,7 @@ mod tests {
         let u = store.find_user_by_id(id).unwrap().unwrap();
         assert_eq!(u.username, "Alice");
         assert_eq!(u.username_canon, "alice");
-        assert_eq!(u.email_verified, false);
+        assert!(!u.email_verified);
         assert_eq!(u.token_version, 0);
     }
 
