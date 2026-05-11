@@ -306,11 +306,22 @@ impl SqliteStore {
         })
     }
 
+    /// Increment failure_count, returning the new value.
+    /// Resets to 1 if a previous lockout window has already expired.
     pub fn bump_login_failure(&self, user_id: uuid::Uuid) -> Result<i32, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        // If locked_until is non-null and has passed, treat as a fresh window.
         conn.execute(
             "INSERT INTO login_failures (user_id, failure_count) VALUES (?1, 1) \
-             ON CONFLICT(user_id) DO UPDATE SET failure_count = failure_count + 1",
+             ON CONFLICT(user_id) DO UPDATE SET \
+                failure_count = CASE \
+                    WHEN locked_until IS NOT NULL AND locked_until < datetime('now') THEN 1 \
+                    ELSE failure_count + 1 \
+                END, \
+                locked_until = CASE \
+                    WHEN locked_until IS NOT NULL AND locked_until < datetime('now') THEN NULL \
+                    ELSE locked_until \
+                END",
             rusqlite::params![user_id.to_string()],
         ).map_err(|e| e.to_string())?;
         let n: i32 = conn.query_row(
@@ -654,5 +665,25 @@ mod tests {
         let u = store.find_user_by_id(id).unwrap().unwrap();
         assert!(u.email_verified);
         assert!(u.last_login_at.is_some());
+    }
+
+    #[test]
+    fn login_failure_count_resets_after_lockout_expires() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let id = store.insert_user(&new_user("Alice", "alice@x.com")).unwrap();
+
+        // Bump to 5 failures and lock.
+        for _ in 0..5 { store.bump_login_failure(id).unwrap(); }
+        store.set_lockout(id, 1).unwrap();
+
+        // Sleep past the lockout (1 second).
+        std::thread::sleep(std::time::Duration::from_secs(2));
+
+        // Next bump should reset to 1 and clear locked_until.
+        let n = store.bump_login_failure(id).unwrap();
+        assert_eq!(n, 1, "failure count should reset after lockout expiry");
+
+        let locked = store.get_lockout(id).unwrap();
+        assert!(locked.is_none() || locked.as_deref() == Some(""), "locked_until should be NULL after reset");
     }
 }
