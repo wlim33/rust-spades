@@ -29,6 +29,7 @@ pub struct Transcript {
     pub result: Option<(i32, i32)>,
 }
 
+/// Decoded header block: game identity, player roster, and optional timer config.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Headers {
     pub game_id: Uuid,
@@ -38,6 +39,7 @@ pub struct Headers {
     pub timer: Option<TimerConfig>,
 }
 
+/// Per-round data: dealt hands per seat, bets in seat order, tricks in play order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Round {
     /// Dealt hand per seat at the start of the round, sorted by `Card::Ord`.
