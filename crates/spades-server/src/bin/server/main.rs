@@ -124,6 +124,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/register", post(handlers::auth::register))
         .route("/auth/login", post(handlers::auth::login))
         .route("/auth/logout", post(handlers::auth::logout))
+        .route("/auth/tokens", post(spades_server::handlers_auth::create_token))
+        .route("/auth/tokens", get(spades_server::handlers_auth::list_tokens))
+        .route("/auth/tokens/{token_id}", axum::routing::delete(spades_server::handlers_auth::revoke_token))
         .route("/auth/me", get(handlers::auth::me))
         .route("/auth/verify-email", get(handlers::auth::verify_email))
         .route("/auth/password-reset/request", post(handlers::auth::password_reset_request))
@@ -559,6 +562,66 @@ mod tests {
         response.assert_status_ok();
         let body: serde_json::Value = response.json();
         assert_eq!(body["name"], "Spades Game Server");
+    }
+
+    #[tokio::test]
+    async fn bot_account_bearer_token_authenticates_as_owner() {
+        // Register a user via session, issue an API token, then drop the
+        // session cookie and use Bearer auth instead. The bot must be
+        // recognised as the registered user (POST /games succeeds with
+        // identity-derived rate limits keyed on the user_id).
+        let mut server = test_app();
+        let register = server
+            .post("/auth/register")
+            .json(&serde_json::json!({
+                "username": "alice",
+                "email": "alice@example.com",
+                "password": "supersecret-passphrase",
+            }))
+            .await;
+            assert_eq!(register.status_code(), StatusCode::CREATED);
+        let create_token = server
+            .post("/auth/tokens")
+            .json(&serde_json::json!({"name": "my bot"}))
+            .await;
+        assert_eq!(create_token.status_code(), StatusCode::CREATED);
+        let body: serde_json::Value = create_token.json();
+        let plaintext = body["token"].as_str().expect("token plaintext").to_string();
+        let token_id = body["id"].as_str().unwrap().to_string();
+
+        // Switch to "bot client" mode: no cookies, Bearer header set.
+        server.clear_cookies();
+        let resp = server
+            .post("/games")
+            .add_header("authorization", format!("Bearer {plaintext}"))
+            .json(&serde_json::json!({"max_points": 500}))
+            .await;
+        assert_eq!(resp.status_code(), StatusCode::OK);
+
+        // Revoke the token — subsequent Bearer auth must now fail with 401.
+        // Switch back to the registered user's session for the revoke call.
+        // The simplest way: log in again to re-establish a cookie session.
+        server
+            .post("/auth/login")
+            .json(&serde_json::json!({
+                "login": "alice",
+                "password": "supersecret-passphrase",
+            }))
+            .await
+            .assert_status_ok();
+        let revoke = server
+            .delete(&format!("/auth/tokens/{token_id}"))
+            .await;
+        assert_eq!(revoke.status_code(), StatusCode::NO_CONTENT);
+
+        // Now Bearer with the same (revoked) token: 401.
+        server.clear_cookies();
+        let resp = server
+            .post("/games")
+            .add_header("authorization", format!("Bearer {plaintext}"))
+            .json(&serde_json::json!({"max_points": 500}))
+            .await;
+        assert_eq!(resp.status_code(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]

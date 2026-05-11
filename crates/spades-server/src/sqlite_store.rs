@@ -3,6 +3,17 @@ use std::sync::Mutex;
 use uuid::Uuid;
 use spades::Game;
 
+/// A row from `api_tokens` minus the hash. Returned by `list_api_tokens`
+/// for UI display; the plaintext token is shown to the user exactly once,
+/// at issue time.
+#[derive(Debug, Clone)]
+pub struct ApiTokenRow {
+    pub id: Uuid,
+    pub name: String,
+    pub created_at: String,
+    pub last_used_at: Option<String>,
+}
+
 /// SQLite-backed persistence for games.
 pub struct SqliteStore {
     conn: Mutex<Connection>,
@@ -87,6 +98,15 @@ impl SqliteStore {
                 failure_count   INTEGER NOT NULL DEFAULT 0,
                 locked_until    TEXT
             );
+            CREATE TABLE IF NOT EXISTS api_tokens (
+                id              TEXT PRIMARY KEY,
+                user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                token_hash      TEXT NOT NULL UNIQUE,
+                name            TEXT NOT NULL,
+                created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+                last_used_at    TEXT
+            );
+            CREATE INDEX IF NOT EXISTS api_tokens_user_id ON api_tokens(user_id);
             CREATE TABLE IF NOT EXISTS game_seats (
                 game_id         TEXT NOT NULL,
                 seat_index      INTEGER NOT NULL,
@@ -277,6 +297,89 @@ impl SqliteStore {
             ],
         ).map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    /// Issue a new API token. Caller passes the SHA-256-hashed token —
+    /// we never persist the plaintext. Returns the new row's `id` so
+    /// the caller can hand both `id` and the user-visible plaintext
+    /// back in the response.
+    pub fn create_api_token(
+        &self,
+        user_id: uuid::Uuid,
+        token_hash: &str,
+        name: &str,
+    ) -> Result<uuid::Uuid, String> {
+        let id = uuid::Uuid::new_v4();
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO api_tokens (id, user_id, token_hash, name) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![id.to_string(), user_id.to_string(), token_hash, name],
+        ).map_err(|e| e.to_string())?;
+        Ok(id)
+    }
+
+    pub fn list_api_tokens(
+        &self,
+        user_id: uuid::Uuid,
+    ) -> Result<Vec<ApiTokenRow>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, created_at, last_used_at FROM api_tokens WHERE user_id = ?1 \
+             ORDER BY created_at DESC"
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(
+            rusqlite::params![user_id.to_string()],
+            |r| Ok(ApiTokenRow {
+                id: uuid::Uuid::parse_str(&r.get::<_, String>(0)?).unwrap_or_default(),
+                name: r.get(1)?,
+                created_at: r.get(2)?,
+                last_used_at: r.get(3)?,
+            }),
+        ).map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    pub fn revoke_api_token(
+        &self,
+        token_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+    ) -> Result<bool, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let n = conn.execute(
+            "DELETE FROM api_tokens WHERE id = ?1 AND user_id = ?2",
+            rusqlite::params![token_id.to_string(), user_id.to_string()],
+        ).map_err(|e| e.to_string())?;
+        Ok(n > 0)
+    }
+
+    /// Resolve a Bearer token to its owning user. Updates last_used_at
+    /// fire-and-forget so it doesn't slow the auth path.
+    pub fn find_user_by_api_token(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<crate::auth::users::User>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let user_id: Option<String> = conn.query_row(
+            "SELECT user_id FROM api_tokens WHERE token_hash = ?1",
+            rusqlite::params![token_hash],
+            |r| r.get(0),
+        ).map(Some).or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other.to_string()),
+        })?;
+        let Some(user_id_s) = user_id else { return Ok(None) };
+        // Bump last_used_at. Failures here are non-fatal.
+        let _ = conn.execute(
+            "UPDATE api_tokens SET last_used_at = datetime('now') WHERE token_hash = ?1",
+            rusqlite::params![token_hash],
+        );
+        let user_id = uuid::Uuid::parse_str(&user_id_s).map_err(|e| e.to_string())?;
+        drop(conn);
+        self.find_user_by_id(user_id)
     }
 
     pub fn update_user_email(&self, user_id: uuid::Uuid, new_email: &str) -> Result<i32, String> {

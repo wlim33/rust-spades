@@ -173,6 +173,79 @@ pub async fn logout(session: Session) -> Result<axum::http::StatusCode, AuthErro
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+pub struct CreateTokenRequest {
+    pub name: String,
+}
+
+#[derive(Serialize)]
+pub struct CreatedToken {
+    pub id: Uuid,
+    pub name: String,
+    /// Plaintext token. Shown exactly once at creation time — the DB stores
+    /// only the SHA-256 hash. The bot client is responsible for capturing
+    /// this and using it in `Authorization: Bearer <token>` headers.
+    pub token: String,
+}
+
+#[derive(Serialize)]
+pub struct TokenListEntry {
+    pub id: Uuid,
+    pub name: String,
+    pub created_at: String,
+    pub last_used_at: Option<String>,
+}
+
+pub async fn create_token(
+    State(auth): State<AuthState>,
+    AuthUser(user): AuthUser,
+    Json(req): Json<CreateTokenRequest>,
+) -> Result<(axum::http::StatusCode, Json<CreatedToken>), AuthError> {
+    let name = req.name.trim();
+    if name.is_empty() || name.chars().count() > 100 {
+        return Err(AuthError::Validation("token name must be 1-100 chars".into()));
+    }
+    let plaintext = generate_token();
+    let hash = hash_token(&plaintext);
+    let id = auth
+        .store
+        .create_api_token(user.id, &hash, name)
+        .map_err(AuthError::Storage)?;
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(CreatedToken { id, name: name.to_string(), token: plaintext }),
+    ))
+}
+
+pub async fn list_tokens(
+    State(auth): State<AuthState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<Vec<TokenListEntry>>, AuthError> {
+    let rows = auth.store.list_api_tokens(user.id).map_err(AuthError::Storage)?;
+    Ok(Json(rows.into_iter().map(|r| TokenListEntry {
+        id: r.id,
+        name: r.name,
+        created_at: r.created_at,
+        last_used_at: r.last_used_at,
+    }).collect()))
+}
+
+pub async fn revoke_token(
+    State(auth): State<AuthState>,
+    AuthUser(user): AuthUser,
+    axum::extract::Path(token_id): axum::extract::Path<Uuid>,
+) -> Result<axum::http::StatusCode, AuthError> {
+    let removed = auth
+        .store
+        .revoke_api_token(token_id, user.id)
+        .map_err(AuthError::Storage)?;
+    if removed {
+        Ok(axum::http::StatusCode::NO_CONTENT)
+    } else {
+        Err(AuthError::NotFound)
+    }
+}
+
 pub async fn me(AuthUser(user): AuthUser) -> Json<UserResponse> {
     Json(UserResponse::from(&user))
 }
