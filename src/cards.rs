@@ -150,7 +150,6 @@ pub fn new_deck() -> Vec<Card> {
             cards.push(Card {suit:s.clone(), rank:r.clone()});
         }
     }
-    shuffle(&mut cards);
 
     return cards;
 }
@@ -171,10 +170,10 @@ pub fn shuffle(cards: &mut Vec<Card>) {
     cards.shuffle(&mut rng);
 }
 
-/// Used to reshuffle a deck of cards, panics if the `cards` does not have 52 elements (should only be used on a "full" deck).
+/// Deals a 52-card deck out to four hands. Panics if `cards` does not have 52 elements.
+/// Caller is responsible for shuffling first.
 pub fn deal_four_players(cards: &mut Vec<Card>) -> Vec<Vec<Card>> {
     assert_eq!(cards.len(), 52);
-    shuffle(cards);
     let mut hands = vec![vec![], vec![], vec![], vec![]];
 
     let mut i = 0;
