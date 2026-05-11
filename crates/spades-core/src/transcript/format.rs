@@ -75,8 +75,8 @@ pub(super) fn escape_tag_value(s: &str) -> String {
     out
 }
 
-/// Unescape a tag value. Returns None on any unrecognized backslash sequence
-/// or trailing backslash.
+/// Unescape a tag value. Returns `None` on any unrecognized backslash sequence,
+/// trailing backslash, or bare (unescaped) `"`.
 pub(super) fn unescape_tag_value(s: &str) -> Option<String> {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars();
