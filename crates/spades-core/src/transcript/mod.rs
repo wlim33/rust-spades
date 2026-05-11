@@ -106,8 +106,6 @@ impl std::error::Error for DecodeError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReplayError {
-    /// Round R seat S's declared dealt hand contradicts the cards actually played.
-    HandMismatch { round: usize, seat: usize },
     /// `Game::play` rejected a transition synthesized from the transcript.
     Transition {
         round: usize,
@@ -137,6 +135,36 @@ impl fmt::Display for ReplayError {
 }
 
 impl std::error::Error for ReplayError {}
+
+#[cfg(test)]
+mod display_tests {
+    use super::*;
+    use crate::result::TransitionError;
+
+    #[test]
+    fn termination_display_emits_canonical_words() {
+        assert_eq!(Termination::Completed.to_string(), "Completed");
+        assert_eq!(Termination::Aborted.to_string(), "Aborted");
+        assert_eq!(Termination::InProgress.to_string(), "InProgress");
+    }
+
+    #[test]
+    fn decode_error_display_prefix() {
+        let err = DecodeError::UnexpectedEof;
+        assert!(err.to_string().starts_with("transcript decode error:"));
+    }
+
+    #[test]
+    fn replay_error_display_prefix() {
+        let err = ReplayError::Transition {
+            round: 0,
+            trick: None,
+            seat: 0,
+            err: TransitionError::NotStarted,
+        };
+        assert!(err.to_string().starts_with("transcript replay error:"));
+    }
+}
 
 #[cfg(test)]
 mod property_tests {

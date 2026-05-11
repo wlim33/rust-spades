@@ -131,9 +131,6 @@ fn encode_round(out: &mut String, g: &Game, round_idx: usize) {
 
     let tricks = tricks_for_round(g, round_idx);
     for (t, trick_cards) in tricks.iter().enumerate() {
-        if trick_cards.is_empty() {
-            continue;
-        }
         write!(out, "{}.", t + 1).unwrap();
         for c in trick_cards {
             out.push(' ');

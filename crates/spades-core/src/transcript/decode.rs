@@ -152,11 +152,8 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            let (key, value) = parse_tag_line(ln, line)?;
+            let (_key, value) = parse_tag_line(ln, line)?;
             self.advance();
-            if key != "Round" {
-                return Err(DecodeError::BadTag { line: ln, found: line.to_string() });
-            }
             let round_num = parse_int(ln, &value)?;
             if round_num < 1 {
                 return Err(DecodeError::BadInteger { line: ln, value });
@@ -249,15 +246,12 @@ impl<'a> Parser<'a> {
     }
 
     fn expect_eof(&mut self) -> Result<(), DecodeError> {
-        while let Some((_, l)) = self.peek() {
-            if l.is_empty() {
-                self.advance();
-            } else {
-                let (ln, _) = self.peek().copied().unwrap();
-                return Err(DecodeError::TrailingContent { line: ln });
-            }
+        // `parse_rounds` advances past any empty lines, so the cursor is
+        // either at EOF or at a non-empty, non-`[Round` line.
+        match self.peek().copied() {
+            None => Ok(()),
+            Some((ln, _)) => Err(DecodeError::TrailingContent { line: ln }),
         }
-        Ok(())
     }
 }
 
@@ -665,5 +659,224 @@ garbage
             decode(s),
             Err(DecodeError::MissingRequiredTag { key }) if key == "TimerInitial/Increment pair"
         ));
+    }
+
+    #[test]
+    fn decode_rejects_unexpected_eof_in_header() {
+        // No trailing newline, no blank-line terminator: header parser runs
+        // out of lines before encountering the header/round separator.
+        let s = "[GameId \"01010101-0101-0101-0101-010101010101\"]\n[MaxPoints \"500\"]";
+        assert!(matches!(decode(s), Err(DecodeError::UnexpectedEof)));
+    }
+
+    #[test]
+    fn decode_rejects_non_bracket_line_in_header() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+not a tag at all
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+";
+        assert!(matches!(decode(s), Err(DecodeError::BadTag { found, .. }) if found == "not a tag at all"));
+    }
+
+    #[test]
+    fn decode_rejects_duplicate_termination() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Termination \"Completed\"]
+[Result \"*\"]
+";
+        assert!(matches!(
+            decode(s),
+            Err(DecodeError::DuplicateTag { key, .. }) if key == "Termination"
+        ));
+    }
+
+    #[test]
+    fn decode_rejects_duplicate_result() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+[Result \"*\"]
+";
+        assert!(matches!(
+            decode(s),
+            Err(DecodeError::DuplicateTag { key, .. }) if key == "Result"
+        ));
+    }
+
+    #[test]
+    fn decode_rejects_missing_result() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+";
+        assert!(matches!(
+            decode(s),
+            Err(DecodeError::MissingRequiredTag { key: "Result" })
+        ));
+    }
+
+    #[test]
+    fn decode_rejects_round_zero() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+
+[Round \"0\"]
+[Hand0 \"2C 5C 7C TC AC 3D 8D KD 4H 9H 2S 6S QS\"]
+[Hand1 \"3C 6C 8C JC 4D 9D AD 5H TH JH 3S 7S KS\"]
+[Hand2 \"4C 7C 9C QC 5D TD 2H 6H QH 4S 8S TS AS\"]
+[Hand3 \"2C 5D JD KD 7H 8H KH 5S 9S JS QS 6D 3H\"]
+[Bets \"\"]
+";
+        assert!(matches!(decode(s), Err(DecodeError::BadInteger { value, .. }) if value == "0"));
+    }
+
+    #[test]
+    fn decode_rejects_wrong_seat_hand() {
+        // [Hand1] appears in the Hand0 slot.
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+
+[Round \"1\"]
+[Hand1 \"2C 5C 7C TC AC 3D 8D KD 4H 9H 2S 6S QS\"]
+[Hand1 \"3C 6C 8C JC 4D 9D AD 5H TH JH 3S 7S KS\"]
+[Hand2 \"4C 7C 9C QC 5D TD 2H 6H QH 4S 8S TS AS\"]
+[Hand3 \"2C 5D JD KD 7H 8H KH 5S 9S JS QS 6D 3H\"]
+[Bets \"\"]
+";
+        assert!(matches!(decode(s), Err(DecodeError::BadTag { .. })));
+    }
+
+    #[test]
+    fn decode_rejects_wrong_bets_key() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+
+[Round \"1\"]
+[Hand0 \"2C 5C 7C TC AC 3D 8D KD 4H 9H 2S 6S QS\"]
+[Hand1 \"3C 6C 8C JC 4D 9D AD 5H TH JH 3S 7S KS\"]
+[Hand2 \"4C 7C 9C QC 5D TD 2H 6H QH 4S 8S TS AS\"]
+[Hand3 \"2C 5D JD KD 7H 8H KH 5S 9S JS QS 6D 3H\"]
+[Beets \"3 4 2 4\"]
+";
+        assert!(matches!(decode(s), Err(DecodeError::BadTag { .. })));
+    }
+
+    #[test]
+    fn decode_rejects_out_of_order_trick() {
+        // First trick line is numbered 2, not 1.
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+
+[Round \"1\"]
+[Hand0 \"2C 5C 7C TC AC 3D 8D KD 4H 9H 2S 6S QS\"]
+[Hand1 \"3C 6C 8C JC 4D 9D AD 5H TH JH 3S 7S KS\"]
+[Hand2 \"4C 7C 9C QC 5D TD 2H 6H QH 4S 8S TS AS\"]
+[Hand3 \"2C 5D JD KD 7H 8H KH 5S 9S JS QS 6D 3H\"]
+[Bets \"3 4 2 4\"]
+2. 2C 5C 7C TC
+";
+        assert!(matches!(decode(s), Err(DecodeError::BadTag { .. })));
+    }
+
+    #[test]
+    fn decode_rejects_empty_trick_line() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+
+[Round \"1\"]
+[Hand0 \"2C 5C 7C TC AC 3D 8D KD 4H 9H 2S 6S QS\"]
+[Hand1 \"3C 6C 8C JC 4D 9D AD 5H TH JH 3S 7S KS\"]
+[Hand2 \"4C 7C 9C QC 5D TD 2H 6H QH 4S 8S TS AS\"]
+[Hand3 \"2C 5D JD KD 7H 8H KH 5S 9S JS QS 6D 3H\"]
+[Bets \"3 4 2 4\"]
+1.
+";
+        assert!(matches!(decode(s), Err(DecodeError::BadTag { .. })));
+    }
+
+    #[test]
+    fn decode_rejects_too_many_tricks() {
+        // 14 trick lines in one round (max is 13).
+        let mut s = String::from("\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+
+[Round \"1\"]
+[Hand0 \"2C 5C 7C TC AC 3D 8D KD 4H 9H 2S 6S QS\"]
+[Hand1 \"3C 6C 8C JC 4D 9D AD 5H TH JH 3S 7S KS\"]
+[Hand2 \"4C 7C 9C QC 5D TD 2H 6H QH 4S 8S TS AS\"]
+[Hand3 \"2C 5D JD KD 7H 8H KH 5S 9S JS QS 6D 3H\"]
+[Bets \"3 4 2 4\"]
+");
+        for i in 1..=14 {
+            s.push_str(&format!("{}. 2C 5C 7C TC\n", i));
+        }
+        assert!(matches!(decode(&s), Err(DecodeError::TooManyTricks { round: 1 })));
     }
 }
