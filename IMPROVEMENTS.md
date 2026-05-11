@@ -1,5 +1,17 @@
 # Improvements
 
+## Breaking changes (2.0.0)
+
+- **`Suit::Blank` and `Rank::Blank` removed.** Trick slots are now `Option<Card>` (`None` for unplayed) and `leading_suit` is now `Option<Suit>` (`None` between tricks/rounds). Public API: `Game::get_current_trick_cards` now returns `Result<&[Option<Card>; 4], GetError>`. `Game::get_leading_suit` now returns `Result<Option<Suit>, GetError>`. `GameStateResponse.table_cards` is `Option<[Option<Card>; 4]>`.
+- **`TeamState::current_round_tricks_won`** changed from `[i32; 13]` to `i32`. Public field — direct accessors must be updated. Backward-compat: arrays are still accepted by deserialization (summed) so existing SQLite rows load cleanly.
+- **`new_pot()` removed.** No longer needed.
+- **Internal field rename:** `Game.player_a/b/c/d` → `Game.players: [Player; 4]`. The `Game::get_hand` deprecated method now returns `Err(GetError::InvalidUuid)` for out-of-range indices (was: silently returned player D's hand). The custom `Deserialize` on `Game` still accepts pre-2.0 SQLite rows with the four-sibling shape.
+- **`bin/server.rs` split into `src/bin/server/` directory** with `dto.rs`, `presence.rs`, `ws.rs`, and `handlers/{games,matchmaking,challenges,players}.rs`. Public API of the binary is unchanged.
+- **CORS off by default.** Pass `--cors-allow-origin <origin>` (repeatable) or `CORS_ALLOW_ORIGIN=<comma-list>` to enable. Use `--cors-allow-origin '*'` for permissive (dev only).
+- **HTTP error response bodies** now use `Display` formatting instead of `Debug`. The error string is the human-readable message from each error type's `Display` impl, not the variant `Debug` form.
+- **`GameManagerError`** has new typed variants `Transition(TransitionError)` and `Get(GetError)`. The old string-wrapped `GameError(String)` variant is removed.
+
+
 ## Implemented
 
 ### Server Mode

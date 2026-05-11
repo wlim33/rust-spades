@@ -9,7 +9,7 @@ Rust implementation of the four-player [trick-taking](https://en.wikipedia.org/w
 
 ```toml
 [dependencies]
-spades = "1.1"
+spades = "2.0"
 ```
 
 ## Library Usage
