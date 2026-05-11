@@ -315,6 +315,21 @@ pub async fn set_player_name(
         None => None,
     };
 
+    let game_state = state.game_manager.get_game_state(game_id).map_err(|_| (
+        StatusCode::NOT_FOUND,
+        Json(ErrorResponse { error: "Game not found".into() }),
+    ))?;
+    if let Some(idx) = game_state.player_names.iter().position(|pn| pn.player_id == player_id) {
+        if let Ok(Some(seat)) = state.auth.store.game_seat(game_id, idx as i32) {
+            if seat.user_id.is_some() {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    Json(ErrorResponse { error: "seat owned by registered user; name is canonical".into() }),
+                ));
+            }
+        }
+    }
+
     state
         .game_manager
         .set_player_name(game_id, player_id, validated_name)
