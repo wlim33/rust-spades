@@ -50,6 +50,15 @@ Was returning `GetError::GameCompleted` from the Betting arm. Now returns the de
 ### `Card: Copy`
 `Card` is a 2-byte value type; the prior `Clone`-only derive forced unnecessary clones at call sites.
 
+### Authentication
+Email/password registration and login with Argon2id hashing, session-based identity via tower-sessions, email verification, password reset, and OAuth login via Google and GitHub. Anonymous session IDs are preserved across login; game seats created while anonymous are claimed on registration.
+
+### Rate Limiting
+Per-IP and per-email rate limiting on auth endpoints (register, login, password reset). Global rate limiting is still TODO.
+
+### Game History
+Per-user game listing via `/users/:username/games` (paginated). Full replay viewer is still TODO.
+
 ### `Sqids` cached in `OnceLock`
 `uuid_to_short_id`, `short_id_to_uuid`, `encode_player_url`, `decode_player_url` no longer rebuild the `Sqids` instance per call.
 
@@ -66,15 +75,6 @@ Internal struct field for the four players is now an array. Eliminates the four-
 `Game`'s custom `Deserialize` accepts both the new `{ "players": [...] }` shape and the legacy `{ "player_a": ..., "player_b": ..., ... }` shape. Re-serialization always uses the new shape. Existing databases load cleanly; new writes use the new format.
 
 ## Not Yet Implemented
-
-### Authentication
-No auth. Any client can access any game or player hand. Production use requires JWT or similar.
-
-### Rate Limiting
-No rate limiting on any endpoint.
-
-### Game History / Replay
-No transition log. No ability to review or replay past games.
 
 ### Spectator Mode
 No read-only observer role.
