@@ -13,11 +13,20 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
 
-pub fn test_server() -> TestServer {
+/// Full test environment: server + store + mailer for inspection.
+pub struct TestEnv {
+    pub server: TestServer,
+    pub store: Arc<SqliteStore>,
+    pub mailer: Arc<LogMailer>,
+}
+
+/// Build a TestEnv with access to the store and mailer.
+pub fn test_env() -> TestEnv {
     let store = Arc::new(SqliteStore::open(":memory:").unwrap());
+    let mailer = Arc::new(LogMailer::new());
     let auth = AuthState {
         store: store.clone(),
-        mailer: Arc::new(LogMailer::new()),
+        mailer: mailer.clone() as Arc<dyn spades_server::auth::mailer::Mailer>,
         oauth: Arc::new(OauthState::from_env()),
         rate: Arc::new(RateLimitState::new()),
         secure_cookies: false,
@@ -49,8 +58,15 @@ pub fn test_server() -> TestServer {
     let app = router
         .layer(session_layer)
         .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 0))));
-    TestServer::new_with_config(app, TestServerConfig {
+    let server = TestServer::new_with_config(app, TestServerConfig {
         save_cookies: true,
         ..Default::default()
-    }).unwrap()
+    }).unwrap();
+
+    TestEnv { server, store, mailer }
+}
+
+/// Convenience: just the TestServer when store/mailer access is not needed.
+pub fn test_server() -> TestServer {
+    test_env().server
 }
