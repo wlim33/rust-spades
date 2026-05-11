@@ -167,6 +167,44 @@ mod tests {
     }
 
     #[test]
+    fn google_client_builds_when_provider_configured() {
+        let s = OauthState {
+            google: Some(OauthProviderConfig {
+                client_id: "id".into(),
+                client_secret: "sec".into(),
+            }),
+            redirect_base_url: "https://example.com".into(),
+            ..Default::default()
+        };
+        assert!(google_client(&s).is_some());
+    }
+
+    #[test]
+    fn google_client_none_when_provider_missing() {
+        let s = state();
+        assert!(google_client(&s).is_none());
+    }
+
+    #[test]
+    fn github_client_builds_when_provider_configured() {
+        let s = OauthState {
+            github: Some(OauthProviderConfig {
+                client_id: "id".into(),
+                client_secret: "sec".into(),
+            }),
+            redirect_base_url: "https://example.com".into(),
+            ..Default::default()
+        };
+        assert!(github_client(&s).is_some());
+    }
+
+    #[test]
+    fn github_client_none_when_provider_missing() {
+        let s = state();
+        assert!(github_client(&s).is_none());
+    }
+
+    #[test]
     fn sweep_expired_is_a_noop_when_nothing_expired() {
         let s = state();
         let future = OffsetDateTime::now_utc() + TimeDuration::seconds(60);

@@ -904,6 +904,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ws_with_since_param_replays_buffered_events_instead_of_snapshot() {
+        // Drive the WS catch-up branch (handler's `Some(events)` arm) by
+        // pushing a transition into the broadcast then connecting with
+        // `?since=0`. The actor's ring buffer still holds seq 0, so the
+        // server should replay it as a state_changed event with seq 0
+        // (the Start transition) instead of sending a fresh snapshot.
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+
+        // Drive seq forward: Start moves the actor's next_seq from 0 → 1.
+        server
+            .post(&format!("/games/{}/transition", create.game_id))
+            .json(&serde_json::json!({"type": "start"}))
+            .await
+            .assert_status_ok();
+
+        // Subscribe with since=0 — actor builds a catch_up containing the
+        // single buffered StateChanged at seq 0.
+        let path = format!(
+            "/games/{}/ws?player_id={}&since=0",
+            create.game_id, create.player_ids[0],
+        );
+        let mut ws = server
+            .get_websocket(&path)
+            .await
+            .into_websocket()
+            .await;
+
+        let event = ws_recv_event_of(&mut ws, "state_changed").await;
+        assert_eq!(event["seq"], 0);
+        // Catch-up event carries the buffered state at that seq, which is
+        // post-Start (Betting), not the pre-Start NotStarted that a fresh
+        // snapshot would deliver.
+        assert!(event["state"]["Betting"].is_number());
+    }
+
+    #[tokio::test]
+    async fn ws_with_future_since_falls_back_to_fresh_snapshot() {
+        // since=999 is beyond the actor's current_seq → catch_up is None
+        // and the handler sends a snapshot instead. Verifies the fallback
+        // arm of build_subscription.
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        let path = format!(
+            "/games/{}/ws?player_id={}&since=999",
+            create.game_id, create.player_ids[0],
+        );
+        let mut ws = server
+            .get_websocket(&path)
+            .await
+            .into_websocket()
+            .await;
+        let snap = ws_recv_event_of(&mut ws, "state_changed").await;
+        // Fresh snapshot delivers the current state, which is still NotStarted.
+        assert_eq!(snap["state"], "NotStarted");
+    }
+
+    #[tokio::test]
     async fn ws_spectator_bumps_spectator_count() {
         let server = test_app();
         let create: CreateGameResponse = server
@@ -2047,6 +2113,71 @@ mod tests {
             .json(&serde_json::json!({ "max_points": 200, "num_humans": 0 }))
             .await;
         response.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn create_game_with_two_humans_seats_bots_in_opponent_team() {
+        // num_humans=2 puts the two humans on seats 0 and 2 (team A); seats
+        // 1 and 3 are bots on team B. The game must auto-start so the
+        // bots play out their turns rather than blocking on a human.
+        let app = test_app();
+        let response = app
+            .post("/games")
+            .json(&serde_json::json!({ "max_points": 500, "num_humans": 2 }))
+            .await;
+        response.assert_status_ok();
+        let body: CreateGameResponse = response.json();
+        let state: GameStateResponse = app
+            .get(&format!("/games/{}", body.game_id))
+            .await
+            .json();
+        // After auto-start, the game progressed past NotStarted.
+        assert_ne!(state.state, spades::State::NotStarted);
+    }
+
+    #[tokio::test]
+    async fn create_game_rejects_invalid_num_humans() {
+        let app = test_app();
+        let response = app
+            .post("/games")
+            .json(&serde_json::json!({ "max_points": 500, "num_humans": 3 }))
+            .await;
+        response.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn get_game_by_short_id_returns_game_state_when_found() {
+        // create_game returns the game_id; GameStateResponse carries the
+        // short_id. The by-short-id lookup must round-trip back to the
+        // same game.
+        let app = test_app();
+        let body: CreateGameResponse = app
+            .post("/games")
+            .json(&serde_json::json!({ "max_points": 500 }))
+            .await
+            .json();
+        let state: GameStateResponse = app
+            .get(&format!("/games/{}", body.game_id))
+            .await
+            .json();
+        let resp = app.get(&format!("/games/by-short-id/{}", state.short_id)).await;
+        resp.assert_status_ok();
+        let again: GameStateResponse = resp.json();
+        assert_eq!(again.game_id, body.game_id);
+    }
+
+    #[tokio::test]
+    async fn get_game_by_short_id_returns_404_for_unknown() {
+        let app = test_app();
+        let resp = app.get("/games/by-short-id/zzz-not-a-real-short-id").await;
+        resp.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn get_game_by_player_url_returns_404_for_garbage_url() {
+        let app = test_app();
+        let resp = app.get("/games/by-player-url/not-base64-decodable").await;
+        resp.assert_status(StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
