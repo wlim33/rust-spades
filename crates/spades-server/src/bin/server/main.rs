@@ -41,7 +41,14 @@ pub struct AppState {
     pub game_manager: GameManager,
     pub matchmaker: Matchmaker,
     pub challenge_manager: ChallengeManager,
+    pub auth: spades_server::auth::AuthState,
     presence: PresenceTracker,
+}
+
+impl axum::extract::FromRef<AppState> for spades_server::auth::AuthState {
+    fn from_ref(state: &AppState) -> Self {
+        state.auth.clone()
+    }
 }
 
 pub const SESSION_USER_KEY: &str = "user";
@@ -139,10 +146,52 @@ async fn main() {
     };
     let matchmaker = Matchmaker::new(game_manager.clone());
     let challenge_manager = ChallengeManager::new(game_manager.clone());
+
+    let insecure_cookies = std::env::args().any(|a| a == "--insecure-cookies");
+
+    let auth_store_path = db_path.clone().unwrap_or_else(|| ":memory:".to_string());
+    let auth_store = std::sync::Arc::new(
+        spades_server::sqlite_store::SqliteStore::open(&auth_store_path)
+            .expect("Failed to open auth SqliteStore"),
+    );
+
+    let mailer: std::sync::Arc<dyn spades_server::auth::mailer::Mailer> =
+        match spades_server::auth::mailer::SmtpConfig::from_env() {
+            Some(cfg) => match spades_server::auth::mailer::SmtpMailer::new(cfg) {
+                Ok(m) => {
+                    println!("Mailer: SmtpMailer (SMTP_HOST set)");
+                    std::sync::Arc::new(m)
+                }
+                Err(e) => {
+                    eprintln!("SmtpMailer init failed ({e}); falling back to LogMailer");
+                    std::sync::Arc::new(spades_server::auth::mailer::LogMailer::new())
+                }
+            },
+            None => {
+                println!("Mailer: LogMailer (no SMTP_* env vars)");
+                std::sync::Arc::new(spades_server::auth::mailer::LogMailer::new())
+            }
+        };
+
+    let oauth = std::sync::Arc::new(spades_server::auth::oauth::OauthState::from_env());
+    if oauth.google.is_some() { println!("OAuth: Google enabled"); }
+    if oauth.github.is_some() { println!("OAuth: GitHub enabled"); }
+
+    let rate = std::sync::Arc::new(spades_server::auth::rate_limit::RateLimitState::new());
+
+    let auth_state = spades_server::auth::AuthState {
+        store: auth_store,
+        mailer,
+        oauth,
+        rate,
+        secure_cookies: !insecure_cookies,
+    };
+
     let app_state = AppState {
         game_manager,
         matchmaker,
         challenge_manager,
+        auth: auth_state,
         presence: PresenceTracker::new(),
     };
 
@@ -158,7 +207,10 @@ async fn main() {
     session_store.migrate().await.expect("Failed to migrate session store");
 
     let session_layer = SessionManagerLayer::new(session_store)
-        .with_secure(false)
+        .with_name("spades_session")
+        .with_secure(!insecure_cookies)
+        .with_http_only(true)
+        .with_same_site(tower_sessions::cookie::SameSite::Lax)
         .with_expiry(Expiry::OnInactivity(time::Duration::days(30)));
 
     let mut cors_origins: Vec<String> = Vec::new();
@@ -220,6 +272,10 @@ async fn main() {
     println!("  GET  /player                                    - Get/create session identity");
     println!("  PUT  /player/name                               - Set display name");
 
+    if insecure_cookies {
+        println!("WARNING: --insecure-cookies enabled. Session cookie lacks Secure flag. DO NOT use in production.");
+    }
+
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -236,10 +292,23 @@ mod tests {
         let game_manager = GameManager::new();
         let matchmaker = Matchmaker::new(game_manager.clone());
         let challenge_manager = ChallengeManager::new(game_manager.clone());
+
+        let auth_store = std::sync::Arc::new(
+            spades_server::sqlite_store::SqliteStore::open(":memory:").unwrap()
+        );
+        let auth_state = spades_server::auth::AuthState {
+            store: auth_store,
+            mailer: std::sync::Arc::new(spades_server::auth::mailer::LogMailer::new()),
+            oauth: std::sync::Arc::new(spades_server::auth::oauth::OauthState::from_env()),
+            rate: std::sync::Arc::new(spades_server::auth::rate_limit::RateLimitState::new()),
+            secure_cookies: false,
+        };
+
         let state = AppState {
             game_manager,
             matchmaker,
             challenge_manager,
+            auth: auth_state,
             presence: PresenceTracker::new(),
         };
 
