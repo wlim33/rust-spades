@@ -134,7 +134,7 @@ pub struct PlayerClocks {
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct Player{
+pub(crate) struct Player {
     id: Uuid,
     hand: Vec<Card>,
     #[serde(default)]
@@ -144,7 +144,7 @@ struct Player{
 impl Player {
     pub fn new(id: Uuid) -> Player {
         Player {
-            id: id,
+            id,
             hand: vec![],
             name: None,
         }
@@ -152,7 +152,7 @@ impl Player {
 }
 
 /// Primary game state. Internally manages player rotation, scoring, and cards.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize)]
 pub struct Game {
     id: Uuid,
     state: State,
@@ -161,22 +161,84 @@ pub struct Game {
     deck: Vec<cards::Card>,
     hands_played: Vec<[cards::Card; 4]>,
     leading_suit: Suit,
-    player_a: Player,
-    player_b: Player,
-    player_c: Player,
-    player_d: Player,
-    #[serde(default)]
+    players: [Player; 4],
+    #[serde(skip_serializing_if = "Option::is_none")]
     timer_config: Option<TimerConfig>,
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     player_clocks: Option<PlayerClocks>,
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     turn_started_at_epoch_ms: Option<u64>,
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     last_trick_winner: Option<usize>,
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     last_completed_trick: Option<[cards::Card; 4]>,
     #[serde(default)]
     spades_broken: bool,
+}
+
+impl<'de> serde::Deserialize<'de> for Game {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        #[derive(serde::Deserialize)]
+        struct GameShim {
+            id: Uuid,
+            state: State,
+            scoring: scoring::Scoring,
+            current_player_index: usize,
+            deck: Vec<cards::Card>,
+            hands_played: Vec<[cards::Card; 4]>,
+            leading_suit: Suit,
+            #[serde(default)]
+            players: Option<[Player; 4]>,
+            #[serde(default)]
+            player_a: Option<Player>,
+            #[serde(default)]
+            player_b: Option<Player>,
+            #[serde(default)]
+            player_c: Option<Player>,
+            #[serde(default)]
+            player_d: Option<Player>,
+            #[serde(default)]
+            timer_config: Option<TimerConfig>,
+            #[serde(default)]
+            player_clocks: Option<PlayerClocks>,
+            #[serde(default)]
+            turn_started_at_epoch_ms: Option<u64>,
+            #[serde(default)]
+            last_trick_winner: Option<usize>,
+            #[serde(default)]
+            last_completed_trick: Option<[cards::Card; 4]>,
+            #[serde(default)]
+            spades_broken: bool,
+        }
+        let s = GameShim::deserialize(d)?;
+        let players = if let Some(ps) = s.players {
+            ps
+        } else {
+            [
+                s.player_a.ok_or_else(|| D::Error::missing_field("players or player_a"))?,
+                s.player_b.ok_or_else(|| D::Error::missing_field("player_b"))?,
+                s.player_c.ok_or_else(|| D::Error::missing_field("player_c"))?,
+                s.player_d.ok_or_else(|| D::Error::missing_field("player_d"))?,
+            ]
+        };
+        Ok(Game {
+            id: s.id,
+            state: s.state,
+            scoring: s.scoring,
+            current_player_index: s.current_player_index,
+            deck: s.deck,
+            hands_played: s.hands_played,
+            leading_suit: s.leading_suit,
+            players,
+            timer_config: s.timer_config,
+            player_clocks: s.player_clocks,
+            turn_started_at_epoch_ms: s.turn_started_at_epoch_ms,
+            last_trick_winner: s.last_trick_winner,
+            last_completed_trick: s.last_completed_trick,
+            spades_broken: s.spades_broken,
+        })
+    }
 }
 
 impl Game {
@@ -192,10 +254,12 @@ impl Game {
             deck: cards::new_deck(),
             current_player_index: 0,
             leading_suit: Suit::Blank,
-            player_a: Player::new(player_ids[0]),
-            player_b: Player::new(player_ids[1]),
-            player_c: Player::new(player_ids[2]),
-            player_d: Player::new(player_ids[3]),
+            players: [
+                Player::new(player_ids[0]),
+                Player::new(player_ids[1]),
+                Player::new(player_ids[2]),
+                Player::new(player_ids[3]),
+            ],
             timer_config,
             player_clocks,
             turn_started_at_epoch_ms: None,
@@ -243,45 +307,28 @@ impl Game {
     }
     
     /// Returns `GetError` when the current game is not in the Betting or Trick stages.
-    pub fn get_current_player_id(&self) -> Result<&Uuid, GetError>{
-        match (&self.state, self.current_player_index) {
-            (State::NotStarted, _) => {Err(GetError::GameNotStarted)},
-            (State::Completed, _) => {Err(GetError::GameCompleted)},
-            (State::Betting(_), 0) | (State::Trick(_), 0) => Ok(&self.player_a.id),
-            (State::Betting(_), 1) | (State::Trick(_), 1) => Ok(&self.player_b.id),
-            (State::Betting(_), 2) | (State::Trick(_), 2) => Ok(&self.player_c.id),
-            (State::Betting(_), 3) | (State::Trick(_), 3) => Ok(&self.player_d.id),
-            _ => {Err(GetError::Unknown)}
+    pub fn get_current_player_id(&self) -> Result<&Uuid, GetError> {
+        match self.state {
+            State::NotStarted => Err(GetError::GameNotStarted),
+            State::Completed | State::Aborted => Err(GetError::GameCompleted),
+            State::Betting(_) | State::Trick(_) => Ok(&self.players[self.current_player_index].id),
         }
     }
 
     /// Returns a `GetError::InvalidUuid` if the game does not contain a player with the given `Uuid`.
     pub fn get_hand_by_player_id(&self, player_id: Uuid) -> Result<&Vec<Card>, GetError> {
-        if player_id == self.player_a.id {
-            return Ok(&self.player_a.hand);
-        }
-        if player_id == self.player_b.id {
-            return Ok(&self.player_b.hand);
-        }        
-        if player_id == self.player_c.id {
-            return Ok(&self.player_c.hand);
-        }        
-        if player_id == self.player_d.id {
-            return Ok(&self.player_d.hand);
-        }
-
-        return Err(GetError::InvalidUuid);
+        self.players
+            .iter()
+            .find(|p| p.id == player_id)
+            .map(|p| &p.hand)
+            .ok_or(GetError::InvalidUuid)
     }
-    
+
     pub fn get_current_hand(&self) -> Result<&Vec<Card>, GetError> {
-        match (&self.state, self.current_player_index) {
-            (State::NotStarted, _) => {Err(GetError::GameNotStarted)},
-            (State::Completed, _) => {Err(GetError::GameCompleted)},
-            (State::Betting(_), 0) | (State::Trick(_), 0) => Ok(&self.player_a.hand),
-            (State::Betting(_), 1) | (State::Trick(_), 1) => Ok(&self.player_b.hand),
-            (State::Betting(_), 2) | (State::Trick(_), 2) => Ok(&self.player_c.hand),
-            (State::Betting(_), 3) | (State::Trick(_), 3) => Ok(&self.player_d.hand),
-            _ => {Err(GetError::Unknown)}
+        match self.state {
+            State::NotStarted => Err(GetError::GameNotStarted),
+            State::Completed | State::Aborted => Err(GetError::GameCompleted),
+            State::Betting(_) | State::Trick(_) => Ok(&self.players[self.current_player_index].hand),
         }
     }
 
@@ -306,22 +353,16 @@ impl Game {
 
     #[deprecated(since="1.0.0", note="Please use `get_current_hand` or `get_hand_by_player_id`")]
     pub fn get_hand(&self, player: usize) -> Result<&Vec<Card>, GetError> {
-        match player {
-            0 => Ok(&self.player_a.hand),
-            1 => Ok(&self.player_b.hand),
-            2 => Ok(&self.player_c.hand),
-            3 => Ok(&self.player_d.hand),
-            _ => Ok(&self.player_d.hand),
-        }
+        self.players.get(player).map(|p| &p.hand).ok_or(GetError::InvalidUuid)
     }
 
     pub fn get_winner_ids(&self) -> Result<(&Uuid, &Uuid), GetError> {
         match self.state {
             State::Completed => {
                 if self.scoring.team_a.cumulative_points > self.scoring.team_b.cumulative_points {
-                    return Ok((&self.player_a.id, &self.player_c.id));
+                    return Ok((&self.players[0].id, &self.players[2].id));
                 } else if self.scoring.team_b.cumulative_points > self.scoring.team_a.cumulative_points {
-                    return Ok((&self.player_b.id, &self.player_d.id));
+                    return Ok((&self.players[1].id, &self.players[3].id));
                 } else {
                     // Unreachable: Scoring keeps is_over = false on a tie at max_points,
                     // so the game never transitions to State::Completed with equal scores.
@@ -382,13 +423,7 @@ impl Game {
                     },
                     State::Trick(rotation_status) => {
                         {
-                            let player_hand = &mut match self.current_player_index {
-                                0 => &mut self.player_a,
-                                1 => &mut self.player_b,
-                                2 => &mut self.player_c,
-                                3 => &mut self.player_d,
-                                _ => &mut self.player_d,
-                            }.hand;
+                            let player_hand = &mut self.players[self.current_player_index].hand;
 
                             if !player_hand.contains(&card) {
                                 return Err(TransitionError::CardNotInHand);
@@ -457,27 +492,17 @@ impl Game {
     }
 
     pub fn set_player_name(&mut self, player_id: Uuid, name: Option<String>) -> Result<(), GetError> {
-        if player_id == self.player_a.id {
-            self.player_a.name = name;
-        } else if player_id == self.player_b.id {
-            self.player_b.name = name;
-        } else if player_id == self.player_c.id {
-            self.player_c.name = name;
-        } else if player_id == self.player_d.id {
-            self.player_d.name = name;
-        } else {
-            return Err(GetError::InvalidUuid);
-        }
+        let p = self
+            .players
+            .iter_mut()
+            .find(|p| p.id == player_id)
+            .ok_or(GetError::InvalidUuid)?;
+        p.name = name;
         Ok(())
     }
 
     pub fn get_player_names(&self) -> [(Uuid, Option<&str>); 4] {
-        [
-            (self.player_a.id, self.player_a.name.as_deref()),
-            (self.player_b.id, self.player_b.name.as_deref()),
-            (self.player_c.id, self.player_c.name.as_deref()),
-            (self.player_d.id, self.player_d.name.as_deref()),
-        ]
+        std::array::from_fn(|i| (self.players[i].id, self.players[i].name.as_deref()))
     }
 
     pub fn get_timer_config(&self) -> Option<&TimerConfig> {
@@ -524,12 +549,7 @@ impl Game {
     }
 
     pub fn get_last_trick_winner_id(&self) -> Option<Uuid> {
-        self.last_trick_winner.map(|idx| match idx {
-            0 => self.player_a.id,
-            1 => self.player_b.id,
-            2 => self.player_c.id,
-            _ => self.player_d.id,
-        })
+        self.last_trick_winner.map(|idx| self.players[idx.min(3)].id)
     }
 
     pub fn get_last_completed_trick(&self) -> Option<&[cards::Card; 4]> {
@@ -572,15 +592,9 @@ impl Game {
     fn deal_cards(&mut self) {
         cards::shuffle(&mut self.deck);
         let mut hands = cards::deal_four_players(&mut self.deck);
-
-        self.player_a.hand = hands.pop().unwrap();
-        self.player_b.hand = hands.pop().unwrap();
-        self.player_c.hand = hands.pop().unwrap();
-        self.player_d.hand = hands.pop().unwrap();
-
-        self.player_a.hand.sort();
-        self.player_b.hand.sort();
-        self.player_c.hand.sort();
-        self.player_d.hand.sort();
+        for i in (0..4).rev() {
+            self.players[i].hand = hands.pop().unwrap();
+            self.players[i].hand.sort();
+        }
     }
 }

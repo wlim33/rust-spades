@@ -111,13 +111,20 @@ fn test_get_current_trick_cards_in_trick() {
 #[test_case(1)]
 #[test_case(2)]
 #[test_case(3)]
-#[test_case(99)]
 fn deprecated_get_hand(player_idx: usize) {
     let (g, _) = make_started_game();
     #[allow(deprecated)]
     let result = g.get_hand(player_idx);
     assert!(result.is_ok());
     assert_eq!(result.unwrap().len(), 13);
+}
+
+#[test]
+fn deprecated_get_hand_out_of_range_returns_invalid_uuid() {
+    let (g, _) = make_started_game();
+    #[allow(deprecated)]
+    let result = g.get_hand(99);
+    assert_eq!(result, Err(GetError::InvalidUuid));
 }
 
 // ── get_winner_ids ──
