@@ -5,12 +5,13 @@ HTTP server for hosting concurrent multiplayer Spades games.
 ## Building and Running
 
 ```bash
-cargo build --features server
-cargo run --features server -- --port 3000
-cargo run --features server -- --port 3000 --db games.sqlite
+cargo build -p spades-server
+cargo run -p spades-server -- --port 3000
+cargo run -p spades-server -- --port 3000 --db games.sqlite
 ```
 
 Default port is 3000. Override with `--port` or `PORT` env var.
+The server binary lives in the `spades-server` crate; the core game logic lives in the `spades` crate.
 SQLite persistence is optional. Enable with `--db <path>` or `DATABASE_URL` env var. Without it, games are in-memory only.
 
 ### CORS
@@ -19,16 +20,16 @@ CORS is **off by default**. Enable it explicitly per deployment:
 
 ```bash
 # Allow a single origin
-cargo run --features server -- --cors-allow-origin https://app.example.com
+cargo run -p spades-server -- --cors-allow-origin https://app.example.com
 
 # Allow several
-cargo run --features server -- --cors-allow-origin https://a.example.com --cors-allow-origin https://b.example.com
+cargo run -p spades-server -- --cors-allow-origin https://a.example.com --cors-allow-origin https://b.example.com
 
 # Wide-open (dev only): allow any origin
-cargo run --features server -- --cors-allow-origin '*'
+cargo run -p spades-server -- --cors-allow-origin '*'
 
 # Or via env var (comma-separated)
-CORS_ALLOW_ORIGIN='https://a.example.com,https://b.example.com' cargo run --features server
+CORS_ALLOW_ORIGIN='https://a.example.com,https://b.example.com' cargo run -p spades-server
 ```
 
 ## API Reference

@@ -17,11 +17,9 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
         continue-on-error: true
-      - name: Clippy (lib)
-        run: cargo clippy --no-default-features -- -D warnings
-      - name: Clippy (all features)
-        run: cargo clippy --all-features --all-targets -- -D warnings
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
-        run: cargo test --all-features
+        run: cargo test --workspace
       - name: Build release
-        run: cargo build --all-features --release
+        run: cargo build --workspace --release

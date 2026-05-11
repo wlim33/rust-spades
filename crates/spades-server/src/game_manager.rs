@@ -3,9 +3,9 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 use tokio::sync::broadcast;
-use crate::{Game, GameTransition, State, Card, TimerConfig};
-use crate::ai::AiStrategy;
-use crate::result::{GetError, TransitionError, TransitionSuccess};
+use spades::{Game, GameTransition, State, Card, TimerConfig};
+use spades::ai::AiStrategy;
+use spades::{GetError, TransitionError, TransitionSuccess};
 use crate::sqlite_store::SqliteStore;
 use serde::{Serialize, Deserialize};
 use rand::seq::SliceRandom;
@@ -385,7 +385,7 @@ impl GameManager {
 
         GameStateResponse {
             game_id,
-            short_id: crate::uuid_to_short_id(game_id),
+            short_id: spades::uuid_to_short_id(game_id),
             state: game.get_state().clone(),
             team_a_score: game.get_team_a_score().ok().copied(),
             team_b_score: game.get_team_b_score().ok().copied(),
@@ -969,7 +969,7 @@ mod tests {
     fn test_game_event_serde_state_changed() {
         let state = GameStateResponse {
             game_id: Uuid::nil(),
-            short_id: crate::uuid_to_short_id(Uuid::nil()),
+            short_id: spades::uuid_to_short_id(Uuid::nil()),
             state: State::NotStarted,
             team_a_score: None,
             team_b_score: None,
@@ -1109,7 +1109,7 @@ mod tests {
         // This exercises build_state_response_with_timer (no active timer)
         let state = manager.build_state_response_with_timer(
             response.game_id,
-            &crate::Game::new(response.game_id, response.player_ids, 500, None),
+            &spades::Game::new(response.game_id, response.player_ids, 500, None),
         );
         assert_eq!(state.game_id, response.game_id);
     }
@@ -1125,7 +1125,7 @@ mod tests {
         let _: TransitionRequestType = serde_json::from_str(&json).unwrap();
 
         let card = TransitionRequestType::Card {
-            card: crate::Card { suit: crate::Suit::Heart, rank: crate::Rank::Ace },
+            card: spades::Card { suit: spades::Suit::Heart, rank: spades::Rank::Ace },
         };
         let json = serde_json::to_string(&card).unwrap();
         let _: TransitionRequestType = serde_json::from_str(&json).unwrap();
@@ -1235,7 +1235,7 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let gm = GameManager::new();
-            let strategy = Arc::new(crate::ai::RandomStrategy);
+            let strategy = Arc::new(spades::ai::RandomStrategy);
             let human_seats: HashSet<usize> = [0].into_iter().collect();
             let response = gm.create_ai_game(human_seats, 500, None, strategy).unwrap();
             assert_ne!(response.game_id, Uuid::nil());
@@ -1247,7 +1247,7 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let gm = GameManager::new();
-            let strategy = Arc::new(crate::ai::RandomStrategy);
+            let strategy = Arc::new(spades::ai::RandomStrategy);
             let human_seats: HashSet<usize> = [0].into_iter().collect();
             let response = gm.create_ai_game(human_seats, 500, None, strategy).unwrap();
             let game_id = response.game_id;
@@ -1271,7 +1271,7 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let gm = GameManager::new();
-            let strategy = Arc::new(crate::ai::RandomStrategy);
+            let strategy = Arc::new(spades::ai::RandomStrategy);
             let human_seats: HashSet<usize> = [0].into_iter().collect();
             let response = gm.create_ai_game(human_seats, 200, None, strategy).unwrap();
             let game_id = response.game_id;

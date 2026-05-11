@@ -1,5 +1,5 @@
 use axum::{http::StatusCode, response::Json};
-use spades::validation::validate_player_name;
+use spades_server::validation::validate_player_name;
 use tower_sessions::Session;
 use uuid::Uuid;
 

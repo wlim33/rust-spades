@@ -4,7 +4,7 @@ use uuid::Uuid;
 use serde::{Serialize, Deserialize};
 use tokio::sync::mpsc;
 use crate::game_manager::GameManager;
-use crate::{GameTransition, TimerConfig};
+use spades::{GameTransition, TimerConfig};
 
 /// Result sent to matched players
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,11 +204,11 @@ impl Matchmaker {
             let result = MatchResult {
                 game_id: response.game_id,
                 player_id: seek.player_id,
-                player_short_id: crate::uuid_to_short_id(seek.player_id),
-                player_url: crate::encode_player_url(response.game_id, seek.player_id),
+                player_short_id: spades::uuid_to_short_id(seek.player_id),
+                player_url: spades::encode_player_url(response.game_id, seek.player_id),
                 player_ids,
                 player_names: player_names.clone(),
-                short_id: crate::uuid_to_short_id(response.game_id),
+                short_id: spades::uuid_to_short_id(response.game_id),
             };
             let _ = seek.sender.send(SeekEvent::GameStart(result));
         }

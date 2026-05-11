@@ -7,12 +7,12 @@ use axum::{
     },
 };
 use oasgen::oasgen;
-use spades::challenges::{
+use spades_server::challenges::{
     ChallengeConfig, ChallengeError, ChallengeEvent, ChallengeManager, ChallengeStatus,
     ChallengeSummary, Seat,
 };
-use spades::matchmaking::MatchResult;
-use spades::validation::validate_player_name;
+use spades_server::matchmaking::MatchResult;
+use spades_server::validation::validate_player_name;
 use std::convert::Infallible;
 use std::time::Duration;
 use uuid::Uuid;

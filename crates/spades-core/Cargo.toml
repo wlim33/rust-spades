@@ -1,0 +1,32 @@
+[package]
+name = "spades"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "Core 4-player Spades card-game state machine."
+categories = ["games", "game-engines", "simulation"]
+keywords = ["spades", "cards", "state", "machine"]
+readme = "../../readme.md"
+
+[lib]
+name = "spades"
+path = "src/lib.rs"
+
+[dependencies]
+rand = "0.8"
+uuid.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqids = "0.4"
+oasgen = { version = "0.25", features = ["uuid"], optional = true }
+
+[features]
+default = []
+# Derive `oasgen::OaSchema` on public types so downstream HTTP layers can
+# generate an OpenAPI spec without re-wrapping our types.
+openapi = ["dep:oasgen"]
+
+[dev-dependencies]
+ntest = "0.9"

@@ -7,8 +7,8 @@ use axum::{
     },
 };
 use oasgen::oasgen;
-use spades::matchmaking::{Matchmaker, QueueSizeEntry, SeekEvent, SeekSummary};
-use spades::validation::validate_player_name;
+use spades_server::matchmaking::{Matchmaker, QueueSizeEntry, SeekEvent, SeekSummary};
+use spades_server::validation::validate_player_name;
 use std::convert::Infallible;
 use std::time::Duration;
 use uuid::Uuid;

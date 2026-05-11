@@ -8,8 +8,8 @@ use serde::{Serialize, Deserialize};
 use tokio::sync::broadcast;
 use crate::game_manager::GameManager;
 use crate::matchmaking::MatchResult;
-use crate::GameTransition;
-use crate::TimerConfig;
+use spades::GameTransition;
+use spades::TimerConfig;
 
 /// A seat position in a 4-player spades game. Teams: A+C vs B+D.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, oasgen::OaSchema)]
@@ -390,7 +390,7 @@ impl ChallengeManager {
                             player_url: String::new(),
                             player_ids,
                             player_names,
-                            short_id: crate::uuid_to_short_id(response.game_id),
+                            short_id: spades::uuid_to_short_id(response.game_id),
                         }));
                     }
                 }
@@ -464,7 +464,7 @@ impl ChallengeManager {
 
         Ok(ChallengeStatus {
             challenge_id: challenge.challenge_id,
-            short_id: crate::uuid_to_short_id(challenge.challenge_id),
+            short_id: spades::uuid_to_short_id(challenge.challenge_id),
             max_points: challenge.max_points,
             timer_config: challenge.timer_config,
             seats: challenge.seats_snapshot(),
@@ -475,7 +475,7 @@ impl ChallengeManager {
 
     /// Resolve a Sqids short ID to a challenge UUID and return the challenge status.
     pub fn get_challenge_by_short_id(&self, short_id: &str) -> Result<ChallengeStatus, ChallengeError> {
-        let uuid = crate::short_id_to_uuid(short_id).ok_or(ChallengeError::NotFound)?;
+        let uuid = spades::short_id_to_uuid(short_id).ok_or(ChallengeError::NotFound)?;
         self.get_status(uuid)
     }
 
@@ -490,7 +490,7 @@ impl ChallengeManager {
             .filter(|c| matches!(c.status, ChallengeStatusKindInternal::Open))
             .map(|c| ChallengeSummary {
                 challenge_id: c.challenge_id,
-                short_id: crate::uuid_to_short_id(c.challenge_id),
+                short_id: spades::uuid_to_short_id(c.challenge_id),
                 max_points: c.max_points,
                 seats_filled: c.seats_filled(),
                 seats: c.seats_snapshot(),
@@ -903,15 +903,15 @@ mod tests {
     #[test]
     fn test_uuid_short_id_roundtrip() {
         let uuid = Uuid::new_v4();
-        let short = crate::uuid_to_short_id(uuid);
+        let short = spades::uuid_to_short_id(uuid);
         assert!(short.len() >= 6);
         assert!(short.len() < 36);
-        let decoded = crate::short_id_to_uuid(&short).unwrap();
+        let decoded = spades::short_id_to_uuid(&short).unwrap();
         assert_eq!(uuid, decoded);
     }
 
     #[test]
     fn test_short_id_invalid_returns_none() {
-        assert!(crate::short_id_to_uuid("!!!invalid!!!").is_none());
+        assert!(spades::short_id_to_uuid("!!!invalid!!!").is_none());
     }
 }

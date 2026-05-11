@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 use std::sync::Mutex;
 use uuid::Uuid;
-use crate::Game;
+use spades::Game;
 
 /// SQLite-backed persistence for games.
 pub struct SqliteStore {
@@ -115,12 +115,12 @@ mod tests {
         let mut game = make_game();
         store.insert_game(&game).unwrap();
 
-        game.play(crate::GameTransition::Start).unwrap();
+        game.play(spades::GameTransition::Start).unwrap();
         store.update_game(&game).unwrap();
 
         let loaded = store.load_all_games().unwrap();
         assert_eq!(loaded.len(), 1);
-        assert_eq!(*loaded[0].get_state(), crate::game_state::State::Betting(0));
+        assert_eq!(*loaded[0].get_state(), spades::State::Betting(0));
     }
 
     #[test]

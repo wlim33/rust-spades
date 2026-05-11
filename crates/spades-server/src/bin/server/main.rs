@@ -27,9 +27,9 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
-use spades::game_manager::GameManager;
-use spades::challenges::ChallengeManager;
-use spades::matchmaking::Matchmaker;
+use spades_server::game_manager::GameManager;
+use spades_server::challenges::ChallengeManager;
+use spades_server::matchmaking::Matchmaker;
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
 use tower_sessions::{Expiry, SessionManagerLayer};
@@ -229,7 +229,7 @@ mod tests {
     use crate::dto::PresenceSnapshot;
     use axum::http::StatusCode;
     use axum_test::{TestServer, TestServerConfig};
-    use spades::game_manager::{CreateGameResponse, GameStateResponse};
+    use spades_server::game_manager::{CreateGameResponse, GameStateResponse};
     use tower_sessions::MemoryStore;
 
     fn test_app() -> TestServer {

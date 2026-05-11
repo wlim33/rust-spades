@@ -41,11 +41,11 @@ while *g.get_state() != State::Completed {
 
 ## Server Mode
 
-Optional HTTP server for hosting concurrent multiplayer games. Includes matchmaking, challenge links, WebSocket game subscriptions, SSE event streams, optional SQLite persistence, and Fischer increment timers.
+Optional HTTP server for hosting concurrent multiplayer games. Includes matchmaking, challenge links, WebSocket game subscriptions, SSE event streams, optional SQLite persistence, and Fischer increment timers. Ships as a separate crate (`spades-server`) so library consumers don't pull in axum/tokio/sqlite.
 
 ```bash
-cargo run --features server -- --port 3000
-cargo run --features server -- --port 3000 --db games.sqlite
+cargo run -p spades-server -- --port 3000
+cargo run -p spades-server -- --port 3000 --db games.sqlite
 ```
 
 See [SERVER.md](SERVER.md) for the full API reference.

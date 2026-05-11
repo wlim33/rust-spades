@@ -1,6 +1,6 @@
 use oasgen::OaSchema;
 use serde::{Deserialize, Serialize};
-use spades::game_manager::{GameStateResponse, HandResponse};
+use spades_server::game_manager::{GameStateResponse, HandResponse};
 use spades::{Card, TimerConfig};
 use uuid::Uuid;
 

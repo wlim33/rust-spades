@@ -6,7 +6,7 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
-use spades::game_manager::{GameEvent, GameStateResponse};
+use spades_server::game_manager::{GameEvent, GameStateResponse};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -22,7 +22,7 @@ pub async fn game_ws(
 ) -> Result<impl axum::response::IntoResponse, (StatusCode, Json<ErrorResponse>)> {
     let initial_state = state.game_manager.get_game_state(game_id).map_err(|e| {
         let status = match e {
-            spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
+            spades_server::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         (status, Json(ErrorResponse { error: format!("{}", e) }))

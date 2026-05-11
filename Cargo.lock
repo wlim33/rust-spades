@@ -2077,6 +2077,19 @@ dependencies = [
 name = "spades"
 version = "2.0.0"
 dependencies = [
+ "ntest",
+ "oasgen",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "sqids",
+ "uuid",
+]
+
+[[package]]
+name = "spades-server"
+version = "2.0.0"
+dependencies = [
  "async-stream",
  "axum 0.8.8",
  "axum-test",
@@ -2088,7 +2101,7 @@ dependencies = [
  "rustrict",
  "serde",
  "serde_json",
- "sqids",
+ "spades",
  "time",
  "tokio",
  "tokio-stream",

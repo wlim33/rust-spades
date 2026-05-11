@@ -33,24 +33,6 @@ mod cards;
 mod result;
 pub mod ai;
 
-#[cfg(feature = "server")]
-mod oasgen_impls;
-
-#[cfg(feature = "server")]
-pub mod game_manager;
-
-#[cfg(feature = "server")]
-pub mod matchmaking;
-
-#[cfg(feature = "server")]
-pub mod sqlite_store;
-
-#[cfg(feature = "server")]
-pub mod validation;
-
-#[cfg(feature = "server")]
-pub mod challenges;
-
 #[cfg(test)]
 mod tests;
 
@@ -123,7 +105,7 @@ pub enum GameTransition {
 
 /// Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "server", derive(oasgen::OaSchema))]
+#[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
 pub struct TimerConfig {
     pub initial_time_secs: u64,
     pub increment_secs: u64,

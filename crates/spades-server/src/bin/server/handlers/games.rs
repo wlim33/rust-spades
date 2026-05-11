@@ -4,10 +4,10 @@ use axum::{
     response::Json,
 };
 use oasgen::oasgen;
-use spades::game_manager::{
+use spades_server::game_manager::{
     CreateGameResponse, GameManagerError, GameStateResponse, HandResponse,
 };
-use spades::validation::validate_player_name;
+use spades_server::validation::validate_player_name;
 use spades::{GameTransition, decode_player_url, short_id_to_uuid, uuid_to_short_id};
 use uuid::Uuid;
 
