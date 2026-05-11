@@ -6,8 +6,10 @@
 )]
 
 mod dto;
+mod presence;
 
 use dto::*;
+use presence::PresenceTracker;
 
 use axum::{
     extract::{
@@ -33,10 +35,8 @@ use spades::challenges::{
 use spades::matchmaking::{MatchResult, Matchmaker, QueueSizeEntry, SeekEvent, SeekSummary};
 use spades::validation::validate_player_name;
 use spades::GameTransition;
-use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
@@ -552,95 +552,6 @@ async fn get_presence(
         StatusCode::NOT_FOUND,
         Json(ErrorResponse { error: "Game not found".to_string() }),
     ))
-}
-
-// --- Presence Tracking ---
-
-/// Per-game connection counts: game_id -> (player_id -> connection_count)
-#[derive(Clone)]
-struct PresenceTracker {
-    /// game_id -> (player_id -> active connection count)
-    connections: Arc<RwLock<HashMap<Uuid, HashMap<Uuid, usize>>>>,
-    /// game_id -> broadcast sender for presence snapshots
-    broadcasters: Arc<RwLock<HashMap<Uuid, broadcast::Sender<PresenceSnapshot>>>>,
-}
-
-impl PresenceTracker {
-    fn new() -> Self {
-        Self {
-            connections: Arc::new(RwLock::new(HashMap::new())),
-            broadcasters: Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
-
-    /// Idempotent init for a game. Creates entry + broadcaster if missing.
-    fn ensure_game(&self, game_id: Uuid, player_ids: &[Uuid]) {
-        let mut conns = self.connections.write().unwrap();
-        conns.entry(game_id).or_insert_with(|| {
-            player_ids.iter().map(|&pid| (pid, 0usize)).collect()
-        });
-        let mut bcast = self.broadcasters.write().unwrap();
-        bcast.entry(game_id).or_insert_with(|| broadcast::channel(16).0);
-    }
-
-    /// Increment connection count. Returns snapshot if player is in the game.
-    fn player_connected(&self, game_id: Uuid, player_id: Uuid) -> Option<PresenceSnapshot> {
-        let mut conns = self.connections.write().unwrap();
-        let game = conns.get_mut(&game_id)?;
-        // Only track known players (ignore spectators)
-        let count = game.get_mut(&player_id)?;
-        *count += 1;
-        Some(self.build_snapshot_from(game_id, game))
-    }
-
-    /// Decrement connection count (saturating). Returns snapshot if player is in the game.
-    fn player_disconnected(&self, game_id: Uuid, player_id: Uuid) -> Option<PresenceSnapshot> {
-        let mut conns = self.connections.write().unwrap();
-        let game = conns.get_mut(&game_id)?;
-        let count = game.get_mut(&player_id)?;
-        *count = count.saturating_sub(1);
-        Some(self.build_snapshot_from(game_id, game))
-    }
-
-    /// Read-only current state.
-    fn get_snapshot(&self, game_id: Uuid) -> Option<PresenceSnapshot> {
-        let conns = self.connections.read().unwrap();
-        let game = conns.get(&game_id)?;
-        Some(self.build_snapshot_from(game_id, game))
-    }
-
-    /// Subscribe to presence broadcasts for a game.
-    fn subscribe(&self, game_id: Uuid) -> Option<broadcast::Receiver<PresenceSnapshot>> {
-        let bcast = self.broadcasters.read().unwrap();
-        bcast.get(&game_id).map(|tx| tx.subscribe())
-    }
-
-    /// Send snapshot to all subscribers.
-    fn broadcast(&self, game_id: Uuid, snapshot: PresenceSnapshot) {
-        let bcast = self.broadcasters.read().unwrap();
-        if let Some(tx) = bcast.get(&game_id) {
-            let _ = tx.send(snapshot);
-        }
-    }
-
-    /// Clean up tracker state for a deleted game.
-    fn remove_game(&self, game_id: Uuid) {
-        self.connections.write().unwrap().remove(&game_id);
-        self.broadcasters.write().unwrap().remove(&game_id);
-    }
-
-    fn build_snapshot_from(&self, game_id: Uuid, game: &HashMap<Uuid, usize>) -> PresenceSnapshot {
-        PresenceSnapshot {
-            game_id,
-            players: game
-                .iter()
-                .map(|(&pid, &count)| PlayerPresenceEntry {
-                    player_id: pid,
-                    connected: count > 0,
-                })
-                .collect(),
-        }
-    }
 }
 
 async fn game_ws(
