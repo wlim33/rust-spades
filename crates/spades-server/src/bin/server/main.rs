@@ -68,7 +68,6 @@ pub fn build_router(state: AppState) -> Router {
 
     let server = server
         // Game endpoints
-        .post("/games", create_game)
         .get("/games", list_games)
         .get("/games/{game_id}", get_game_state)
         .post("/games/{game_id}/transition", make_transition)
@@ -93,6 +92,8 @@ pub fn build_router(state: AppState) -> Router {
         .merge(server.into_router())
         // Root
         .route("/", get(root))
+        // Handlers with non-OaSchema extractors (Identity, Session, etc.)
+        .route("/games", post(create_game))
         // Handlers returning StatusCode (not JSON body — oasgen needs Json responses)
         .route("/games/{game_id}", delete(delete_game))
         .route("/games/{game_id}/players/{player_id}/name", put(set_player_name))
