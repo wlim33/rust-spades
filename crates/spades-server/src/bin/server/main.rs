@@ -31,8 +31,12 @@ use spades_server::game_manager::GameManager;
 use spades_server::challenges::ChallengeManager;
 use spades_server::matchmaking::Matchmaker;
 use std::net::SocketAddr;
+use std::time::Duration;
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::cors::CorsLayer;
+use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
+use tower_http::timeout::TimeoutLayer;
 use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::SqliteStore as SessionSqliteStore;
 use uuid::Uuid;
@@ -125,6 +129,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/users/{username}", get(spades_server::handlers_users::get_profile))
         .route("/users/{username}/games", get(spades_server::handlers_users::get_profile_games))
         .with_state(state)
+        .layer(RequestBodyLimitLayer::new(1024 * 1024))
+        .layer(TimeoutLayer::new(Duration::from_secs(30)))
+        .layer(PropagateRequestIdLayer::x_request_id())
+        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(CatchPanicLayer::new())
 }
 
@@ -396,6 +404,65 @@ mod tests {
         let resp = server.get("/boom").await;
         assert_eq!(resp.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
         server.get("/healthy").await.assert_status_ok();
+    }
+
+    #[tokio::test]
+    async fn test_request_id_generated_when_absent() {
+        let server = test_app();
+        let resp = server.get("/").await;
+        resp.assert_status_ok();
+        let id = resp.header("x-request-id");
+        let id_str = id.to_str().expect("x-request-id should be utf-8");
+        Uuid::parse_str(id_str).expect("x-request-id should be a valid UUID");
+    }
+
+    #[tokio::test]
+    async fn test_request_id_propagated_from_request() {
+        let server = test_app();
+        let custom = "test-request-id-12345";
+        let resp = server.get("/").add_header("x-request-id", custom).await;
+        resp.assert_status_ok();
+        assert_eq!(resp.header("x-request-id").to_str().unwrap(), custom);
+    }
+
+    #[tokio::test]
+    async fn test_body_size_limit_rejects_oversized() {
+        use axum::Router;
+        use axum::routing::post;
+        use tower_http::limit::RequestBodyLimitLayer;
+
+        async fn echo(_body: axum::body::Bytes) -> &'static str { "ok" }
+
+        let app: Router = Router::new()
+            .route("/echo", post(echo))
+            .layer(RequestBodyLimitLayer::new(1024));
+        let server = TestServer::new(app).unwrap();
+
+        let small = server.post("/echo").bytes(vec![0u8; 512].into()).await;
+        small.assert_status_ok();
+
+        let too_big = server.post("/echo").bytes(vec![0u8; 4096].into()).await;
+        assert_eq!(too_big.status_code(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn test_timeout_layer_returns_error_on_slow_handler() {
+        use axum::Router;
+        use axum::routing::get;
+        use tower_http::timeout::TimeoutLayer;
+
+        async fn slow() -> &'static str {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            "ok"
+        }
+
+        let app: Router = Router::new()
+            .route("/slow", get(slow))
+            .layer(TimeoutLayer::new(std::time::Duration::from_millis(50)));
+        let server = TestServer::new(app).unwrap();
+
+        let resp = server.get("/slow").await;
+        assert_eq!(resp.status_code(), StatusCode::REQUEST_TIMEOUT);
     }
 
     #[tokio::test]
