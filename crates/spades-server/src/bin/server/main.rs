@@ -299,6 +299,24 @@ async fn main() {
         });
     }
 
+    {
+        // Drop completed games from in-memory state after they've been
+        // terminal for 1 h; subsequent reads rehydrate from SQLite on
+        // demand. Bounds memory growth on long-lived deployments.
+        let manager = game_manager.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(5 * 60)).await;
+                let evicted = manager
+                    .sweep_completed_games(std::time::Duration::from_secs(60 * 60))
+                    .await;
+                if evicted > 0 {
+                    tracing::debug!(evicted, "evicted completed games from memory");
+                }
+            }
+        });
+    }
+
     let app_state = AppState {
         game_manager,
         matchmaker,

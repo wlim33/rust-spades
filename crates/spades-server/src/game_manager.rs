@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 use tokio::sync::broadcast;
 use spades::{Game, GameTransition, State, Card, TimerConfig};
 use spades::ai::AiStrategy;
 use spades::{GetError, TransitionError, TransitionSuccess};
 use crate::game_actor::{GameActor, GameHandle};
-use crate::lock_util::RwLockExt;
+use crate::lock_util::{MutexExt, RwLockExt};
 use crate::sqlite_store::SqliteStore;
 use serde::{Serialize, Deserialize};
 use tracing::{error, info};
@@ -70,10 +70,16 @@ pub struct AiPlayerConfig {
 /// Manages the set of running games. Per-game state lives inside the
 /// `GameActor` task that each `GameHandle` points to; `GameManager` itself
 /// only routes commands by `Uuid`.
+///
+/// `completed_at` records when each game was first observed in a terminal
+/// state (Completed / Aborted). The sweeper uses it to drop the actor
+/// from the in-memory map once the configured TTL elapses; subsequent
+/// reads of that game rehydrate it from `db` on demand.
 #[derive(Clone)]
 pub struct GameManager {
     games: Arc<RwLock<HashMap<Uuid, GameHandle>>>,
     db: Option<Arc<SqliteStore>>,
+    completed_at: Arc<Mutex<HashMap<Uuid, Instant>>>,
 }
 
 /// Response for creating a new game
@@ -195,6 +201,7 @@ impl GameManager {
         GameManager {
             games: Arc::new(RwLock::new(HashMap::new())),
             db: None,
+            completed_at: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -215,6 +222,7 @@ impl GameManager {
         Ok(GameManager {
             games: Arc::new(RwLock::new(games_map)),
             db: Some(store),
+            completed_at: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -295,17 +303,45 @@ impl GameManager {
         self.spawn_and_insert(game, Some(AiPlayerConfig { ai_players, strategy }))
     }
 
-    fn handle(&self, game_id: Uuid) -> Result<GameHandle, GameManagerError> {
-        let games = self.games.read_or_recover();
-        games.get(&game_id).cloned().ok_or(GameManagerError::GameNotFound)
+    /// Look up the handle for `game_id`. Fast path: in-memory HashMap.
+    /// Cold path: load the row from SQLite (on a `spawn_blocking` worker
+    /// so we don't stall the runtime), spawn a fresh actor for it, and
+    /// insert into the map. The race window between map miss and actor
+    /// insertion is handled by re-checking under the write lock.
+    async fn handle(&self, game_id: Uuid) -> Result<GameHandle, GameManagerError> {
+        {
+            let games = self.games.read_or_recover();
+            if let Some(h) = games.get(&game_id) {
+                return Ok(h.clone());
+            }
+        }
+        let Some(db) = self.db.clone() else {
+            return Err(GameManagerError::GameNotFound);
+        };
+        let loaded = tokio::task::spawn_blocking(move || db.load_game_by_id(game_id))
+            .await
+            .map_err(|_| GameManagerError::GameNotFound)?
+            .map_err(|_| GameManagerError::GameNotFound)?;
+        let Some(game) = loaded else {
+            return Err(GameManagerError::GameNotFound);
+        };
+        let new_handle = GameActor::spawn(game, self.db.clone(), None);
+        let mut games = self.games.write_or_recover();
+        // Concurrent rehydration could have inserted while we were loading;
+        // prefer the existing handle and let our just-spawned one drop.
+        if let Some(existing) = games.get(&game_id) {
+            return Ok(existing.clone());
+        }
+        games.insert(game_id, new_handle.clone());
+        Ok(new_handle)
     }
 
     pub async fn get_game_state(&self, game_id: Uuid) -> Result<GameStateResponse, GameManagerError> {
-        self.handle(game_id)?.get_state().await
+        self.handle(game_id).await?.get_state().await
     }
 
     pub async fn get_hand(&self, game_id: Uuid, player_id: Uuid) -> Result<HandResponse, GameManagerError> {
-        self.handle(game_id)?.get_hand(player_id).await
+        self.handle(game_id).await?.get_hand(player_id).await
     }
 
     pub async fn make_transition(
@@ -313,7 +349,7 @@ impl GameManager {
         game_id: Uuid,
         transition: GameTransition,
     ) -> Result<TransitionSuccess, GameManagerError> {
-        self.handle(game_id)?.apply_transition(transition).await
+        self.handle(game_id).await?.apply_transition(transition).await
     }
 
     pub async fn set_player_name(
@@ -322,7 +358,7 @@ impl GameManager {
         player_id: Uuid,
         name: Option<String>,
     ) -> Result<(), GameManagerError> {
-        self.handle(game_id)?.set_player_name(player_id, name).await
+        self.handle(game_id).await?.set_player_name(player_id, name).await
     }
 
     pub async fn subscribe(
@@ -330,7 +366,64 @@ impl GameManager {
         game_id: Uuid,
         since: Option<u64>,
     ) -> Result<Subscription, GameManagerError> {
-        self.handle(game_id)?.subscribe(since).await
+        self.handle(game_id).await?.subscribe(since).await
+    }
+
+    /// Sweep games that have been in a terminal state (Completed /
+    /// Aborted) for at least `ttl`, evicting their actor from the in-memory
+    /// map. The next access through `handle()` re-spawns an actor by
+    /// loading the row from `db`.
+    ///
+    /// The first sweep that finds a game in a terminal state records
+    /// "completed-at = now" — actual eviction waits `ttl` from that mark.
+    /// If a game goes back to non-terminal (impossible in practice, but
+    /// defended for robustness), the timestamp is dropped.
+    ///
+    /// `ttl` is parametric for testability; production uses ~1h.
+    pub async fn sweep_completed_games(&self, ttl: Duration) -> usize {
+        let now = Instant::now();
+        let game_ids: Vec<Uuid> = {
+            let games = self.games.read_or_recover();
+            games.keys().copied().collect()
+        };
+        let mut to_evict = Vec::new();
+        for game_id in game_ids {
+            let handle = {
+                let games = self.games.read_or_recover();
+                match games.get(&game_id) {
+                    Some(h) => h.clone(),
+                    None => continue,
+                }
+            };
+            let Ok(state) = handle.get_state().await else { continue };
+            let is_terminal = matches!(state.state, State::Completed | State::Aborted);
+            let should_evict = {
+                let mut completed_at = self.completed_at.lock_or_recover();
+                if is_terminal {
+                    let first_seen = completed_at.entry(game_id).or_insert(now);
+                    now.duration_since(*first_seen) >= ttl
+                } else {
+                    completed_at.remove(&game_id);
+                    false
+                }
+            };
+            if should_evict {
+                to_evict.push(game_id);
+            }
+        }
+        if to_evict.is_empty() {
+            return 0;
+        }
+        let mut games = self.games.write_or_recover();
+        let mut completed_at = self.completed_at.lock_or_recover();
+        let mut count = 0;
+        for game_id in to_evict {
+            if games.remove(&game_id).is_some() {
+                completed_at.remove(&game_id);
+                count += 1;
+            }
+        }
+        count
     }
 
     pub fn list_games(&self) -> Result<Vec<Uuid>, GameManagerError> {
@@ -454,6 +547,90 @@ mod tests {
         let hand = m.get_hand(r.game_id, r.player_ids[0]).await.unwrap();
         assert_eq!(hand.cards.len(), 13);
         assert_eq!(hand.player_id, r.player_ids[0]);
+    }
+
+    #[tokio::test]
+    async fn sweep_keeps_active_games() {
+        let m = GameManager::new();
+        let r = m.create_game(500, None).unwrap();
+        let evicted = m.sweep_completed_games(Duration::from_secs(0)).await;
+        assert_eq!(evicted, 0, "active game must not be evicted regardless of ttl");
+        assert!(m.list_games().unwrap().contains(&r.game_id));
+    }
+
+    #[tokio::test]
+    async fn sweep_does_not_evict_until_ttl_elapses() {
+        // A zero-second timer means the first player has no time to bet —
+        // the actor's first-round-betting timeout fires and aborts the
+        // game. Once the abort persists, the game is in a terminal state
+        // and the sweeper will mark it; we then assert that a non-zero
+        // TTL prevents immediate eviction (it just records first-seen).
+        let m = GameManager::new();
+        let tc = TimerConfig { initial_time_secs: 0, increment_secs: 0 };
+        let r = m.create_game(100, Some(tc)).unwrap();
+        m.make_transition(r.game_id, GameTransition::Start).await.unwrap();
+        // Give the actor's timeout task a moment to fire and abort.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let state = m.get_game_state(r.game_id).await.unwrap();
+        assert_eq!(state.state, State::Aborted, "0-second clock should have aborted the game");
+        // First sweep with a long TTL: marks the timestamp but doesn't evict.
+        let evicted = m.sweep_completed_games(Duration::from_secs(3600)).await;
+        assert_eq!(evicted, 0, "first sweep records the mark but waits for ttl");
+        assert!(m.list_games().unwrap().contains(&r.game_id));
+    }
+
+    #[tokio::test]
+    async fn sweep_evicts_after_ttl_elapses() {
+        let m = GameManager::new();
+        let tc = TimerConfig { initial_time_secs: 0, increment_secs: 0 };
+        let r = m.create_game(100, Some(tc)).unwrap();
+        m.make_transition(r.game_id, GameTransition::Start).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        // Game has aborted by now. Sweep with ttl=0 evicts immediately
+        // (first observation sets timestamp to now, ttl=0 says now-now >= 0).
+        let evicted = m.sweep_completed_games(Duration::from_secs(0)).await;
+        assert_eq!(evicted, 1, "ttl=0 should evict the aborted game on first sweep");
+        assert!(!m.list_games().unwrap().contains(&r.game_id));
+    }
+
+    #[tokio::test]
+    async fn handle_rehydrates_from_db_on_cache_miss() {
+        // Insert a game directly into SQLite, then build a manager with
+        // that store and an empty in-memory map. The first access has to
+        // go through the cold path: load from DB + spawn a fresh actor.
+        let store = Arc::new(SqliteStore::open(":memory:").unwrap());
+        let game_id = Uuid::new_v4();
+        let player_ids = [
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+        ];
+        let game = Game::new(game_id, player_ids, 500, None);
+        store.insert_game(&game).unwrap();
+
+        let m = GameManager {
+            games: Arc::new(RwLock::new(HashMap::new())),
+            db: Some(store),
+            completed_at: Arc::new(Mutex::new(HashMap::new())),
+        };
+
+        assert!(m.list_games().unwrap().is_empty(), "starts cold");
+        let state = m.get_game_state(game_id).await.expect("rehydrated from DB");
+        assert_eq!(state.game_id, game_id);
+        assert_eq!(state.state, State::NotStarted);
+        // Subsequent reads hit the in-memory actor.
+        assert_eq!(m.list_games().unwrap(), vec![game_id]);
+    }
+
+    #[tokio::test]
+    async fn handle_returns_not_found_without_db() {
+        let m = GameManager::new();
+        let id = Uuid::new_v4();
+        assert!(matches!(
+            m.get_game_state(id).await,
+            Err(GameManagerError::GameNotFound)
+        ));
     }
 }
 

@@ -75,6 +75,25 @@ impl SqliteStore {
         Ok(SqliteStore { conn: Mutex::new(conn) })
     }
 
+    /// Load a single persisted game by id. Returns `Ok(None)` if the row
+    /// is absent — distinct from a deserialization error.
+    pub fn load_game_by_id(&self, id: Uuid) -> Result<Option<Game>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let row: Result<String, rusqlite::Error> = conn.query_row(
+            "SELECT data FROM games WHERE id = ?1",
+            rusqlite::params![id.to_string()],
+            |row| row.get::<_, String>(0),
+        );
+        match row {
+            Ok(json) => {
+                let game: Game = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+                Ok(Some(game))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
     /// Load all persisted games.
     pub fn load_all_games(&self) -> Result<Vec<Game>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
