@@ -299,7 +299,7 @@ async fn create_game(
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: format!("{:?}", e),
+                error: format!("{}", e),
             }),
         )
     };
@@ -366,7 +366,7 @@ async fn list_games(
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: format!("{:?}", e),
+                error: format!("{}", e),
             }),
         )
     })
@@ -389,7 +389,7 @@ async fn get_game_state(
             (
                 status,
                 Json(ErrorResponse {
-                    error: format!("{:?}", e),
+                    error: format!("{}", e),
                 }),
             )
         })
@@ -462,7 +462,7 @@ async fn delete_game(
             (
                 status,
                 Json(ErrorResponse {
-                    error: format!("{:?}", e),
+                    error: format!("{}", e),
                 }),
             )
         })?;
@@ -493,7 +493,7 @@ async fn make_transition(
             (
                 status,
                 Json(ErrorResponse {
-                    error: format!("{:?}", e),
+                    error: format!("{}", e),
                 }),
             )
         })?;
@@ -528,7 +528,7 @@ async fn get_hand(
             (
                 status,
                 Json(ErrorResponse {
-                    error: format!("{:?}", e),
+                    error: format!("{}", e),
                 }),
             )
         })
@@ -562,7 +562,7 @@ async fn set_player_name(
             (
                 status,
                 Json(ErrorResponse {
-                    error: format!("{:?}", e),
+                    error: format!("{}", e),
                 }),
             )
         })
@@ -582,7 +582,7 @@ async fn get_presence(
                 spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
-            (status, Json(ErrorResponse { error: format!("{:?}", e) }))
+            (status, Json(ErrorResponse { error: format!("{}", e) }))
         })?;
         let player_ids: Vec<Uuid> = game_state.player_names.iter().map(|pn| pn.player_id).collect();
         state.presence.ensure_game(game_id, &player_ids);
@@ -720,13 +720,13 @@ async fn game_ws(
             spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        (status, Json(ErrorResponse { error: format!("{:?}", e) }))
+        (status, Json(ErrorResponse { error: format!("{}", e) }))
     })?;
 
     let rx = state.game_manager.subscribe(game_id).map_err(|e| {
         (
             StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: format!("{:?}", e) }),
+            Json(ErrorResponse { error: format!("{}", e) }),
         )
     })?;
 
@@ -984,7 +984,7 @@ async fn create_challenge_handler(
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
-                    error: format!("{:?}", e),
+                    error: format!("{}", e),
                 }),
             )
         })?;
@@ -993,7 +993,7 @@ async fn create_challenge_handler(
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: format!("{:?}", e),
+                error: format!("{}", e),
             }),
         )
     })?;
@@ -1105,7 +1105,7 @@ async fn get_challenge_handler(
             (
                 status,
                 Json(ErrorResponse {
-                    error: format!("{:?}", e),
+                    error: format!("{}", e),
                 }),
             )
         })
@@ -1127,7 +1127,7 @@ async fn get_challenge_by_short_id_handler(
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: format!("{:?}", e),
+                error: format!("{}", e),
             }),
         )),
     }
@@ -1170,7 +1170,7 @@ async fn join_challenge_handler(
             (
                 status,
                 Json(ErrorResponse {
-                    error: format!("{:?}", e),
+                    error: format!("{}", e),
                 }),
             )
         })?;
@@ -1264,7 +1264,7 @@ async fn cancel_challenge_handler(
             (
                 status,
                 Json(ErrorResponse {
-                    error: format!("{:?}", e),
+                    error: format!("{}", e),
                 }),
             )
         })
