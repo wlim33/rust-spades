@@ -130,45 +130,13 @@ impl SqliteStore {
     }
 
     pub fn insert_user(&self, new: &crate::auth::users::NewUser) -> Result<uuid::Uuid, String> {
-        use crate::auth::users::canonicalize_username;
-        let id = uuid::Uuid::new_v4();
-        let canon = canonicalize_username(&new.username);
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute(
-            "INSERT INTO users (id, username, username_canon, email, email_verified, password_hash, token_version) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
-            rusqlite::params![
-                id.to_string(),
-                &new.username,
-                canon,
-                &new.email,
-                new.email_verified as i32,
-                new.password_hash.as_deref(),
-            ],
-        ).map_err(|e| {
-            let msg = e.to_string();
-            if msg.contains("UNIQUE constraint failed: users.username_canon") {
-                "username_taken".to_string()
-            } else if msg.contains("UNIQUE constraint failed: users.email") {
-                "email_taken".to_string()
-            } else {
-                msg
-            }
-        })?;
-        Ok(id)
+        insert_user_in(&conn, new)
     }
 
     pub fn find_user_by_id(&self, id: uuid::Uuid) -> Result<Option<crate::auth::users::User>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.query_row(
-            "SELECT id, username, username_canon, email, email_verified, password_hash, token_version, created_at, last_login_at \
-             FROM users WHERE id = ?1",
-            rusqlite::params![id.to_string()],
-            row_to_user,
-        ).map(Some).or_else(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => Ok(None),
-            other => Err(other.to_string()),
-        })
+        find_user_by_id_in(&conn, id)
     }
 
     pub fn find_user_by_email(&self, email: &str) -> Result<Option<crate::auth::users::User>, String> {
@@ -201,31 +169,17 @@ impl SqliteStore {
 
     pub fn update_user_password(&self, user_id: uuid::Uuid, new_hash: &str) -> Result<i32, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let new_version: i32 = conn.query_row(
-            "UPDATE users SET password_hash = ?1, token_version = token_version + 1 \
-             WHERE id = ?2 RETURNING token_version",
-            rusqlite::params![new_hash, user_id.to_string()],
-            |r| r.get(0),
-        ).map_err(|e| e.to_string())?;
-        Ok(new_version)
+        update_user_password_in(&conn, user_id, new_hash)
     }
 
     pub fn set_user_email_verified(&self, user_id: uuid::Uuid) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute(
-            "UPDATE users SET email_verified = 1 WHERE id = ?1",
-            rusqlite::params![user_id.to_string()],
-        ).map_err(|e| e.to_string())?;
-        Ok(())
+        set_user_email_verified_in(&conn, user_id)
     }
 
     pub fn touch_user_login(&self, user_id: uuid::Uuid) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute(
-            "UPDATE users SET last_login_at = datetime('now') WHERE id = ?1",
-            rusqlite::params![user_id.to_string()],
-        ).map_err(|e| e.to_string())?;
-        Ok(())
+        touch_user_login_in(&conn, user_id)
     }
 
     pub fn update_user_email(&self, user_id: uuid::Uuid, new_email: &str) -> Result<i32, String> {
@@ -268,20 +222,12 @@ impl SqliteStore {
         -> Result<(), String>
     {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute(
-            "INSERT INTO oauth_accounts (provider, provider_uid, user_id, email) VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![provider, provider_uid, user_id.to_string(), email],
-        ).map_err(|e| e.to_string())?;
-        Ok(())
+        insert_oauth_account_in(&conn, provider, provider_uid, user_id, email)
     }
 
     pub fn claim_anon_game_seats(&self, anon_id: uuid::Uuid, user_id: uuid::Uuid) -> Result<usize, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let n = conn.execute(
-            "UPDATE game_seats SET user_id = ?1 WHERE anon_user_id = ?2 AND user_id IS NULL",
-            rusqlite::params![user_id.to_string(), anon_id.to_string()],
-        ).map_err(|e| e.to_string())?;
-        Ok(n)
+        claim_anon_game_seats_in(&conn, anon_id, user_id)
     }
 
     pub fn insert_auth_token(
@@ -292,12 +238,7 @@ impl SqliteStore {
         ttl_secs: i64,
     ) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute(
-            "INSERT INTO auth_tokens (token_hash, user_id, purpose, expires_at) \
-             VALUES (?1, ?2, ?3, datetime('now', ?4))",
-            rusqlite::params![token_hash, user_id.to_string(), purpose, format!("+{ttl_secs} seconds")],
-        ).map_err(|e| e.to_string())?;
-        Ok(())
+        insert_auth_token_in(&conn, token_hash, user_id, purpose, ttl_secs)
     }
 
     pub fn get_lockout(&self, user_id: uuid::Uuid) -> Result<Option<String>, String> {
@@ -349,40 +290,14 @@ impl SqliteStore {
 
     pub fn clear_login_failures(&self, user_id: uuid::Uuid) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute(
-            "DELETE FROM login_failures WHERE user_id = ?1",
-            rusqlite::params![user_id.to_string()],
-        ).map_err(|e| e.to_string())?;
-        Ok(())
+        clear_login_failures_in(&conn, user_id)
     }
 
     pub fn consume_auth_token(&self, token_hash: &str, expected_purpose: &str)
         -> Result<crate::auth::tokens::ConsumedToken, String>
     {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let row: Option<(String, String, String, Option<String>)> = conn.query_row(
-            "SELECT user_id, purpose, expires_at, used_at FROM auth_tokens WHERE token_hash = ?1",
-            rusqlite::params![token_hash],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
-        ).map(Some).or_else(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => Ok(None),
-            other => Err(other.to_string()),
-        })?;
-        let Some((user_id_s, purpose, expires_at, used_at)) = row else {
-            return Err("token_invalid".into());
-        };
-        if used_at.is_some() { return Err("token_invalid".into()); }
-        if purpose != expected_purpose { return Err("token_invalid".into()); }
-        let now = chrono::Utc::now().naive_utc();
-        if let Ok(when) = chrono::NaiveDateTime::parse_from_str(&expires_at, "%Y-%m-%d %H:%M:%S") {
-            if when < now { return Err("token_invalid".into()); }
-        }
-        conn.execute(
-            "UPDATE auth_tokens SET used_at = datetime('now') WHERE token_hash = ?1",
-            rusqlite::params![token_hash],
-        ).map_err(|e| e.to_string())?;
-        let user_id = uuid::Uuid::parse_str(&user_id_s).map_err(|e| e.to_string())?;
-        Ok(crate::auth::tokens::ConsumedToken { user_id, purpose })
+        consume_auth_token_in(&conn, token_hash, expected_purpose)
     }
 
     pub fn cleanup_expired_tokens(&self) -> Result<usize, String> {
@@ -462,6 +377,195 @@ impl SqliteStore {
             |r| r.get(0),
         ).map_err(|e| e.to_string())
     }
+
+    /// Run `f` inside a SQLite transaction. The closure receives the
+    /// connection — call the `*_in` free functions in this module to perform
+    /// individual writes. Commits on `Ok`; rolls back on `Err` (or any panic
+    /// — the `Transaction` drops without commit). Returns the closure's
+    /// result on success.
+    pub fn with_tx<R>(
+        &self,
+        f: impl FnOnce(&Connection) -> Result<R, String>,
+    ) -> Result<R, String> {
+        let mut conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        // `&tx` derefs to `&Connection`, so `_in` helpers accept it directly.
+        let r = f(&tx)?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(r)
+    }
+}
+
+// ---------- transaction-scoped write helpers ----------
+//
+// These free functions hold no lock — they execute against the supplied
+// connection (which may be a plain `Connection` or a `Transaction` that
+// derefs to one). Use them via `SqliteStore::with_tx` to compose multi-step
+// writes atomically; the public methods above are thin wrappers that lock
+// the store's mutex and delegate here.
+
+pub(crate) fn insert_user_in(
+    conn: &Connection,
+    new: &crate::auth::users::NewUser,
+) -> Result<uuid::Uuid, String> {
+    use crate::auth::users::canonicalize_username;
+    let id = uuid::Uuid::new_v4();
+    let canon = canonicalize_username(&new.username);
+    conn.execute(
+        "INSERT INTO users (id, username, username_canon, email, email_verified, password_hash, token_version) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
+        rusqlite::params![
+            id.to_string(),
+            &new.username,
+            canon,
+            &new.email,
+            new.email_verified as i32,
+            new.password_hash.as_deref(),
+        ],
+    ).map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("UNIQUE constraint failed: users.username_canon") {
+            "username_taken".to_string()
+        } else if msg.contains("UNIQUE constraint failed: users.email") {
+            "email_taken".to_string()
+        } else {
+            msg
+        }
+    })?;
+    Ok(id)
+}
+
+pub(crate) fn find_user_by_id_in(
+    conn: &Connection,
+    id: uuid::Uuid,
+) -> Result<Option<crate::auth::users::User>, String> {
+    conn.query_row(
+        "SELECT id, username, username_canon, email, email_verified, password_hash, token_version, created_at, last_login_at \
+         FROM users WHERE id = ?1",
+        rusqlite::params![id.to_string()],
+        row_to_user,
+    ).map(Some).or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other.to_string()),
+    })
+}
+
+pub(crate) fn update_user_password_in(
+    conn: &Connection,
+    user_id: uuid::Uuid,
+    new_hash: &str,
+) -> Result<i32, String> {
+    let new_version: i32 = conn.query_row(
+        "UPDATE users SET password_hash = ?1, token_version = token_version + 1 \
+         WHERE id = ?2 RETURNING token_version",
+        rusqlite::params![new_hash, user_id.to_string()],
+        |r| r.get(0),
+    ).map_err(|e| e.to_string())?;
+    Ok(new_version)
+}
+
+pub(crate) fn set_user_email_verified_in(
+    conn: &Connection,
+    user_id: uuid::Uuid,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE users SET email_verified = 1 WHERE id = ?1",
+        rusqlite::params![user_id.to_string()],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub(crate) fn touch_user_login_in(
+    conn: &Connection,
+    user_id: uuid::Uuid,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE users SET last_login_at = datetime('now') WHERE id = ?1",
+        rusqlite::params![user_id.to_string()],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub(crate) fn insert_oauth_account_in(
+    conn: &Connection,
+    provider: &str,
+    provider_uid: &str,
+    user_id: uuid::Uuid,
+    email: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO oauth_accounts (provider, provider_uid, user_id, email) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![provider, provider_uid, user_id.to_string(), email],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub(crate) fn claim_anon_game_seats_in(
+    conn: &Connection,
+    anon_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+) -> Result<usize, String> {
+    let n = conn.execute(
+        "UPDATE game_seats SET user_id = ?1 WHERE anon_user_id = ?2 AND user_id IS NULL",
+        rusqlite::params![user_id.to_string(), anon_id.to_string()],
+    ).map_err(|e| e.to_string())?;
+    Ok(n)
+}
+
+pub(crate) fn insert_auth_token_in(
+    conn: &Connection,
+    token_hash: &str,
+    user_id: uuid::Uuid,
+    purpose: &str,
+    ttl_secs: i64,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO auth_tokens (token_hash, user_id, purpose, expires_at) \
+         VALUES (?1, ?2, ?3, datetime('now', ?4))",
+        rusqlite::params![token_hash, user_id.to_string(), purpose, format!("+{ttl_secs} seconds")],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub(crate) fn clear_login_failures_in(
+    conn: &Connection,
+    user_id: uuid::Uuid,
+) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM login_failures WHERE user_id = ?1",
+        rusqlite::params![user_id.to_string()],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub(crate) fn consume_auth_token_in(
+    conn: &Connection,
+    token_hash: &str,
+    expected_purpose: &str,
+) -> Result<crate::auth::tokens::ConsumedToken, String> {
+    let row: Option<(String, String, String, Option<String>)> = conn.query_row(
+        "SELECT user_id, purpose, expires_at, used_at FROM auth_tokens WHERE token_hash = ?1",
+        rusqlite::params![token_hash],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+    ).map(Some).or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other.to_string()),
+    })?;
+    let Some((user_id_s, purpose, expires_at, used_at)) = row else {
+        return Err("token_invalid".into());
+    };
+    if used_at.is_some() { return Err("token_invalid".into()); }
+    if purpose != expected_purpose { return Err("token_invalid".into()); }
+    let now = chrono::Utc::now().naive_utc();
+    if let Ok(when) = chrono::NaiveDateTime::parse_from_str(&expires_at, "%Y-%m-%d %H:%M:%S") {
+        if when < now { return Err("token_invalid".into()); }
+    }
+    conn.execute(
+        "UPDATE auth_tokens SET used_at = datetime('now') WHERE token_hash = ?1",
+        rusqlite::params![token_hash],
+    ).map_err(|e| e.to_string())?;
+    let user_id = uuid::Uuid::parse_str(&user_id_s).map_err(|e| e.to_string())?;
+    Ok(crate::auth::tokens::ConsumedToken { user_id, purpose })
 }
 
 fn seat_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<crate::auth::game_seats::SeatRow> {
@@ -710,5 +814,63 @@ mod tests {
 
         let locked = store.get_lockout(id).unwrap();
         assert!(locked.is_none() || locked.as_deref() == Some(""), "locked_until should be NULL after reset");
+    }
+
+    #[test]
+    fn with_tx_commits_on_ok() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let user_id = store
+            .with_tx(|conn| {
+                let uid = insert_user_in(conn, &new_user("Alice", "alice@x.com"))?;
+                set_user_email_verified_in(conn, uid)?;
+                Ok(uid)
+            })
+            .unwrap();
+        let user = store.find_user_by_id(user_id).unwrap().expect("user persisted");
+        assert!(user.email_verified, "both writes inside the tx are visible after commit");
+    }
+
+    #[test]
+    fn with_tx_rolls_back_on_err() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        // Returning Err mid-transaction must roll back the earlier insert —
+        // otherwise the user would be visible despite the explicit failure.
+        let result: Result<uuid::Uuid, String> = store.with_tx(|conn| {
+            let uid = insert_user_in(conn, &new_user("Alice", "alice@x.com"))?;
+            let _ = uid;
+            Err("simulated mid-tx failure".to_string())
+        });
+        assert!(result.is_err());
+        // Username should not exist — INSERT rolled back.
+        assert!(
+            store.find_user_by_username("Alice").unwrap().is_none(),
+            "rolled-back insert must not be visible"
+        );
+    }
+
+    #[test]
+    fn with_tx_rolls_back_on_late_constraint_violation() {
+        // Realistic atomicity case from the register flow: insert succeeds,
+        // a later write inside the same tx violates a constraint, and the
+        // whole tx rolls back so the earlier user row is not orphaned.
+        let store = SqliteStore::open(":memory:").unwrap();
+        // Pre-existing user — their username will collide with the one we
+        // attempt to insert inside the tx.
+        let _alice = store.insert_user(&new_user("Alice", "alice@x.com")).unwrap();
+
+        let result: Result<(), String> = store.with_tx(|conn| {
+            // First write: insert a different user, which would succeed alone.
+            insert_user_in(conn, &new_user("Bob", "bob@x.com"))?;
+            // Second write: attempt to insert a user whose username collides
+            // with the pre-existing Alice — this fails with "username_taken".
+            insert_user_in(conn, &new_user("Alice", "alice2@x.com"))?;
+            Ok(())
+        });
+        assert_eq!(result.unwrap_err(), "username_taken");
+        // Bob's insert must have been rolled back — only Alice remains.
+        assert!(store.find_user_by_username("Bob").unwrap().is_none(),
+                "first insert rolled back when second one failed");
+        assert!(store.find_user_by_username("Alice").unwrap().is_some(),
+                "pre-existing user still present");
     }
 }

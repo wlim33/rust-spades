@@ -15,6 +15,11 @@ use crate::auth::{
     users::{validate_email, validate_username, NewUser, User},
 };
 use crate::lock_util::MutexExt;
+use crate::sqlite_store::{
+    claim_anon_game_seats_in, clear_login_failures_in, consume_auth_token_in,
+    find_user_by_id_in, insert_auth_token_in, insert_oauth_account_in, insert_user_in,
+    set_user_email_verified_in, touch_user_login_in, update_user_password_in,
+};
 
 #[derive(Deserialize)]
 pub struct RegisterRequest {
@@ -61,24 +66,31 @@ pub async fn register(
         email_verified: false,
     };
 
-    let user_id = auth.store.insert_user(&new).map_err(|e| match e.as_str() {
+    let s = session_ext::load_or_init(&session).await?;
+    let anon_id = s.user_id;
+    let token = generate_token();
+    let token_hash = hash_token(&token);
+
+    // Atomic: user creation + anon seat claim + verification-token issue.
+    // Without the transaction, a mid-sequence failure would leave a user row
+    // without claimed seats or without an outstanding verify token (or both),
+    // which the registration UI can't recover from.
+    let (user_id, user) = auth.store.with_tx(|conn| {
+        let user_id = insert_user_in(conn, &new)?;
+        claim_anon_game_seats_in(conn, anon_id, user_id)?;
+        insert_auth_token_in(conn, &token_hash, user_id, PURPOSE_VERIFY_EMAIL, 24 * 3600)?;
+        let user = find_user_by_id_in(conn, user_id)?
+            .ok_or_else(|| "user vanished after insert".to_string())?;
+        Ok((user_id, user))
+    }).map_err(|e| match e.as_str() {
         "username_taken" => AuthError::UsernameTaken,
         "email_taken" => AuthError::EmailTaken,
+        "user vanished after insert" => AuthError::Internal(e),
         other => AuthError::Storage(other.to_string()),
     })?;
 
-    let s = session_ext::load_or_init(&session).await?;
-    let anon_id = s.user_id;
-    auth.store.claim_anon_game_seats(anon_id, user_id).map_err(AuthError::Storage)?;
-
-    let user = auth.store.find_user_by_id(user_id).map_err(AuthError::Storage)?
-        .ok_or_else(|| AuthError::Internal("user vanished after insert".into()))?;
     session_ext::set_claimed(&session, user_id, user.token_version).await?;
 
-    let token = generate_token();
-    let token_hash = hash_token(&token);
-    auth.store.insert_auth_token(&token_hash, user_id, PURPOSE_VERIFY_EMAIL, 24 * 3600)
-        .map_err(AuthError::Storage)?;
     let link = format!("{}/auth/verify-email?token={}", auth.oauth.redirect_base_url, token);
     let _ = auth.mailer.send(Email {
         to: user.email.clone(),
@@ -143,10 +155,14 @@ pub async fn login(
         return Err(AuthError::InvalidCredentials);
     }
 
-    auth.store.clear_login_failures(user.id).map_err(AuthError::Storage)?;
-    auth.store.touch_user_login(user.id).map_err(AuthError::Storage)?;
     let s = session_ext::load_or_init(&session).await?;
-    auth.store.claim_anon_game_seats(s.user_id, user.id).map_err(AuthError::Storage)?;
+    // Atomic: clear failure counter + touch last_login + claim anon seats.
+    auth.store.with_tx(|conn| {
+        clear_login_failures_in(conn, user.id)?;
+        touch_user_login_in(conn, user.id)?;
+        claim_anon_game_seats_in(conn, s.user_id, user.id)?;
+        Ok(())
+    }).map_err(AuthError::Storage)?;
     session_ext::set_claimed(&session, user.id, user.token_version).await?;
 
     Ok(Json(UserResponse::from(&user)))
@@ -171,9 +187,14 @@ pub async fn verify_email(
     Query(q): Query<VerifyEmailQuery>,
 ) -> Result<Redirect, AuthError> {
     let hash = hash_token(&q.token);
-    let consumed = auth.store.consume_auth_token(&hash, PURPOSE_VERIFY_EMAIL)
-        .map_err(|e| if e == "token_invalid" { AuthError::TokenInvalid } else { AuthError::Storage(e) })?;
-    auth.store.set_user_email_verified(consumed.user_id).map_err(AuthError::Storage)?;
+    // Atomic: consume one-shot token + flip email_verified. Without the
+    // transaction, a failure to flip the bit after token consumption leaves
+    // the user unable to re-verify with the same link.
+    auth.store.with_tx(|conn| {
+        let consumed = consume_auth_token_in(conn, &hash, PURPOSE_VERIFY_EMAIL)?;
+        set_user_email_verified_in(conn, consumed.user_id)?;
+        Ok(())
+    }).map_err(|e| if e == "token_invalid" { AuthError::TokenInvalid } else { AuthError::Storage(e) })?;
     Ok(Redirect::to("/"))
 }
 
@@ -219,12 +240,16 @@ pub async fn password_reset_confirm(
     check_ip(&auth.rate.password_reset_confirm, addr.ip())?;
     validate_password(&req.new_password)?;
     let hash = hash_token(&req.token);
-    let consumed = auth.store.consume_auth_token(&hash, PURPOSE_PASSWORD_RESET)
-        .map_err(|e| if e == "token_invalid" { AuthError::TokenInvalid } else { AuthError::Storage(e) })?;
     let new_hash = hash_password(&req.new_password)?;
-    let new_version = auth.store.update_user_password(consumed.user_id, &new_hash)
-        .map_err(AuthError::Storage)?;
-    session_ext::set_claimed(&session, consumed.user_id, new_version).await?;
+    // Atomic: consume one-shot token + write new password. Without the
+    // transaction, a failed password update after token consumption would
+    // leave the user locked out (token spent, password unchanged).
+    let (user_id, new_version) = auth.store.with_tx(|conn| {
+        let consumed = consume_auth_token_in(conn, &hash, PURPOSE_PASSWORD_RESET)?;
+        let new_version = update_user_password_in(conn, consumed.user_id, &new_hash)?;
+        Ok((consumed.user_id, new_version))
+    }).map_err(|e| if e == "token_invalid" { AuthError::TokenInvalid } else { AuthError::Storage(e) })?;
+    session_ext::set_claimed(&session, user_id, new_version).await?;
     Ok(axum::http::StatusCode::OK)
 }
 
@@ -388,23 +413,32 @@ pub async fn oauth_complete(
     }
     let username = validate_username(&req.username)?;
 
-    let user_id = auth.store.insert_user(&NewUser {
+    let s = session_ext::load_or_init(&session).await?;
+    let anon_id = s.user_id;
+    let new_user = NewUser {
         username,
         email: pending.email.clone(),
         password_hash: None,
         email_verified: pending.email_verified,
+    };
+
+    // Atomic: user creation + OAuth-account link + anon seat claim. Without
+    // the transaction, an OAuth-account insert failure would leave an
+    // orphaned user with no way to log in (no password and no OAuth link).
+    let (user_id, user) = auth.store.with_tx(|conn| {
+        let user_id = insert_user_in(conn, &new_user)?;
+        insert_oauth_account_in(conn, &pending.provider, &pending.provider_uid, user_id, &pending.email)?;
+        claim_anon_game_seats_in(conn, anon_id, user_id)?;
+        let user = find_user_by_id_in(conn, user_id)?
+            .ok_or_else(|| "user vanished".to_string())?;
+        Ok((user_id, user))
     }).map_err(|e| match e.as_str() {
         "username_taken" => AuthError::UsernameTaken,
         "email_taken" => AuthError::EmailTaken,
+        "user vanished" => AuthError::Internal(e),
         other => AuthError::Storage(other.into()),
     })?;
-    auth.store.insert_oauth_account(&pending.provider, &pending.provider_uid, user_id, &pending.email)
-        .map_err(AuthError::Storage)?;
 
-    let s = session_ext::load_or_init(&session).await?;
-    auth.store.claim_anon_game_seats(s.user_id, user_id).map_err(AuthError::Storage)?;
-    let user = auth.store.find_user_by_id(user_id).map_err(AuthError::Storage)?
-        .ok_or_else(|| AuthError::Internal("user vanished".into()))?;
     session_ext::set_claimed(&session, user_id, user.token_version).await?;
 
     Ok((axum::http::StatusCode::CREATED, Json(UserResponse::from(&user))))
