@@ -32,6 +32,7 @@ mod game_state;
 mod cards;
 mod result;
 pub mod ai;
+pub mod transcript;
 
 #[cfg(test)]
 mod tests;
