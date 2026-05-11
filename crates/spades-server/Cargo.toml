@@ -33,7 +33,14 @@ rand = "0.8"
 uuid.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+argon2 = "0.5"
+oauth2 = "4.4"
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "tokio1-rustls-tls", "builder"] }
+governor = { version = "0.7", default-features = false, features = ["std"] }
+sha2 = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [dev-dependencies]
 axum-test = "18"
 ntest = "0.9"
+wiremock = "0.6"
