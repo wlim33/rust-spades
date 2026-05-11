@@ -187,8 +187,25 @@ pub fn build_router(state: AppState) -> Router {
         .route("/challenges/{challenge_id}/join/{seat}", post(join_challenge_handler))
         // WebSocket
         .route("/games/{game_id}/ws", get(game_ws))
-        .layer(CorsLayer::permissive())
         .with_state(state)
+}
+
+/// Build a CORS layer from a list of allowed origins.
+/// `"*"` enables a permissive layer; an empty list returns `None` (no CORS layer applied).
+fn build_cors_layer(origins: &[String]) -> Option<CorsLayer> {
+    if origins.is_empty() {
+        None
+    } else if origins.iter().any(|s| s == "*") {
+        Some(CorsLayer::permissive())
+    } else {
+        let mut layer = CorsLayer::new();
+        for o in origins {
+            if let Ok(hv) = o.parse::<axum::http::HeaderValue>() {
+                layer = layer.allow_origin(hv);
+            }
+        }
+        Some(layer)
+    }
 }
 
 #[tokio::main]
@@ -232,7 +249,31 @@ async fn main() {
         .with_secure(false)
         .with_expiry(Expiry::OnInactivity(time::Duration::days(30)));
 
-    let app = build_router(app_state).layer(session_layer);
+    let mut cors_origins: Vec<String> = Vec::new();
+    let args: Vec<String> = std::env::args().collect();
+    for (i, a) in args.iter().enumerate() {
+        if a == "--cors-allow-origin" {
+            if let Some(v) = args.get(i + 1) {
+                cors_origins.push(v.clone());
+            }
+        }
+    }
+    if let Ok(env_origins) = std::env::var("CORS_ALLOW_ORIGIN") {
+        for o in env_origins.split(',') {
+            let o = o.trim();
+            if !o.is_empty() {
+                cors_origins.push(o.to_string());
+            }
+        }
+    }
+
+    let mut app = build_router(app_state).layer(session_layer);
+    if let Some(cors) = build_cors_layer(&cors_origins) {
+        app = app.layer(cors);
+        println!("CORS enabled for origins: {}", cors_origins.join(", "));
+    } else {
+        println!("CORS layer not configured (set --cors-allow-origin <origin> or CORS_ALLOW_ORIGIN env)");
+    }
 
     let port: u16 = std::env::args()
         .skip_while(|a| a != "--port")

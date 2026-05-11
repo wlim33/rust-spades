@@ -13,6 +13,24 @@ cargo run --features server -- --port 3000 --db games.sqlite
 Default port is 3000. Override with `--port` or `PORT` env var.
 SQLite persistence is optional. Enable with `--db <path>` or `DATABASE_URL` env var. Without it, games are in-memory only.
 
+### CORS
+
+CORS is **off by default**. Enable it explicitly per deployment:
+
+```bash
+# Allow a single origin
+cargo run --features server -- --cors-allow-origin https://app.example.com
+
+# Allow several
+cargo run --features server -- --cors-allow-origin https://a.example.com --cors-allow-origin https://b.example.com
+
+# Wide-open (dev only): allow any origin
+cargo run --features server -- --cors-allow-origin '*'
+
+# Or via env var (comma-separated)
+CORS_ALLOW_ORIGIN='https://a.example.com,https://b.example.com' cargo run --features server
+```
+
 ## API Reference
 
 ### Game Endpoints
