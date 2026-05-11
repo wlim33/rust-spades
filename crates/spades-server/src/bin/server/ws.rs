@@ -130,7 +130,7 @@ async fn handle_game_ws(
                         // remaining stream would silently desync from server
                         // truth — force the client to reconnect for a fresh
                         // snapshot.
-                        eprintln!("game ws {} lagged {} event(s); forcing resync", game_id, n);
+                        tracing::warn!(game_id = %game_id, dropped = n, "game ws lagged; forcing resync");
                         let resync = ServerEvent::Resync { reason: format!("lagged {n}") };
                         if let Ok(json) = serde_json::to_string(&resync) {
                             let _ = socket.send(Message::Text(json.into())).await;

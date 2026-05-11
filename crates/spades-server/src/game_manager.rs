@@ -11,6 +11,7 @@ use crate::lock_util::MutexExt;
 use crate::sqlite_store::SqliteStore;
 use serde::{Serialize, Deserialize};
 use rand::seq::SliceRandom;
+use tracing::{error, info};
 
 /// Event broadcast to WebSocket subscribers when game state changes.
 ///
@@ -300,7 +301,7 @@ impl GameManager {
             broadcasters_map.insert(id, Arc::new(GameBroadcaster::new(64)));
         }
         let count = games_map.len();
-        println!("Loaded {} game(s) from database", count);
+        info!(count, "loaded games from database");
         let manager = GameManager {
             games: Arc::new(RwLock::new(games_map)),
             broadcasters: Arc::new(RwLock::new(broadcasters_map)),
@@ -346,21 +347,21 @@ impl GameManager {
     fn persist_insert(&self, game: &Game) {
         if let Some(db) = &self.db
             && let Err(e) = db.insert_game(game) {
-                eprintln!("Failed to persist game insert: {}", e);
+                error!(game_id = %game.get_id(), error = %e, "failed to persist game insert");
             }
     }
 
     fn persist_update(&self, game: &Game) {
         if let Some(db) = &self.db
             && let Err(e) = db.update_game(game) {
-                eprintln!("Failed to persist game update: {}", e);
+                error!(game_id = %game.get_id(), error = %e, "failed to persist game update");
             }
     }
 
     fn persist_delete(&self, game_id: Uuid) {
         if let Some(db) = &self.db
             && let Err(e) = db.delete_game(game_id) {
-                eprintln!("Failed to persist game delete: {}", e);
+                error!(game_id = %game_id, error = %e, "failed to persist game delete");
             }
     }
 

@@ -3,6 +3,7 @@
 use crate::auth::AuthError;
 use crate::lock_util::MutexExt;
 use std::sync::{Arc, Mutex};
+use tracing::{debug, error};
 
 /// A single email message to send.
 #[derive(Debug, Clone)]
@@ -35,7 +36,7 @@ impl LogMailer {
 #[async_trait::async_trait]
 impl Mailer for LogMailer {
     async fn send(&self, email: Email) -> Result<(), AuthError> {
-        eprintln!("LogMailer: to={} subject={}", email.to, email.subject);
+        debug!(to = %email.to, subject = %email.subject, "LogMailer: would send email");
         self.sent.lock_or_recover().push(email);
         Ok(())
     }
@@ -122,7 +123,7 @@ impl Mailer for SmtpMailer {
             .body(email.body)
             .map_err(|e| AuthError::Internal(format!("message build: {e}")))?;
         self.transport.send(msg).await.map_err(|e| {
-            eprintln!("SmtpMailer error: {e}");
+            error!(error = %e, "SmtpMailer send failed");
             AuthError::MailerFailed
         })?;
         Ok(())

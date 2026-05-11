@@ -37,7 +37,9 @@ use tower_http::cors::CorsLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::timeout::TimeoutLayer;
+use tower_http::trace::TraceLayer;
 use tower_sessions::{Expiry, SessionManagerLayer};
+use tracing::{info, warn};
 use tower_sessions_sqlx_store::SqliteStore as SessionSqliteStore;
 use uuid::Uuid;
 
@@ -128,12 +130,35 @@ pub fn build_router(state: AppState) -> Router {
         .route("/users/me", axum::routing::patch(spades_server::handlers_users::patch_me))
         .route("/users/{username}", get(spades_server::handlers_users::get_profile))
         .route("/users/{username}/games", get(spades_server::handlers_users::get_profile_games))
+        // Operational endpoints — outside the oasgen-managed schema.
+        .route("/health", get(health))
+        .route("/readyz", get(readyz))
         .with_state(state)
         .layer(RequestBodyLimitLayer::new(1024 * 1024))
         .layer(TimeoutLayer::new(Duration::from_secs(30)))
         .layer(PropagateRequestIdLayer::x_request_id())
+        .layer(TraceLayer::new_for_http())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(CatchPanicLayer::new())
+}
+
+/// Liveness probe — returns 200 while the process is alive enough to serve
+/// HTTP. Does NOT check downstream dependencies; use `/readyz` for that.
+async fn health() -> &'static str {
+    "ok"
+}
+
+/// Readiness probe — returns 200 when the server is ready to accept traffic.
+/// Currently only verifies the in-process state is reachable; a future
+/// version should ping the SQLite store with a cheap query.
+async fn readyz(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> Result<&'static str, axum::http::StatusCode> {
+    state
+        .game_manager
+        .list_games()
+        .map(|_| "ok")
+        .map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)
 }
 
 /// Build a CORS layer from a list of allowed origins.
@@ -156,6 +181,8 @@ fn build_cors_layer(origins: &[String]) -> Option<CorsLayer> {
 
 #[tokio::main]
 async fn main() {
+    init_tracing();
+
     let db_path = std::env::args()
         .skip_while(|a| a != "--db")
         .nth(1)
@@ -163,11 +190,11 @@ async fn main() {
 
     let game_manager = match db_path {
         Some(ref path) => {
-            println!("Using SQLite database: {}", path);
+            info!(path = %path, "using SQLite database");
             GameManager::with_db(path).expect("Failed to open database")
         }
         None => {
-            println!("Running in-memory mode (no --db or DATABASE_URL set)");
+            warn!("running in-memory mode (no --db or DATABASE_URL set) — state will not persist across restarts");
             GameManager::new()
         }
     };
@@ -186,23 +213,23 @@ async fn main() {
         match spades_server::auth::mailer::SmtpConfig::from_env() {
             Some(cfg) => match spades_server::auth::mailer::SmtpMailer::new(cfg) {
                 Ok(m) => {
-                    println!("Mailer: SmtpMailer (SMTP_HOST set)");
+                    info!("mailer: SmtpMailer (SMTP_HOST set)");
                     std::sync::Arc::new(m)
                 }
                 Err(e) => {
-                    eprintln!("SmtpMailer init failed ({e}); falling back to LogMailer");
+                    warn!(error = %e, "SmtpMailer init failed; falling back to LogMailer");
                     std::sync::Arc::new(spades_server::auth::mailer::LogMailer::new())
                 }
             },
             None => {
-                println!("Mailer: LogMailer (no SMTP_* env vars)");
+                info!("mailer: LogMailer (no SMTP_* env vars)");
                 std::sync::Arc::new(spades_server::auth::mailer::LogMailer::new())
             }
         };
 
     let oauth = std::sync::Arc::new(spades_server::auth::oauth::OauthState::from_env());
-    if oauth.google.is_some() { println!("OAuth: Google enabled"); }
-    if oauth.github.is_some() { println!("OAuth: GitHub enabled"); }
+    if oauth.google.is_some() { info!("OAuth: Google enabled"); }
+    if oauth.github.is_some() { info!("OAuth: GitHub enabled"); }
 
     let rate = std::sync::Arc::new(spades_server::auth::rate_limit::RateLimitState::new());
 
@@ -220,7 +247,7 @@ async fn main() {
             // Cleanup once at startup, then every hour.
             loop {
                 if let Err(e) = store.cleanup_expired_tokens() {
-                    eprintln!("cleanup_expired_tokens: {e}");
+                    warn!(error = %e, "cleanup_expired_tokens failed");
                 }
                 tokio::time::sleep(std::time::Duration::from_secs(60 * 60)).await;
             }
@@ -274,9 +301,9 @@ async fn main() {
     let mut app = build_router(app_state).layer(session_layer);
     if let Some(cors) = build_cors_layer(&cors_origins) {
         app = app.layer(cors);
-        println!("CORS enabled for origins: {}", cors_origins.join(", "));
+        info!(origins = %cors_origins.join(", "), "CORS enabled");
     } else {
-        println!("CORS layer not configured (set --cors-allow-origin <origin> or CORS_ALLOW_ORIGIN env)");
+        info!("CORS layer not configured (set --cors-allow-origin <origin> or CORS_ALLOW_ORIGIN env)");
     }
 
     let port: u16 = std::env::args()
@@ -288,41 +315,31 @@ async fn main() {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     let local_addr = listener.local_addr().unwrap();
-    println!("Spades server listening on {}", local_addr);
-    println!("\nAvailable endpoints:");
-    println!("  GET  /                                          - API info");
-    println!("  POST /games                                     - Create a new game");
-    println!("  GET  /games                                     - List all games");
-    println!("  GET  /games/:game_id                            - Get game state");
-    println!("  POST /games/:game_id/transition                 - Make a move");
-    println!("  GET  /games/:game_id/players/:player_id/hand    - Get player's hand");
-    println!("  PUT  /games/:game_id/players/:player_id/name    - Set player name");
-    println!("  GET  /games/:game_id/ws                         - Game state WebSocket");
-    println!("  GET  /games/:game_id/presence                   - Player presence");
-    println!("  DELETE /games/:game_id                          - Delete a game");
-    println!("  POST /matchmaking/seek                          - Quick match (SSE)");
-    println!("  GET  /matchmaking/seeks                         - List active seeks");
-    println!("  GET  /matchmaking/queue-sizes                   - Queue sizes by config");
-    println!("  POST /challenges                                - Create challenge (SSE)");
-    println!("  GET  /challenges                                - List open challenges");
-    println!("  GET  /challenges/by-short-id/:short_id          - Get challenge by short ID");
-    println!("  GET  /challenges/:challenge_id                  - Get challenge status");
-    println!("  POST /challenges/:id/join/:seat                 - Join challenge seat (SSE)");
-    println!("  DELETE /challenges/:challenge_id                - Cancel challenge");
-    println!("  GET  /player                                    - Get/create session identity");
-    println!("  PUT  /player/name                               - Set display name");
-    println!("  GET  /users/:username                           - Public user profile");
-    println!("  GET  /users/:username/games                     - User's game history (paginated)");
-    println!("  PATCH /users/me                                 - Update own email or password");
+    info!(
+        addr = %local_addr,
+        docs = %format!("http://{local_addr}/docs/"),
+        "spades server listening; OpenAPI schema at /docs/",
+    );
 
     if insecure_cookies {
-        println!("WARNING: --insecure-cookies enabled. Session cookie lacks Secure flag. DO NOT use in production.");
+        warn!("--insecure-cookies enabled — session cookie lacks Secure flag; DO NOT use in production");
     }
 
     axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap();
+}
+
+/// Initialize the tracing subscriber. Log level defaults to `info`; override
+/// with `RUST_LOG` (e.g. `RUST_LOG=spades_server=debug,tower_http=info`).
+fn init_tracing() {
+    use tracing_subscriber::{fmt, EnvFilter};
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"));
+    // try_init so tests / parallel runs that already initialized a subscriber
+    // don't panic on double-init.
+    let _ = fmt().with_env_filter(filter).try_init();
 }
 
 /// Wait for either Ctrl+C or SIGTERM (Unix). On non-Unix only Ctrl+C is
@@ -349,8 +366,8 @@ async fn shutdown_signal() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => eprintln!("Ctrl+C received; shutting down"),
-        _ = terminate => eprintln!("SIGTERM received; shutting down"),
+        _ = ctrl_c => info!("Ctrl+C received; shutting down"),
+        _ = terminate => info!("SIGTERM received; shutting down"),
     }
 }
 
@@ -413,6 +430,22 @@ mod tests {
         response.assert_status_ok();
         let body: serde_json::Value = response.json();
         assert_eq!(body["name"], "Spades Game Server");
+    }
+
+    #[tokio::test]
+    async fn test_health_returns_ok() {
+        let server = test_app();
+        let response = server.get("/health").await;
+        response.assert_status_ok();
+        response.assert_text("ok");
+    }
+
+    #[tokio::test]
+    async fn test_readyz_returns_ok() {
+        let server = test_app();
+        let response = server.get("/readyz").await;
+        response.assert_status_ok();
+        response.assert_text("ok");
     }
 
     #[tokio::test]
