@@ -37,9 +37,9 @@ pub async fn root() -> Json<serde_json::Value> {
     }))
 }
 
-#[oasgen]
 pub async fn create_game(
     AxumState(state): AxumState<AppState>,
+    identity: spades_server::auth::Identity,
     Json(request): Json<CreateGameRequest>,
 ) -> Result<Json<CreateGameResponse>, (StatusCode, Json<ErrorResponse>)> {
     let map_err = |e: GameManagerError| {
@@ -58,6 +58,18 @@ pub async fn create_game(
                 .create_game(request.max_points, request.timer_config)
                 .map_err(map_err)?;
             state.presence.ensure_game(response.game_id, &response.player_ids);
+            let identity_user = identity.user().map(|u| u.id);
+            let anon = identity.anon_id();
+            for (i, pid) in response.player_ids.iter().enumerate() {
+                let _ = state.auth.store.insert_game_seat(
+                    response.game_id, i as i32, *pid,
+                    spades_server::auth::game_seats::SeatOwner {
+                        user_id: identity_user,
+                        anon_user_id: Some(anon),
+                        is_bot: false,
+                    },
+                );
+            }
             Ok(Json(response))
         }
         Some(1) | Some(2) => {
@@ -86,6 +98,20 @@ pub async fn create_game(
                 .make_transition(game_id, GameTransition::Start)
                 .map_err(map_err)?;
             state.game_manager.play_ai_turns(game_id).map_err(map_err)?;
+
+            let identity_user = identity.user().map(|u| u.id);
+            let anon = identity.anon_id();
+            for (i, pid) in response.player_ids.iter().enumerate() {
+                let is_human = human_seats.contains(&i);
+                let _ = state.auth.store.insert_game_seat(
+                    game_id, i as i32, *pid,
+                    spades_server::auth::game_seats::SeatOwner {
+                        user_id: if is_human { identity_user } else { None },
+                        anon_user_id: if is_human { Some(anon) } else { None },
+                        is_bot: !is_human,
+                    },
+                );
+            }
 
             Ok(Json(response))
         }
