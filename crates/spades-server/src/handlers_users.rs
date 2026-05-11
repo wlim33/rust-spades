@@ -96,8 +96,26 @@ pub async fn patch_me(
     AuthUser(user): AuthUser,
     Json(req): Json<PatchMeRequest>,
 ) -> Result<Json<crate::handlers_auth::UserResponse>, AuthError> {
-    if let Some(new_email) = req.email.as_deref() {
+    // === Validate first, mutate second ===
+
+    if let Some(ref new_email) = req.email {
         validate_email(new_email)?;
+    }
+
+    if let Some(ref new_password) = req.new_password {
+        validate_password(new_password)?;
+        let current = req.current_password.as_deref()
+            .ok_or_else(|| AuthError::Validation("current_password required for password change".into()))?;
+        let phc = user.password_hash.as_deref()
+            .ok_or_else(|| AuthError::Validation("OAuth-only accounts cannot set password here".into()))?;
+        if !verify_password(current, phc)? {
+            return Err(AuthError::InvalidCredentials);
+        }
+    }
+
+    // === Mutations: now we know all inputs are valid ===
+
+    if let Some(new_email) = req.email.as_deref() {
         let new_version = auth.store.update_user_email(user.id, new_email).map_err(|e| match e.as_str() {
             "email_taken" => AuthError::EmailTaken,
             other => AuthError::Storage(other.into()),
@@ -117,14 +135,6 @@ pub async fn patch_me(
     }
 
     if let Some(new_password) = req.new_password.as_deref() {
-        let current = req.current_password.as_deref()
-            .ok_or_else(|| AuthError::Validation("current_password required for password change".into()))?;
-        let phc = user.password_hash.as_deref()
-            .ok_or_else(|| AuthError::Validation("OAuth-only accounts cannot set password here".into()))?;
-        if !verify_password(current, phc)? {
-            return Err(AuthError::InvalidCredentials);
-        }
-        validate_password(new_password)?;
         let new_hash = hash_password(new_password)?;
         let new_version = auth.store.update_user_password(user.id, &new_hash).map_err(AuthError::Storage)?;
         session_ext::set_claimed(&session, user.id, new_version).await?;
