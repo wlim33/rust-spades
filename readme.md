@@ -60,4 +60,4 @@ Nil bids are supported (bet zero for +/-100 point bonus/penalty). Blind bids are
 
 ## Contributing
 
-Issues and pull requests welcome.
+Issues and pull requests welcome. The repo ships an opt-in pre-push hook that runs clippy, the full test suite, and a per-crate coverage regression check via `cargo tarpaulin`. See [docs/coverage.md](docs/coverage.md) for how to enable it and how the coverage baseline ratchets.
