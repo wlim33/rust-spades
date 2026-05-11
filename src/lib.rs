@@ -161,8 +161,8 @@ pub struct Game {
     scoring: scoring::Scoring,
     current_player_index: usize,
     deck: Vec<cards::Card>,
-    hands_played: Vec<[cards::Card; 4]>,
-    leading_suit: Suit,
+    hands_played: Vec<[Option<cards::Card>; 4]>,
+    leading_suit: Option<Suit>,
     players: [Player; 4],
     #[serde(skip_serializing_if = "Option::is_none")]
     timer_config: Option<TimerConfig>,
@@ -188,8 +188,8 @@ impl<'de> serde::Deserialize<'de> for Game {
             scoring: scoring::Scoring,
             current_player_index: usize,
             deck: Vec<cards::Card>,
-            hands_played: Vec<[cards::Card; 4]>,
-            leading_suit: Suit,
+            hands_played: Vec<[Option<cards::Card>; 4]>,
+            leading_suit: Option<Suit>,
             #[serde(default)]
             players: Option<[Player; 4]>,
             #[serde(default)]
@@ -252,10 +252,10 @@ impl Game {
             id,
             state: State::NotStarted,
             scoring: scoring::Scoring::new(max_points),
-            hands_played: vec![new_pot()],
+            hands_played: vec![[None; 4]],
             deck: cards::new_deck(),
             current_player_index: 0,
-            leading_suit: Suit::Blank,
+            leading_suit: None,
             players: [
                 Player::new(player_ids[0]),
                 Player::new(player_ids[1]),
@@ -334,17 +334,18 @@ impl Game {
         }
     }
 
-    pub fn get_leading_suit(&self) -> Result<&Suit, GetError> {
+    pub fn get_leading_suit(&self) -> Result<Option<Suit>, GetError> {
         match &self.state {
-            State::NotStarted => {Err(GetError::GameNotStarted)},
-            State::Completed => {Err(GetError::GameCompleted)},
-            State::Trick(_) => Ok(&self.leading_suit),
-            _ => {Err(GetError::Unknown)}
+            State::NotStarted => Err(GetError::GameNotStarted),
+            State::Completed => Err(GetError::GameCompleted),
+            State::Trick(_) => Ok(self.leading_suit),
+            _ => Err(GetError::Unknown),
         }
     }
 
-    /// Returns the cards currently on the table. Only available in the Trick stage.
-    pub fn get_current_trick_cards(&self) -> Result<&[cards::Card; 4], GetError> {
+    /// Returns the cards currently on the table; each slot is `None` if that player
+    /// hasn't yet played this trick. Only available in the Trick stage.
+    pub fn get_current_trick_cards(&self) -> Result<&[Option<cards::Card>; 4], GetError> {
         match self.state {
             State::NotStarted => Err(GetError::GameNotStarted),
             State::Completed | State::Aborted => Err(GetError::GameCompleted),
@@ -437,11 +438,12 @@ impl Game {
                             {
                                 return Err(TransitionError::SpadesNotBroken);
                             }
-                            let leading_suit = self.leading_suit;
                             if rotation_status == 0 {
-                                self.leading_suit = card.suit;
-                            }
-                            if self.leading_suit != card.suit && player_hand.iter().any(|x| x.suit == leading_suit) {
+                                self.leading_suit = Some(card.suit);
+                            } else if let Some(ls) = self.leading_suit
+                                && ls != card.suit
+                                && player_hand.iter().any(|x| x.suit == ls)
+                            {
                                 return Err(TransitionError::CardIncorrectSuit);
                             }
 
@@ -452,12 +454,19 @@ impl Game {
                         if card.suit == Suit::Spade {
                             self.spades_broken = true;
                         }
-                        self.hands_played.last_mut().unwrap()[self.current_player_index] = card;
-                        
+                        self.hands_played.last_mut().unwrap()[self.current_player_index] = Some(card);
+
                         if rotation_status == 3 {
-                            let winner = self.scoring.trick(self.current_player_index, self.hands_played.last().unwrap());
+                            let trick = self.hands_played.last().unwrap();
+                            let played: [Card; 4] = [
+                                trick[0].unwrap(),
+                                trick[1].unwrap(),
+                                trick[2].unwrap(),
+                                trick[3].unwrap(),
+                            ];
+                            let winner = self.scoring.trick(self.current_player_index, &played);
                             self.last_trick_winner = Some(winner);
-                            self.last_completed_trick = Some(*self.hands_played.last().unwrap());
+                            self.last_completed_trick = Some(played);
                             if self.scoring.is_over {
                                 self.state = State::Completed;
                                 return Ok(TransitionSuccess::GameOver);
@@ -467,11 +476,13 @@ impl Game {
                                 self.current_player_index = 0;
                                 self.state = State::Betting((rotation_status + 1) % 4);
                                 self.spades_broken = false;
+                                self.leading_suit = None;
                                 self.deal_cards();
                             } else {
                                 self.current_player_index = winner;
                                 self.state = State::Trick((rotation_status + 1) % 4);
-                                self.hands_played.push(new_pot());
+                                self.leading_suit = None;
+                                self.hands_played.push([None; 4]);
                             }
                             Ok(TransitionSuccess::Trick)
                         } else {
@@ -578,13 +589,15 @@ impl Game {
                         }
                     }
                     Ok(hand.clone())
-                } else {
-                    let has_leading_suit = hand.iter().any(|c| c.suit == self.leading_suit);
+                } else if let Some(ls) = self.leading_suit {
+                    let has_leading_suit = hand.iter().any(|c| c.suit == ls);
                     if has_leading_suit {
-                        Ok(hand.iter().filter(|c| c.suit == self.leading_suit).copied().collect())
+                        Ok(hand.iter().filter(|c| c.suit == ls).copied().collect())
                     } else {
                         Ok(hand.clone())
                     }
+                } else {
+                    Ok(hand.clone())
                 }
             }
             _ => Err(GetError::Unknown),

@@ -1,4 +1,4 @@
-use super::super::cards::{Card, Suit, Rank, get_trick_winner, deal_four_players, new_pot};
+use super::super::cards::{Card, Suit, Rank, get_trick_winner, deal_four_players};
 use super::super::cards;
 use ntest::test_case;
 use std::cmp::Ordering;
@@ -61,15 +61,6 @@ fn trick_winner_spades(start: usize, expected: usize) {
 }
 
 #[test]
-fn test_new_pot_returns_blank_cards() {
-    let pot = new_pot();
-    for card in &pot {
-        assert_eq!(card.suit, Suit::Blank);
-        assert_eq!(card.rank, Rank::Blank);
-    }
-}
-
-#[test]
 fn test_card_ord_comparison() {
     let low = Card { suit: Suit::Club, rank: Rank::Two };
     let high = Card { suit: Suit::Spade, rank: Rank::Ace };
@@ -115,7 +106,4 @@ fn test_card_debug_format() {
 
     let rank_debug = format!("{:?}", Rank::Ten);
     assert_eq!(rank_debug, "10");
-
-    assert_eq!(format!("{:?}", Suit::Blank), " ");
-    assert_eq!(format!("{:?}", Rank::Blank), " ");
 }

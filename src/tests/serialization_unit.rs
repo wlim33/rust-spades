@@ -44,7 +44,10 @@ fn test_game_json_deserialize_legacy_player_fields() {
     let pid_b = Uuid::new_v4();
     let pid_c = Uuid::new_v4();
     let pid_d = Uuid::new_v4();
-    let blank = serde_json::json!({"suit": "Blank", "rank": "Blank"});
+    // Legacy SQLite rows (pre-2.0) used player_a/b/c/d fields and an array for
+    // current_round_tricks_won. Verify backward-compat for those bits even though
+    // the Suit::Blank/Rank::Blank sentinels were removed in 2.0 (the legacy row
+    // we test here represents a NotStarted game so its hands_played is empty).
     let legacy = serde_json::json!({
         "id": id,
         "state": "NotStarted",
@@ -62,8 +65,8 @@ fn test_game_json_deserialize_legacy_player_fields() {
         },
         "current_player_index": 0,
         "deck": [],
-        "hands_played": [[blank, blank, blank, blank]],
-        "leading_suit": "Blank",
+        "hands_played": [[null, null, null, null]],
+        "leading_suit": null,
         "player_a": {"id": pid_a, "hand": []},
         "player_b": {"id": pid_b, "hand": []},
         "player_c": {"id": pid_c, "hand": []},

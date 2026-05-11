@@ -75,7 +75,7 @@ pub struct GameStateResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_player_clock_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub table_cards: Option<[Card; 4]>,
+    pub table_cards: Option<[Option<Card>; 4]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub player_bets: Option<[i32; 4]>,
     #[serde(skip_serializing_if = "Option::is_none")]

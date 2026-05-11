@@ -7,7 +7,6 @@ use serde::{Serialize, Deserialize};
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "server", derive(oasgen::OaSchema))]
 pub enum Suit {
-    Blank = 0,
     Club = 1,
     Diamond = 2,
     Heart = 3,
@@ -17,7 +16,6 @@ pub enum Suit {
 impl fmt::Debug for Suit {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Suit::Blank => write!(f, " "),
             Suit::Club => write!(f, "\u{2667}"),
             Suit::Diamond => write!(f, "\u{2662}"),
             Suit::Heart => write!(f, "\u{2661}"),
@@ -25,10 +23,10 @@ impl fmt::Debug for Suit {
         }
     }
 }
+
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "server", derive(oasgen::OaSchema))]
 pub enum Rank {
-    Blank = 0,
     Two = 2,
     Three = 3,
     Four = 4,
@@ -41,12 +39,12 @@ pub enum Rank {
     Jack = 11,
     Queen = 12,
     King = 13,
-    Ace = 14
+    Ace = 14,
 }
+
 impl fmt::Debug for Rank {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Rank::Blank => write!(f, " "),
             Rank::Two => write!(f, "2"),
             Rank::Three => write!(f, "3"),
             Rank::Four => write!(f, "4"),
@@ -151,16 +149,6 @@ pub fn new_deck() -> Vec<Card> {
     }
 
     cards
-}
-
-/// Returns an array of `Blank` suited and ranked cards.
-pub fn new_pot() -> [Card; 4] {
-    [
-        Card { suit: Suit::Blank, rank: Rank::Blank}, 
-        Card { suit: Suit::Blank, rank: Rank::Blank},
-        Card { suit: Suit::Blank, rank: Rank::Blank},
-        Card { suit: Suit::Blank, rank: Rank::Blank}
-    ]
 }
 
 /// Shuffles a slice of cards in place, see [`rand::seq::SliceRandom::shuffle`].

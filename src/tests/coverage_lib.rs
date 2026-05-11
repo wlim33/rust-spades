@@ -301,8 +301,24 @@ fn test_bet_in_trick_stage() {
 #[test]
 fn test_card_not_in_hand() {
     let (mut g, _) = make_game_in_trick_state();
-    // Try to play a card that's definitely not in the current hand
-    let fake_card = Card { suit: Suit::Blank, rank: Rank::Blank };
+    // Pick a card not in the current hand by scanning the hand and finding one of
+    // the same suit-rank pair that isn't present (every legal Card; 52 total).
+    let hand = g.get_current_hand().unwrap().clone();
+    let fake_card = (|| {
+        for &s in &[Suit::Club, Suit::Diamond, Suit::Heart, Suit::Spade] {
+            for &r in &[
+                Rank::Two, Rank::Three, Rank::Four, Rank::Five, Rank::Six,
+                Rank::Seven, Rank::Eight, Rank::Nine, Rank::Ten,
+                Rank::Jack, Rank::Queen, Rank::King, Rank::Ace,
+            ] {
+                let c = Card { suit: s, rank: r };
+                if !hand.contains(&c) {
+                    return c;
+                }
+            }
+        }
+        unreachable!("a 13-card hand cannot cover all 52 cards");
+    })();
     assert_eq!(g.play(GameTransition::Card(fake_card)), Err(TransitionError::CardNotInHand));
 }
 
