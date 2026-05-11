@@ -412,7 +412,7 @@ impl Game {
                         if rotation_status == 3 {
                             let winner = self.scoring.trick(self.current_player_index, self.hands_played.last().unwrap());
                             self.last_trick_winner = Some(winner);
-                            self.last_completed_trick = Some(self.hands_played.last().unwrap().clone());
+                            self.last_completed_trick = Some(*self.hands_played.last().unwrap());
                             if self.scoring.is_over {
                                 self.state = State::Completed;
                                 return Ok(TransitionSuccess::GameOver);

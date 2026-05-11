@@ -22,6 +22,6 @@ impl AiStrategy for RandomStrategy {
     fn choose_card(&self, game: &Game, _player_index: usize) -> Card {
         let mut rng = rand::thread_rng();
         let legal_cards = game.get_legal_cards().expect("AI should only be called in Trick state");
-        legal_cards.choose(&mut rng).expect("hand should not be empty").clone()
+        *legal_cards.choose(&mut rng).expect("hand should not be empty")
     }
 }

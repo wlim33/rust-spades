@@ -65,7 +65,7 @@ impl fmt::Debug for Rank {
 }
 
 /// Intuitive card struct. Comparisons are made according to alphabetical order, ascending.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "server", derive(oasgen::OaSchema))]
 pub struct Card {
     pub suit: Suit,
@@ -147,7 +147,7 @@ pub fn new_deck() -> Vec<Card> {
     let mut cards = Vec::new();
     for s in &suits {
         for r in &ranks {
-            cards.push(Card {suit:s.clone(), rank:r.clone()});
+            cards.push(Card { suit: *s, rank: *r });
         }
     }
 
