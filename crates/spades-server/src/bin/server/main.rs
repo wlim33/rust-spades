@@ -204,6 +204,19 @@ async fn main() {
         secure_cookies: !insecure_cookies,
     };
 
+    {
+        let store = auth_state.store.clone();
+        tokio::spawn(async move {
+            // Cleanup once at startup, then every hour.
+            loop {
+                if let Err(e) = store.cleanup_expired_tokens() {
+                    eprintln!("cleanup_expired_tokens: {e}");
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(60 * 60)).await;
+            }
+        });
+    }
+
     let app_state = AppState {
         game_manager,
         matchmaker,
