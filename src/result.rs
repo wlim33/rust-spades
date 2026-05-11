@@ -38,6 +38,8 @@ impl fmt::Display for GetError {
     }
 }
 
+impl Error for GetError {}
+
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum TransitionError {
     AlreadyStarted,

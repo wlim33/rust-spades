@@ -5,7 +5,7 @@ use uuid::Uuid;
 use tokio::sync::broadcast;
 use crate::{Game, GameTransition, State, Card, TimerConfig};
 use crate::ai::AiStrategy;
-use crate::result::TransitionSuccess;
+use crate::result::{GetError, TransitionError, TransitionSuccess};
 use crate::sqlite_store::SqliteStore;
 use serde::{Serialize, Deserialize};
 use rand::seq::SliceRandom;
@@ -113,8 +113,38 @@ pub enum TransitionRequestType {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum GameManagerError {
     GameNotFound,
-    GameError(String),
+    Transition(TransitionError),
+    Get(GetError),
     LockError,
+}
+
+impl std::fmt::Display for GameManagerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::GameNotFound => write!(f, "Game not found"),
+            Self::Transition(e) => write!(f, "{e}"),
+            Self::Get(e) => write!(f, "{e}"),
+            Self::LockError => write!(f, "Internal lock error"),
+        }
+    }
+}
+
+impl std::error::Error for GameManagerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Transition(e) => Some(e),
+            Self::Get(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<TransitionError> for GameManagerError {
+    fn from(e: TransitionError) -> Self { Self::Transition(e) }
+}
+
+impl From<GetError> for GameManagerError {
+    fn from(e: GetError) -> Self { Self::Get(e) }
 }
 
 fn epoch_ms_now() -> u64 {
@@ -406,8 +436,7 @@ impl GameManager {
         let game_lock = games.get(&game_id).ok_or(GameManagerError::GameNotFound)?;
         let game = game_lock.read().map_err(|_| GameManagerError::LockError)?;
 
-        let cards = game.get_hand_by_player_id(player_id)
-            .map_err(|e| GameManagerError::GameError(format!("{:?}", e)))?
+        let cards = game.get_hand_by_player_id(player_id)?
             .clone();
 
         Ok(HandResponse {
@@ -478,8 +507,7 @@ impl GameManager {
             }
         }
 
-        let result = game.play(transition)
-            .map_err(|e| GameManagerError::GameError(format!("{:?}", e)))?;
+        let result = game.play(transition)?;
 
         // Set epoch timestamp for persistence/recovery
         if is_timed {
@@ -656,8 +684,7 @@ impl GameManager {
         let game_lock = games.get(&game_id).ok_or(GameManagerError::GameNotFound)?;
         let mut game = game_lock.write().map_err(|_| GameManagerError::LockError)?;
 
-        game.set_player_name(player_id, name)
-            .map_err(|e| GameManagerError::GameError(format!("{:?}", e)))?;
+        game.set_player_name(player_id, name)?;
 
         self.persist_update(&game);
 
@@ -838,7 +865,7 @@ mod tests {
         manager.make_transition(response.game_id, GameTransition::Start).unwrap();
 
         let result = manager.get_hand(response.game_id, Uuid::new_v4());
-        assert!(matches!(result, Err(GameManagerError::GameError(_))));
+        assert!(matches!(result, Err(GameManagerError::Get(GetError::InvalidUuid))));
     }
 
     #[test]
@@ -862,7 +889,7 @@ mod tests {
         manager.make_transition(response.game_id, GameTransition::Start).unwrap();
 
         let result = manager.make_transition(response.game_id, GameTransition::Start);
-        assert!(matches!(result, Err(GameManagerError::GameError(_))));
+        assert!(matches!(result, Err(GameManagerError::Transition(TransitionError::AlreadyStarted))));
     }
 
     #[test]
@@ -892,7 +919,7 @@ mod tests {
         let response = manager.create_game(500, None).unwrap();
 
         let result = manager.set_player_name(response.game_id, Uuid::new_v4(), Some("Nobody".to_string()));
-        assert!(matches!(result, Err(GameManagerError::GameError(_))));
+        assert!(matches!(result, Err(GameManagerError::Get(GetError::InvalidUuid))));
     }
 
     #[test]
@@ -1205,7 +1232,11 @@ mod tests {
         let json = serde_json::to_string(&err).unwrap();
         let _: GameManagerError = serde_json::from_str(&json).unwrap();
 
-        let err = GameManagerError::GameError("test".to_string());
+        let err = GameManagerError::Transition(TransitionError::AlreadyStarted);
+        let json = serde_json::to_string(&err).unwrap();
+        let _: GameManagerError = serde_json::from_str(&json).unwrap();
+
+        let err = GameManagerError::Get(GetError::InvalidUuid);
         let json = serde_json::to_string(&err).unwrap();
         let _: GameManagerError = serde_json::from_str(&json).unwrap();
     }

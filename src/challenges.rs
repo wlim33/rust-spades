@@ -181,6 +181,8 @@ impl fmt::Display for ChallengeError {
     }
 }
 
+impl std::error::Error for ChallengeError {}
+
 struct SeatOccupant {
     player_id: Uuid,
     name: Option<String>,
