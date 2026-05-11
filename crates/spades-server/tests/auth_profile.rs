@@ -93,3 +93,46 @@ async fn patch_me_password_change_requires_current() {
     })).await;
     resp.assert_status(StatusCode::OK);
 }
+
+#[tokio::test]
+async fn email_change_invalidates_other_sessions_via_token_version() {
+    let env = common::test_env();
+
+    let reg: serde_json::Value = env.server.post("/auth/register").json(&json!({
+        "username": "Alice", "email": "alice@example.com", "password": "hunter2-strong",
+    })).await.json();
+    let user_id_s = reg["id"].as_str().unwrap();
+    let user_id = uuid::Uuid::parse_str(user_id_s).unwrap();
+
+    let before = env.store.find_user_by_id(user_id).unwrap().unwrap().token_version;
+
+    env.server.patch("/users/me").json(&json!({
+        "email": "alice2@example.com"
+    })).await.assert_status(axum::http::StatusCode::OK);
+
+    let after = env.store.find_user_by_id(user_id).unwrap().unwrap().token_version;
+    assert!(after > before, "token_version should bump on email change");
+
+    // The requester's session SHOULD still work (it was re-stamped).
+    env.server.get("/auth/me").await.assert_status(axum::http::StatusCode::OK);
+}
+
+#[tokio::test]
+async fn patch_me_invalid_password_does_not_change_email() {
+    let env = common::test_env();
+    env.server.post("/auth/register").json(&json!({
+        "username": "Alice", "email": "alice@example.com", "password": "hunter2-strong",
+    })).await.assert_status(StatusCode::CREATED);
+
+    // Try a combined change where new_password is invalid (too short).
+    let resp = env.server.patch("/users/me").json(&json!({
+        "email": "alice2@example.com",
+        "current_password": "hunter2-strong",
+        "new_password": "tiny",  // <8 chars
+    })).await;
+    resp.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+
+    // Email should NOT have been changed (validation failed up front).
+    let me: serde_json::Value = env.server.get("/auth/me").await.json();
+    assert_eq!(me["email"], "alice@example.com");
+}

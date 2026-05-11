@@ -98,10 +98,12 @@ pub async fn patch_me(
 ) -> Result<Json<crate::handlers_auth::UserResponse>, AuthError> {
     if let Some(new_email) = req.email.as_deref() {
         validate_email(new_email)?;
-        auth.store.update_user_email(user.id, new_email).map_err(|e| match e.as_str() {
+        let new_version = auth.store.update_user_email(user.id, new_email).map_err(|e| match e.as_str() {
             "email_taken" => AuthError::EmailTaken,
             other => AuthError::Storage(other.into()),
         })?;
+        // Re-stamp THIS session's token_version so the user stays logged in (other sessions invalidated).
+        session_ext::set_claimed(&session, user.id, new_version).await?;
         let token = generate_token();
         let h = hash_token(&token);
         auth.store.insert_auth_token(&h, user.id, PURPOSE_VERIFY_EMAIL, 24 * 3600)

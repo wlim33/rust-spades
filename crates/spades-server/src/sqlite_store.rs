@@ -224,11 +224,13 @@ impl SqliteStore {
         Ok(())
     }
 
-    pub fn update_user_email(&self, user_id: uuid::Uuid, new_email: &str) -> Result<(), String> {
+    pub fn update_user_email(&self, user_id: uuid::Uuid, new_email: &str) -> Result<i32, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute(
-            "UPDATE users SET email = ?1, email_verified = 0 WHERE id = ?2",
+        let new_version: i32 = conn.query_row(
+            "UPDATE users SET email = ?1, email_verified = 0, token_version = token_version + 1 \
+             WHERE id = ?2 RETURNING token_version",
             rusqlite::params![new_email, user_id.to_string()],
+            |r| r.get(0),
         ).map_err(|e| {
             let msg = e.to_string();
             if msg.contains("UNIQUE constraint failed: users.email") {
@@ -237,7 +239,7 @@ impl SqliteStore {
                 msg
             }
         })?;
-        Ok(())
+        Ok(new_version)
     }
 
     pub fn find_oauth_account(&self, provider: &str, provider_uid: &str)
