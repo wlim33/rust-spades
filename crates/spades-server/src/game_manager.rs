@@ -369,6 +369,14 @@ impl GameManager {
         self.handle(game_id).await?.subscribe(since).await
     }
 
+    /// `Ok(Some(text))` for a terminated game; `Ok(None)` for in-progress
+    /// (caller should 403 — exposing transcripts mid-game would leak
+    /// other players' hidden hands). `Err(GameNotFound)` when neither the
+    /// in-memory map nor the DB knows about this id.
+    pub async fn get_transcript(&self, game_id: Uuid) -> Result<Option<String>, GameManagerError> {
+        self.handle(game_id).await?.get_transcript().await
+    }
+
     /// Sweep games that have been in a terminal state (Completed /
     /// Aborted) for at least `ttl`, evicting their actor from the in-memory
     /// map. The next access through `handle()` re-spawns an actor by

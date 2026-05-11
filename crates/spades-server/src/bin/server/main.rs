@@ -17,7 +17,7 @@ use handlers::challenges::{
 };
 use handlers::games::{
     create_game, delete_game, get_game_by_player_url, get_game_by_short_id_handler,
-    get_game_state, get_hand, get_presence, list_games, make_transition, root, set_player_name,
+    get_game_state, get_hand, get_presence, get_replay, list_games, make_transition, root, set_player_name,
 };
 use handlers::matchmaking::{list_seeks_handler, queue_sizes_handler, seek};
 use handlers::players::{get_player, set_display_name};
@@ -106,6 +106,8 @@ pub fn build_router(state: AppState) -> Router {
         // Handlers returning StatusCode (not JSON body — oasgen needs Json responses)
         .route("/games/{game_id}", delete(delete_game))
         .route("/games/{game_id}/players/{player_id}/name", put(set_player_name))
+        // Replay returns text/plain (oasgen wants JSON responses).
+        .route("/games/{game_id}/replay", get(get_replay))
         .route("/challenges/{challenge_id}", delete(cancel_challenge_handler))
         // Session-based (oasgen can't handle Session extractor)
         .route("/player", get(get_player))
@@ -555,6 +557,75 @@ mod tests {
         response.assert_status_ok();
         let body: serde_json::Value = response.json();
         assert_eq!(body["name"], "Spades Game Server");
+    }
+
+    #[tokio::test]
+    async fn replay_returns_404_for_missing_game() {
+        let server = test_app();
+        let resp = server.get(&format!("/games/{}/replay", Uuid::new_v4())).await;
+        assert_eq!(resp.status_code(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn replay_returns_403_for_in_progress_game() {
+        // Hand transcripts mid-game would leak hidden hands; the handler
+        // gates on terminal state.
+        let server = test_app();
+        let create = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await;
+        create.assert_status_ok();
+        let game: CreateGameResponse = create.json();
+
+        // NotStarted — definitely in progress.
+        let resp = server.get(&format!("/games/{}/replay", game.game_id)).await;
+        assert_eq!(resp.status_code(), StatusCode::FORBIDDEN);
+
+        // Start it: state moves to Betting. Still in progress.
+        server
+            .post(&format!("/games/{}/transition", game.game_id))
+            .json(&serde_json::json!({"type": "start"}))
+            .await
+            .assert_status_ok();
+        let resp = server.get(&format!("/games/{}/replay", game.game_id)).await;
+        assert_eq!(resp.status_code(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn replay_returns_transcript_for_aborted_game() {
+        // A timed game with a zero-second clock fires the first-round
+        // betting timeout and aborts the game; the replay then becomes
+        // available because state is terminal.
+        let server = test_app();
+        let create = server
+            .post("/games")
+            .json(&serde_json::json!({
+                "max_points": 100,
+                "timer_config": { "initial_time_secs": 0, "increment_secs": 0 }
+            }))
+            .await;
+        create.assert_status_ok();
+        let game: CreateGameResponse = create.json();
+        server
+            .post(&format!("/games/{}/transition", game.game_id))
+            .json(&serde_json::json!({"type": "start"}))
+            .await
+            .assert_status_ok();
+
+        // Give the actor's timer task a moment to fire the abort.
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+
+        let resp = server.get(&format!("/games/{}/replay", game.game_id)).await;
+        resp.assert_status_ok();
+        assert_eq!(
+            resp.header("content-type").to_str().unwrap(),
+            "text/plain; charset=utf-8",
+        );
+        let body = resp.text();
+        assert!(!body.is_empty(), "transcript should be non-empty");
+        // Sanity check: real transcripts include header lines.
+        assert!(body.contains("\n"), "transcript looks structurally suspect: {body:?}");
     }
 
     #[tokio::test]

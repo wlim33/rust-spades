@@ -335,6 +335,36 @@ pub async fn get_hand(
         })
 }
 
+/// Return a PGN-style text transcript of a finished game. Refused for
+/// in-progress games — encoding the transcript mid-game would expose
+/// every player's hand to anyone with the game URL.
+pub async fn get_replay(
+    AxumState(state): AxumState<AppState>,
+    Path(game_id): Path<Uuid>,
+) -> Result<(StatusCode, axum::http::HeaderMap, String), (StatusCode, Json<ErrorResponse>)> {
+    let transcript = state.game_manager.get_transcript(game_id).await.map_err(|e| {
+        let status = match e {
+            GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (status, Json(ErrorResponse { error: format!("{}", e) }))
+    })?;
+    let Some(transcript) = transcript else {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "replay is only available for completed or aborted games".to_string(),
+            }),
+        ));
+    };
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        axum::http::header::CONTENT_TYPE,
+        axum::http::HeaderValue::from_static("text/plain; charset=utf-8"),
+    );
+    Ok((StatusCode::OK, headers, transcript))
+}
+
 pub async fn set_player_name(
     AxumState(state): AxumState<AppState>,
     Path((game_id, player_id_raw)): Path<(Uuid, String)>,

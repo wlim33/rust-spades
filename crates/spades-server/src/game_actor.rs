@@ -64,6 +64,15 @@ pub enum GameCmd {
         since: Option<u64>,
         reply: oneshot::Sender<Subscription>,
     },
+    /// Encode the current game as a transcript. Reply is `Some(text)` only
+    /// when the game has reached a terminal state (`Completed` or
+    /// `Aborted`); an in-progress game replies `None` so the caller can
+    /// 403 the client rather than leak hidden hands. The terminal check
+    /// happens inside the actor against the same `self.game` that gets
+    /// encoded, so there's no race between "is it over" and "encode".
+    GetTranscript {
+        reply: oneshot::Sender<Option<String>>,
+    },
     /// Fired by the spawned timer task. `generation` lets the actor
     /// discard messages from timers that were already cancelled by a
     /// subsequent transition (the spawn-to-mailbox-send hop is not
@@ -126,6 +135,16 @@ impl GameHandle {
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(GameCmd::Subscribe { since, reply: tx })
+            .map_err(|_| GameManagerError::GameNotFound)?;
+        rx.await.map_err(|_| GameManagerError::GameNotFound)
+    }
+
+    /// Returns `Some(transcript_text)` if the game has terminated, `None`
+    /// if it's still in progress.
+    pub async fn get_transcript(&self) -> Result<Option<String>, GameManagerError> {
+        let (tx, rx) = oneshot::channel();
+        self.sender
+            .send(GameCmd::GetTranscript { reply: tx })
             .map_err(|_| GameManagerError::GameNotFound)?;
         rx.await.map_err(|_| GameManagerError::GameNotFound)
     }
@@ -228,6 +247,15 @@ impl GameActor {
             }
             GameCmd::Subscribe { since, reply } => {
                 let _ = reply.send(self.build_subscription(since));
+            }
+            GameCmd::GetTranscript { reply } => {
+                let out = match self.game.get_state() {
+                    State::Completed | State::Aborted => {
+                        Some(spades::transcript::encode(&self.game))
+                    }
+                    _ => None,
+                };
+                let _ = reply.send(out);
             }
             GameCmd::TimerFired { generation } => {
                 self.handle_timer_fired(generation);
