@@ -10,31 +10,29 @@ mod handlers;
 mod presence;
 mod ws;
 
-use dto::*;
 use handlers::challenges::{
     cancel_challenge_handler, create_challenge_handler, get_challenge_by_short_id_handler,
     get_challenge_handler, join_challenge_handler, list_challenges_handler,
 };
+use handlers::games::{
+    create_game, delete_game, get_game_by_player_url, get_game_by_short_id_handler,
+    get_game_state, get_hand, get_presence, list_games, make_transition, root, set_player_name,
+};
 use handlers::matchmaking::{list_seeks_handler, queue_sizes_handler, seek};
+use handlers::players::{get_player, set_display_name};
 use presence::PresenceTracker;
 use ws::game_ws;
 
 use axum::{
-    extract::{Path, State as AxumState},
-    http::StatusCode,
-    response::Json,
     routing::{delete, get, post, put},
     Router,
 };
-use oasgen::oasgen;
-use spades::game_manager::{CreateGameResponse, GameManager, GameStateResponse, HandResponse};
+use spades::game_manager::GameManager;
 use spades::challenges::ChallengeManager;
 use spades::matchmaking::Matchmaker;
-use spades::validation::validate_player_name;
-use spades::GameTransition;
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
-use tower_sessions::{Expiry, Session, SessionManagerLayer};
+use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::SqliteStore as SessionSqliteStore;
 use uuid::Uuid;
 
@@ -46,9 +44,9 @@ pub struct AppState {
     presence: PresenceTracker,
 }
 
-const SESSION_USER_KEY: &str = "user";
+pub const SESSION_USER_KEY: &str = "user";
 
-fn parse_uuid_or_short_id(s: &str) -> Option<Uuid> {
+pub fn parse_uuid_or_short_id(s: &str) -> Option<Uuid> {
     Uuid::parse_str(s).ok().or_else(|| spades::short_id_to_uuid(s))
 }
 
@@ -225,378 +223,13 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn root() -> Json<serde_json::Value> {
-    Json(serde_json::json!({
-        "name": "Spades Game Server",
-        "version": "1.0.0",
-        "endpoints": {
-            "create_game": "POST /games",
-            "list_games": "GET /games",
-            "get_game_state": "GET /games/:game_id",
-            "make_transition": "POST /games/:game_id/transition",
-            "get_hand": "GET /games/:game_id/players/:player_id/hand",
-            "set_player_name": "PUT /games/:game_id/players/:player_id/name",
-            "game_ws": "GET /games/:game_id/ws?player_id=<uuid>",
-            "delete_game": "DELETE /games/:game_id",
-            "seek": "POST /matchmaking/seek",
-            "list_seeks": "GET /matchmaking/seeks",
-            "queue_sizes": "GET /matchmaking/queue-sizes",
-        }
-    }))
-}
-
-#[oasgen]
-async fn create_game(
-    AxumState(state): AxumState<AppState>,
-    Json(request): Json<CreateGameRequest>,
-) -> Result<Json<CreateGameResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let map_err = |e: spades::game_manager::GameManagerError| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("{}", e),
-            }),
-        )
-    };
-
-    match request.num_humans {
-        None | Some(4) => {
-            // Human-only game
-            let response = state
-                .game_manager
-                .create_game(request.max_points, request.timer_config)
-                .map_err(map_err)?;
-            state.presence.ensure_game(response.game_id, &response.player_ids);
-            Ok(Json(response))
-        }
-        Some(1) | Some(2) => {
-            // AI game
-            let num = request.num_humans.unwrap();
-            let human_seats: std::collections::HashSet<usize> = match num {
-                1 => [0].into_iter().collect(),
-                _ => [0, 2].into_iter().collect(),
-            };
-
-            let strategy = std::sync::Arc::new(spades::ai::RandomStrategy);
-            let response = state
-                .game_manager
-                .create_ai_game(human_seats.clone(), request.max_points, request.timer_config, strategy)
-                .map_err(map_err)?;
-
-            let game_id = response.game_id;
-
-            // Init presence and mark AI players as connected
-            state.presence.ensure_game(game_id, &response.player_ids);
-            for i in 0..4 {
-                if !human_seats.contains(&i) {
-                    state.presence.player_connected(game_id, response.player_ids[i]);
-                }
-            }
-
-            // Auto-start the game
-            state
-                .game_manager
-                .make_transition(game_id, spades::GameTransition::Start)
-                .map_err(map_err)?;
-
-            // Play through initial AI turns
-            state.game_manager.play_ai_turns(game_id).map_err(map_err)?;
-
-            Ok(Json(response))
-        }
-        _ => Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "num_humans must be 1, 2, or 4".to_string(),
-            }),
-        )),
-    }
-}
-
-#[oasgen]
-async fn list_games(
-    AxumState(state): AxumState<AppState>,
-) -> Result<Json<Vec<Uuid>>, (StatusCode, Json<ErrorResponse>)> {
-    state.game_manager.list_games().map(Json).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("{}", e),
-            }),
-        )
-    })
-}
-
-#[oasgen]
-async fn get_game_state(
-    AxumState(state): AxumState<AppState>,
-    Path(game_id): Path<Uuid>,
-) -> Result<Json<GameStateResponse>, (StatusCode, Json<ErrorResponse>)> {
-    state
-        .game_manager
-        .get_game_state(game_id)
-        .map(Json)
-        .map_err(|e| {
-            let status = match e {
-                spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: format!("{}", e),
-                }),
-            )
-        })
-}
-
-#[oasgen]
-async fn get_game_by_short_id_handler(
-    AxumState(state): AxumState<AppState>,
-    Path(short_id): Path<String>,
-) -> Result<Json<GameStateResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let game_id = spades::short_id_to_uuid(&short_id).ok_or((
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse {
-            error: "Game not found".to_string(),
-        }),
-    ))?;
-    state
-        .game_manager
-        .get_game_state(game_id)
-        .map(Json)
-        .map_err(|_| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Game not found".to_string(),
-                }),
-            )
-        })
-}
-
-#[oasgen]
-async fn get_game_by_player_url(
-    AxumState(state): AxumState<AppState>,
-    Path(url_id): Path<String>,
-) -> Result<Json<PlayerUrlResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let (game_id, player_id) = spades::decode_player_url(&url_id).ok_or((
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse { error: "Invalid player URL".to_string() }),
-    ))?;
-    let game = state.game_manager.get_game_state(game_id).map_err(|_| (
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse { error: "Game not found".to_string() }),
-    ))?;
-    let hand = state.game_manager.get_hand(game_id, player_id).map_err(|_| (
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse { error: "Player not found in game".to_string() }),
-    ))?;
-    Ok(Json(PlayerUrlResponse {
-        game_id,
-        player_id,
-        player_short_id: spades::uuid_to_short_id(player_id),
-        game,
-        hand,
-    }))
-}
-
-async fn delete_game(
-    AxumState(state): AxumState<AppState>,
-    Path(game_id): Path<Uuid>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let result = state
-        .game_manager
-        .remove_game(game_id)
-        .map(|_| StatusCode::NO_CONTENT)
-        .map_err(|e| {
-            let status = match e {
-                spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: format!("{}", e),
-                }),
-            )
-        })?;
-    state.presence.remove_game(game_id);
-    Ok(result)
-}
-
-#[oasgen]
-async fn make_transition(
-    AxumState(state): AxumState<AppState>,
-    Path(game_id): Path<Uuid>,
-    Json(request): Json<TransitionRequest>,
-) -> Result<Json<TransitionResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let transition = match request.transition {
-        TransitionType::Start => GameTransition::Start,
-        TransitionType::Bet { amount } => GameTransition::Bet(amount),
-        TransitionType::Card { card } => GameTransition::Card(card),
-    };
-
-    let result = state
-        .game_manager
-        .make_transition(game_id, transition)
-        .map_err(|e| {
-            let status = match e {
-                spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
-                _ => StatusCode::BAD_REQUEST,
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: format!("{}", e),
-                }),
-            )
-        })?;
-
-    // Auto-play AI turns if this game has AI players
-    let _ = state.game_manager.play_ai_turns(game_id);
-
-    Ok(Json(TransitionResponse {
-        success: true,
-        result: format!("{:?}", result),
-    }))
-}
-
-#[oasgen]
-async fn get_hand(
-    AxumState(state): AxumState<AppState>,
-    Path((game_id, player_id_raw)): Path<(Uuid, String)>,
-) -> Result<Json<HandResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let player_id = parse_uuid_or_short_id(&player_id_raw).ok_or((
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse { error: "Invalid player ID".to_string() }),
-    ))?;
-    state
-        .game_manager
-        .get_hand(game_id, player_id)
-        .map(Json)
-        .map_err(|e| {
-            let status = match e {
-                spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
-                _ => StatusCode::BAD_REQUEST,
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: format!("{}", e),
-                }),
-            )
-        })
-}
-
-async fn set_player_name(
-    AxumState(state): AxumState<AppState>,
-    Path((game_id, player_id_raw)): Path<(Uuid, String)>,
-    Json(request): Json<SetNameRequest>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let player_id = parse_uuid_or_short_id(&player_id_raw).ok_or((
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse { error: "Invalid player ID".to_string() }),
-    ))?;
-    let validated_name = match request.name {
-        Some(raw) => Some(validate_player_name(&raw).map_err(|e| {
-            (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() }))
-        })?),
-        None => None,
-    };
-
-    state
-        .game_manager
-        .set_player_name(game_id, player_id, validated_name)
-        .map(|_| StatusCode::NO_CONTENT)
-        .map_err(|e| {
-            let status = match e {
-                spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
-                _ => StatusCode::BAD_REQUEST,
-            };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: format!("{}", e),
-                }),
-            )
-        })
-}
-
-// --- Presence: REST endpoint ---
-
-#[oasgen]
-async fn get_presence(
-    AxumState(state): AxumState<AppState>,
-    Path(game_id): Path<Uuid>,
-) -> Result<Json<PresenceSnapshot>, (StatusCode, Json<ErrorResponse>)> {
-    // Lazy init: if tracker doesn't know this game, look up player_ids from game state
-    if state.presence.get_snapshot(game_id).is_none() {
-        let game_state = state.game_manager.get_game_state(game_id).map_err(|e| {
-            let status = match e {
-                spades::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            (status, Json(ErrorResponse { error: format!("{}", e) }))
-        })?;
-        let player_ids: Vec<Uuid> = game_state.player_names.iter().map(|pn| pn.player_id).collect();
-        state.presence.ensure_game(game_id, &player_ids);
-    }
-    state.presence.get_snapshot(game_id).map(Json).ok_or((
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse { error: "Game not found".to_string() }),
-    ))
-}
-
-// --- Session: Player Identity ---
-
-async fn get_player(session: Session) -> Result<Json<SessionPlayerResponse>, StatusCode> {
-    let user = match session.get::<UserSession>(SESSION_USER_KEY).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
-        Some(user) => user,
-        None => {
-            let user = UserSession {
-                user_id: Uuid::new_v4(),
-                display_name: None,
-            };
-            session.insert(SESSION_USER_KEY, user.clone()).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            user
-        }
-    };
-    Ok(Json(SessionPlayerResponse {
-        user_id: user.user_id,
-        display_name: user.display_name,
-    }))
-}
-
-async fn set_display_name(
-    session: Session,
-    Json(request): Json<SetDisplayNameRequest>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let mut user: UserSession = session
-        .get::<UserSession>(SESSION_USER_KEY)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: "Session error".to_string() })))?
-        .ok_or((StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: "No session. Call GET /player first.".to_string() })))?;
-
-    let validated_name = match request.name {
-        Some(raw) => Some(validate_player_name(&raw).map_err(|e| {
-            (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() }))
-        })?),
-        None => None,
-    };
-
-    user.display_name = validated_name;
-    session.insert(SESSION_USER_KEY, user).await.map_err(|_| {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: "Session error".to_string() }))
-    })?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dto::PresenceSnapshot;
+    use axum::http::StatusCode;
     use axum_test::{TestServer, TestServerConfig};
-    use spades::game_manager::CreateGameResponse;
+    use spades::game_manager::{CreateGameResponse, GameStateResponse};
     use tower_sessions::MemoryStore;
 
     fn test_app() -> TestServer {
