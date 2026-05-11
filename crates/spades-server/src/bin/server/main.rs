@@ -320,8 +320,38 @@ async fn main() {
     }
 
     axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap();
+}
+
+/// Wait for either Ctrl+C or SIGTERM (Unix). On non-Unix only Ctrl+C is
+/// observed. In-flight HTTP requests complete and the listener stops
+/// accepting new connections. WebSocket subscribers are dropped when the
+/// runtime shuts down — game state is already persisted on every transition
+/// when `--db` is set, so the loss is bounded to mid-transition windows.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => eprintln!("Ctrl+C received; shutting down"),
+        _ = terminate => eprintln!("SIGTERM received; shutting down"),
+    }
 }
 
 #[cfg(test)]
