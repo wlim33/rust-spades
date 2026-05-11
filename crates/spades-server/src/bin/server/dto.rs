@@ -8,11 +8,9 @@ pub fn default_max_points() -> i32 {
     500
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UserSession {
-    pub user_id: Uuid,
-    pub display_name: Option<String>,
-}
+// Re-export the canonical session payload from the library so this binary's
+// handlers can continue to import `crate::dto::UserSession` unchanged.
+pub use spades_server::auth::session_ext::UserSession;
 
 #[derive(Debug, Serialize, OaSchema)]
 pub struct SessionPlayerResponse {

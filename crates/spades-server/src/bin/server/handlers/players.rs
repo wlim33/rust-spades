@@ -17,6 +17,7 @@ pub async fn get_player(session: Session) -> Result<Json<SessionPlayerResponse>,
             let user = UserSession {
                 user_id: Uuid::new_v4(),
                 display_name: None,
+                ..Default::default()
             };
             session
                 .insert(SESSION_USER_KEY, user.clone())
