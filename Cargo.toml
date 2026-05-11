@@ -43,5 +43,5 @@ ntest = "0.9"
 
 [[bin]]
 name = "spades-server"
-path = "src/bin/server.rs"
+path = "src/bin/server/main.rs"
 required-features = ["server"]

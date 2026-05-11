@@ -5,6 +5,10 @@
     clippy::too_many_arguments,
 )]
 
+mod dto;
+
+use dto::*;
+
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -18,8 +22,7 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
-use oasgen::{oasgen, OaSchema};
-use serde::{Deserialize, Serialize};
+use oasgen::oasgen;
 use spades::game_manager::{
     CreateGameResponse, GameEvent, GameManager, GameStateResponse, HandResponse,
 };
@@ -29,7 +32,7 @@ use spades::challenges::{
 };
 use spades::matchmaking::{MatchResult, Matchmaker, QueueSizeEntry, SeekEvent, SeekSummary};
 use spades::validation::validate_player_name;
-use spades::{Card, GameTransition, TimerConfig};
+use spades::GameTransition;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -51,98 +54,8 @@ pub struct AppState {
 
 const SESSION_USER_KEY: &str = "user";
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct UserSession {
-    user_id: Uuid,
-    display_name: Option<String>,
-}
-
-#[derive(Debug, Serialize, oasgen::OaSchema)]
-struct SessionPlayerResponse {
-    user_id: Uuid,
-    display_name: Option<String>,
-}
-
-#[derive(Debug, Deserialize, oasgen::OaSchema)]
-struct SetDisplayNameRequest {
-    name: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
-struct CreateGameRequest {
-    #[serde(default = "default_max_points")]
-    max_points: i32,
-    timer_config: Option<TimerConfig>,
-    num_humans: Option<u8>,
-}
-
-#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
-struct TransitionRequest {
-    #[serde(flatten)]
-    transition: TransitionType,
-}
-
-#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum TransitionType {
-    Start,
-    Bet { amount: i32 },
-    Card { card: Card },
-}
-
-#[derive(Debug, Serialize, OaSchema)]
-struct TransitionResponse {
-    success: bool,
-    result: String,
-}
-
 fn parse_uuid_or_short_id(s: &str) -> Option<Uuid> {
     Uuid::parse_str(s).ok().or_else(|| spades::short_id_to_uuid(s))
-}
-
-#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
-struct ErrorResponse {
-    error: String,
-}
-
-#[derive(Debug, Serialize, oasgen::OaSchema)]
-struct PlayerUrlResponse {
-    game_id: Uuid,
-    player_id: Uuid,
-    player_short_id: String,
-    game: GameStateResponse,
-    hand: HandResponse,
-}
-
-#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
-struct SeekRequest {
-    #[serde(default = "default_max_points")]
-    max_points: i32,
-    timer_config: TimerConfig,
-    #[serde(default)]
-    name: Option<String>,
-}
-
-
-#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
-struct SetNameRequest {
-    #[serde(default)]
-    name: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
-struct JoinChallengeRequest {
-    #[serde(default)]
-    name: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
-struct CancelChallengeRequest {
-    creator_id: Uuid,
-}
-
-fn default_max_points() -> i32 {
-    500
 }
 
 pub fn build_router(state: AppState) -> Router {
@@ -641,34 +554,7 @@ async fn get_presence(
     ))
 }
 
-// --- WebSocket: Game state push ---
-
-#[derive(Debug, Deserialize)]
-struct WsQuery {
-    player_id: Option<String>,
-}
-
 // --- Presence Tracking ---
-
-#[derive(Debug, Clone, Serialize, Deserialize, oasgen::OaSchema)]
-struct PlayerPresenceEntry {
-    player_id: Uuid,
-    connected: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, oasgen::OaSchema)]
-struct PresenceSnapshot {
-    game_id: Uuid,
-    players: Vec<PlayerPresenceEntry>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(tag = "event", rename_all = "snake_case")]
-enum ServerEvent {
-    StateChanged(GameStateResponse),
-    GameAborted { game_id: Uuid, reason: String },
-    PresenceChanged(PresenceSnapshot),
-}
 
 /// Per-game connection counts: game_id -> (player_id -> connection_count)
 #[derive(Clone)]
