@@ -239,6 +239,31 @@ impl SqliteStore {
         })?;
         Ok(())
     }
+
+    pub fn claim_anon_game_seats(&self, anon_id: uuid::Uuid, user_id: uuid::Uuid) -> Result<usize, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let n = conn.execute(
+            "UPDATE game_seats SET user_id = ?1 WHERE anon_user_id = ?2 AND user_id IS NULL",
+            rusqlite::params![user_id.to_string(), anon_id.to_string()],
+        ).map_err(|e| e.to_string())?;
+        Ok(n)
+    }
+
+    pub fn insert_auth_token(
+        &self,
+        token_hash: &str,
+        user_id: uuid::Uuid,
+        purpose: &str,
+        ttl_secs: i64,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO auth_tokens (token_hash, user_id, purpose, expires_at) \
+             VALUES (?1, ?2, ?3, datetime('now', ?4))",
+            rusqlite::params![token_hash, user_id.to_string(), purpose, format!("+{ttl_secs} seconds")],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
 }
 
 fn row_to_user(r: &rusqlite::Row<'_>) -> rusqlite::Result<crate::auth::users::User> {

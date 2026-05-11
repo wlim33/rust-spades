@@ -6,6 +6,7 @@
 #![allow(clippy::collapsible_if, clippy::large_enum_variant)]
 
 pub mod auth;
+pub mod handlers_auth;
 pub mod challenges;
 pub mod game_manager;
 pub mod matchmaking;

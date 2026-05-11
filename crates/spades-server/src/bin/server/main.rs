@@ -106,6 +106,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/challenges/{challenge_id}/join/{seat}", post(join_challenge_handler))
         // WebSocket
         .route("/games/{game_id}/ws", get(game_ws))
+        // Auth endpoints
+        .route("/auth/register", post(handlers::auth::register))
         .with_state(state)
 }
 
