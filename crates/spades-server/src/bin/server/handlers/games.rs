@@ -311,11 +311,55 @@ pub async fn make_transition(
 pub async fn get_hand(
     AxumState(state): AxumState<AppState>,
     Path((game_id, player_id_raw)): Path<(Uuid, String)>,
+    identity: spades_server::auth::Identity,
 ) -> Result<Json<HandResponse>, (StatusCode, Json<ErrorResponse>)> {
     let player_id = parse_uuid_or_short_id(&player_id_raw).ok_or((
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse { error: "Invalid player ID".to_string() }),
     ))?;
+
+    // Authorize: only the player who owns this seat can read its hand.
+    // Otherwise a "spectator" with the game URL (and player_ids exposed
+    // in GameStateResponse) could read every opponent's hand. The
+    // /games/by-player-url/{url_id} endpoint is the auth-free path: it
+    // treats the URL itself as the bearer credential.
+    let seat = state
+        .auth
+        .store
+        .game_seat_by_player_id(game_id, player_id)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e }),
+            )
+        })?;
+    let Some(seat) = seat else {
+        // No seat for this (game, player). Distinguish "game gone" (404)
+        // from "player not in this game" (400) by probing the game's
+        // existence — this preserves the legacy response codes that
+        // existing clients (and tests) depend on.
+        if state.game_manager.get_game_state(game_id).await.is_err() {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse { error: "Game not found".to_string() }),
+            ));
+        }
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "player not seated in this game".to_string(),
+            }),
+        ));
+    };
+    if !seat_matches_identity(&seat, &identity) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "hand is private to its seat owner".to_string(),
+            }),
+        ));
+    }
+
     state
         .game_manager
         .get_hand(game_id, player_id)
@@ -333,6 +377,26 @@ pub async fn get_hand(
                 }),
             )
         })
+}
+
+/// True when `identity` owns `seat` — meaning the requester is the
+/// human player at that seat. A registered user matches by `user_id`;
+/// an anonymous session matches by `anon_user_id`. Bot seats have
+/// neither and can never be owned by a request.
+fn seat_matches_identity(
+    seat: &spades_server::auth::game_seats::SeatRow,
+    identity: &spades_server::auth::Identity,
+) -> bool {
+    if seat.is_bot {
+        return false;
+    }
+    if let Some(seat_user) = seat.user_id {
+        return identity.user().map(|u| u.id) == Some(seat_user);
+    }
+    if let Some(seat_anon) = seat.anon_user_id {
+        return seat_anon == identity.anon_id();
+    }
+    false
 }
 
 /// Return a PGN-style text transcript of a finished game. Refused for

@@ -369,6 +369,28 @@ impl SqliteStore {
         Ok(())
     }
 
+    /// Lookup a seat by `(game_id, player_id)`. The seat's owner fields
+    /// (user_id / anon_user_id) authorise access to that seat's hand —
+    /// without this lookup the WS layer would have to round-trip through
+    /// the actor for the player → seat-index mapping and a second lookup
+    /// for the seat owner.
+    pub fn game_seat_by_player_id(
+        &self,
+        game_id: uuid::Uuid,
+        player_id: uuid::Uuid,
+    ) -> Result<Option<crate::auth::game_seats::SeatRow>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT game_id, seat_index, player_id, user_id, anon_user_id, is_bot \
+             FROM game_seats WHERE game_id = ?1 AND player_id = ?2",
+            rusqlite::params![game_id.to_string(), player_id.to_string()],
+            seat_row,
+        ).map(Some).or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other.to_string()),
+        })
+    }
+
     pub fn game_seat(&self, game_id: uuid::Uuid, seat_index: i32) -> Result<Option<crate::auth::game_seats::SeatRow>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.query_row(

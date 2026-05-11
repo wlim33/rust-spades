@@ -1161,6 +1161,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_hand_returns_403_for_cross_session_request() {
+        // Single TestServer (one AppState — one GameManager, one
+        // auth_store), two logical sessions: session A creates the game
+        // and owns all four seats, then `clear_cookies` simulates session
+        // B requesting the same hand. Without the seat-owner gate this
+        // used to leak every player's hand to anyone with the URL.
+        let mut server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        server
+            .post(&format!("/games/{}/transition", create.game_id))
+            .json(&serde_json::json!({"type": "start"}))
+            .await
+            .assert_status_ok();
+
+        // Session A (the owner) succeeds.
+        server
+            .get(&format!(
+                "/games/{}/players/{}/hand",
+                create.game_id, create.player_ids[0]
+            ))
+            .await
+            .assert_status_ok();
+
+        // Wipe the session cookie. The next request mints a fresh anon
+        // session whose anon_id won't match the seat's recorded owner.
+        server.clear_cookies();
+        let cross = server
+            .get(&format!(
+                "/games/{}/players/{}/hand",
+                create.game_id, create.player_ids[0]
+            ))
+            .await;
+        assert_eq!(cross.status_code(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
     async fn test_get_hand_game_not_found() {
         let server = test_app();
         let response = server
