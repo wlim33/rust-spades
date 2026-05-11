@@ -3,7 +3,7 @@ use crate::cards::{Card, get_trick_winner};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GameConfig {
-    pub max_points: i32
+    pub(crate) max_points: i32
 }
 
 fn deser_tricks_won<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i32, D::Error> {

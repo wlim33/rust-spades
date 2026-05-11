@@ -614,7 +614,7 @@ impl Game {
     /// True when the game is in (or just finished) a betting phase rather than
     /// a trick phase. Combined with `get_state()` this disambiguates Aborted
     /// games.
-    pub fn get_in_betting_stage(&self) -> bool {
+    pub fn is_in_betting_stage(&self) -> bool {
         self.scoring.in_betting_stage
     }
 
