@@ -100,8 +100,8 @@ pub async fn create_game(
             state
                 .game_manager
                 .make_transition(game_id, GameTransition::Start)
+                .await
                 .map_err(map_err)?;
-            state.game_manager.play_ai_turns(game_id).map_err(map_err)?;
 
             let identity_user = identity.user().map(|u| u.id);
             let anon = identity.anon_id();
@@ -150,6 +150,7 @@ pub async fn get_game_state(
     state
         .game_manager
         .get_game_state(game_id)
+        .await
         .map(Json)
         .map_err(|e| {
             let status = match e {
@@ -179,6 +180,7 @@ pub async fn get_game_by_short_id_handler(
     state
         .game_manager
         .get_game_state(game_id)
+        .await
         .map(Json)
         .map_err(|_| {
             (
@@ -199,11 +201,11 @@ pub async fn get_game_by_player_url(
         StatusCode::NOT_FOUND,
         Json(ErrorResponse { error: "Invalid player URL".to_string() }),
     ))?;
-    let game = state.game_manager.get_game_state(game_id).map_err(|_| (
+    let game = state.game_manager.get_game_state(game_id).await.map_err(|_| (
         StatusCode::NOT_FOUND,
         Json(ErrorResponse { error: "Game not found".to_string() }),
     ))?;
-    let hand = state.game_manager.get_hand(game_id, player_id).map_err(|_| (
+    let hand = state.game_manager.get_hand(game_id, player_id).await.map_err(|_| (
         StatusCode::NOT_FOUND,
         Json(ErrorResponse { error: "Player not found in game".to_string() }),
     ))?;
@@ -278,6 +280,7 @@ pub async fn make_transition(
     let outcome: Result<TransitionResponse, (StatusCode, ErrorResponse)> = state
         .game_manager
         .make_transition(game_id, transition)
+        .await
         .map(|result| TransitionResponse {
             success: true,
             result: format!("{:?}", result),
@@ -289,8 +292,6 @@ pub async fn make_transition(
             };
             (status, ErrorResponse { error: format!("{}", e) })
         });
-
-    let _ = state.game_manager.play_ai_turns(game_id);
 
     // Persist for retries — store both success and error outcomes so a retry
     // after a 4xx gets the same 4xx, not a fresh attempt that might succeed
@@ -318,6 +319,7 @@ pub async fn get_hand(
     state
         .game_manager
         .get_hand(game_id, player_id)
+        .await
         .map(Json)
         .map_err(|e| {
             let status = match e {
@@ -349,7 +351,7 @@ pub async fn set_player_name(
         None => None,
     };
 
-    let game_state = state.game_manager.get_game_state(game_id).map_err(|_| (
+    let game_state = state.game_manager.get_game_state(game_id).await.map_err(|_| (
         StatusCode::NOT_FOUND,
         Json(ErrorResponse { error: "Game not found".into() }),
     ))?;
@@ -367,6 +369,7 @@ pub async fn set_player_name(
     state
         .game_manager
         .set_player_name(game_id, player_id, validated_name)
+        .await
         .map(|_| StatusCode::NO_CONTENT)
         .map_err(|e| {
             let status = match e {
@@ -388,7 +391,7 @@ pub async fn get_presence(
     Path(game_id): Path<Uuid>,
 ) -> Result<Json<PresenceSnapshot>, (StatusCode, Json<ErrorResponse>)> {
     if state.presence.get_snapshot(game_id).is_none() {
-        let game_state = state.game_manager.get_game_state(game_id).map_err(|e| {
+        let game_state = state.game_manager.get_game_state(game_id).await.map_err(|e| {
             let status = match e {
                 GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,

@@ -65,7 +65,7 @@ pub async fn seek(
     let store = state.auth.store.clone();
 
     let (player_id, mut rx) =
-        state.matchmaker.add_seek(request.max_points, request.timer_config, validated_name);
+        state.matchmaker.add_seek(request.max_points, request.timer_config, validated_name).await;
 
     let stream = async_stream::stream! {
         let mut guard = SeekGuard {

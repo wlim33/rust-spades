@@ -306,74 +306,99 @@ impl ChallengeManager {
     }
 
     /// Join a specific seat in a challenge. Returns (player_id, broadcast_receiver).
-    pub fn join_challenge(
+    pub async fn join_challenge(
         &self,
         challenge_id: Uuid,
         seat: Seat,
         name: Option<String>,
     ) -> Result<(Uuid, broadcast::Receiver<ChallengeEvent>), ChallengeError> {
-        let mut challenges = self.challenges.write().map_err(|_| ChallengeError::LockError)?;
-        let challenge = challenges.get_mut(&challenge_id).ok_or(ChallengeError::NotFound)?;
-
-        if !matches!(challenge.status, ChallengeStatusKindInternal::Open) {
-            return Err(ChallengeError::NotOpen);
+        // Scope the RwLockWriteGuard tightly: it is `!Send`, and holding it
+        // across any later `.await` (or even leaving it in the function's
+        // tail scope under async-fn future lowering) makes the resulting
+        // future `!Send`, which axum's `Handler` trait rejects.
+        struct JoinedReady {
+            player_ids: [Uuid; 4],
+            player_names: [Option<String>; 4],
+            max_points: i32,
+            timer_config: Option<spades::TimerConfig>,
+            broadcast_tx: broadcast::Sender<ChallengeEvent>,
         }
 
-        let idx = seat.to_index();
-        if challenge.seats[idx].is_some() {
-            return Err(ChallengeError::SeatTaken);
-        }
+        let (player_id, rx, ready) = {
+            let mut challenges = self.challenges.write().map_err(|_| ChallengeError::LockError)?;
+            let challenge = challenges.get_mut(&challenge_id).ok_or(ChallengeError::NotFound)?;
 
-        let player_id = Uuid::new_v4();
-        let rx = challenge.broadcast_tx.subscribe();
-        challenge.seats[idx] = Some(SeatOccupant {
-            player_id,
-            name,
-        });
-
-        let seats_snapshot = challenge.seats_snapshot();
-        let _ = challenge.broadcast_tx.send(ChallengeEvent::SeatUpdate {
-            challenge_id,
-            seats: seats_snapshot,
-        });
-
-        let all_filled = challenge.seats_filled() == 4;
-
-        if all_filled {
-            // Extract data needed for game creation before dropping lock
-            let player_ids: [Uuid; 4] = [
-                challenge.seats[0].as_ref().unwrap().player_id,
-                challenge.seats[1].as_ref().unwrap().player_id,
-                challenge.seats[2].as_ref().unwrap().player_id,
-                challenge.seats[3].as_ref().unwrap().player_id,
-            ];
-            let player_names: [Option<String>; 4] = [
-                challenge.seats[0].as_ref().unwrap().name.clone(),
-                challenge.seats[1].as_ref().unwrap().name.clone(),
-                challenge.seats[2].as_ref().unwrap().name.clone(),
-                challenge.seats[3].as_ref().unwrap().name.clone(),
-            ];
-            let max_points = challenge.max_points;
-            let timer_config = challenge.timer_config;
-            let broadcast_tx = challenge.broadcast_tx.clone();
-
-            // Abort expiry timer
-            if let Some(handle) = challenge.expiry_handle.take() {
-                handle.abort();
+            if !matches!(challenge.status, ChallengeStatusKindInternal::Open) {
+                return Err(ChallengeError::NotOpen);
             }
 
-            // Drop lock before calling game_manager
-            drop(challenges);
+            let idx = seat.to_index();
+            if challenge.seats[idx].is_some() {
+                return Err(ChallengeError::SeatTaken);
+            }
 
+            let player_id = Uuid::new_v4();
+            let rx = challenge.broadcast_tx.subscribe();
+            challenge.seats[idx] = Some(SeatOccupant {
+                player_id,
+                name,
+            });
+
+            let seats_snapshot = challenge.seats_snapshot();
+            let _ = challenge.broadcast_tx.send(ChallengeEvent::SeatUpdate {
+                challenge_id,
+                seats: seats_snapshot,
+            });
+
+            let ready = if challenge.seats_filled() == 4 {
+                let player_ids: [Uuid; 4] = [
+                    challenge.seats[0].as_ref().unwrap().player_id,
+                    challenge.seats[1].as_ref().unwrap().player_id,
+                    challenge.seats[2].as_ref().unwrap().player_id,
+                    challenge.seats[3].as_ref().unwrap().player_id,
+                ];
+                let player_names: [Option<String>; 4] = [
+                    challenge.seats[0].as_ref().unwrap().name.clone(),
+                    challenge.seats[1].as_ref().unwrap().name.clone(),
+                    challenge.seats[2].as_ref().unwrap().name.clone(),
+                    challenge.seats[3].as_ref().unwrap().name.clone(),
+                ];
+                let max_points = challenge.max_points;
+                let timer_config = challenge.timer_config;
+                let broadcast_tx = challenge.broadcast_tx.clone();
+                if let Some(handle) = challenge.expiry_handle.take() {
+                    handle.abort();
+                }
+                Some(JoinedReady {
+                    player_ids,
+                    player_names,
+                    max_points,
+                    timer_config,
+                    broadcast_tx,
+                })
+            } else {
+                None
+            };
+
+            (player_id, rx, ready)
+        };
+
+        if let Some(JoinedReady {
+            player_ids,
+            player_names,
+            max_points,
+            timer_config,
+            broadcast_tx,
+        }) = ready {
             match self.game_manager.create_game_with_players(player_ids, max_points, timer_config) {
                 Ok(response) => {
-                    if self.game_manager.make_transition(response.game_id, GameTransition::Start).is_err() {
+                    if self.game_manager.make_transition(response.game_id, GameTransition::Start).await.is_err() {
                         let _ = self.game_manager.remove_game(response.game_id);
                     } else {
                         // Set player names
                         for (i, name) in player_names.iter().enumerate() {
                             if name.is_some() {
-                                let _ = self.game_manager.set_player_name(response.game_id, player_ids[i], name.clone());
+                                let _ = self.game_manager.set_player_name(response.game_id, player_ids[i], name.clone()).await;
                             }
                         }
 
@@ -584,7 +609,7 @@ mod tests {
 
         let (challenge_id, _, _rx) = cm.create_challenge(config).unwrap();
 
-        let result = cm.join_challenge(challenge_id, Seat::B, Some("Bob".to_string()));
+        let result = cm.join_challenge(challenge_id, Seat::B, Some("Bob".to_string())).await;
         assert!(result.is_ok());
 
         let status = cm.get_status(challenge_id).unwrap();
@@ -605,7 +630,7 @@ mod tests {
 
         let (challenge_id, _, _rx) = cm.create_challenge(config).unwrap();
 
-        let result = cm.join_challenge(challenge_id, Seat::A, Some("Bob".to_string()));
+        let result = cm.join_challenge(challenge_id, Seat::A, Some("Bob".to_string())).await;
         assert!(matches!(result, Err(ChallengeError::SeatTaken)));
     }
 
@@ -624,7 +649,7 @@ mod tests {
 
         let mut _rxs = Vec::new();
         for (seat, name) in [(Seat::B, "Bob"), (Seat::C, "Carol"), (Seat::D, "Dave")] {
-            let (_pid, rx) = cm.join_challenge(challenge_id, seat, Some(name.to_string())).unwrap();
+            let (_pid, rx) = cm.join_challenge(challenge_id, seat, Some(name.to_string())).await.unwrap();
             _rxs.push(rx);
         }
 
@@ -695,7 +720,7 @@ mod tests {
 
         let (challenge_id, _, _rx) = cm.create_challenge(config).unwrap();
 
-        let (player_id, _join_rx) = cm.join_challenge(challenge_id, Seat::B, Some("Bob".to_string())).unwrap();
+        let (player_id, _join_rx) = cm.join_challenge(challenge_id, Seat::B, Some("Bob".to_string())).await.unwrap();
 
         cm.vacate_seat(challenge_id, Seat::B, player_id);
 
@@ -717,7 +742,7 @@ mod tests {
         let (challenge_id, creator_id, _rx) = cm.create_challenge(config).unwrap();
         cm.cancel_challenge(challenge_id, creator_id.unwrap()).unwrap();
 
-        let result = cm.join_challenge(challenge_id, Seat::B, None);
+        let result = cm.join_challenge(challenge_id, Seat::B, None).await;
         assert!(matches!(result, Err(ChallengeError::NotOpen)));
     }
 
@@ -750,7 +775,7 @@ mod tests {
     #[tokio::test]
     async fn test_join_nonexistent_challenge() {
         let cm = make_manager();
-        let result = cm.join_challenge(Uuid::new_v4(), Seat::A, None);
+        let result = cm.join_challenge(Uuid::new_v4(), Seat::A, None).await;
         assert!(matches!(result, Err(ChallengeError::NotFound)));
     }
 
@@ -786,7 +811,7 @@ mod tests {
         };
 
         let (challenge_id, _, _rx) = cm.create_challenge(config).unwrap();
-        let (_player_id, _join_rx) = cm.join_challenge(challenge_id, Seat::B, Some("Bob".to_string())).unwrap();
+        let (_player_id, _join_rx) = cm.join_challenge(challenge_id, Seat::B, Some("Bob".to_string())).await.unwrap();
 
         // Try to vacate with wrong player_id — should be a no-op
         cm.vacate_seat(challenge_id, Seat::B, Uuid::new_v4());

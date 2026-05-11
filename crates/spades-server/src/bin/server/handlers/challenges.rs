@@ -278,6 +278,7 @@ pub async fn join_challenge_handler(
     let (player_id, mut rx) = state
         .challenge_manager
         .join_challenge(challenge_id, seat, validated_name)
+        .await
         .map_err(|e| {
             let status = match &e {
                 ChallengeError::NotFound => StatusCode::NOT_FOUND,

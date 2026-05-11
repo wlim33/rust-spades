@@ -694,12 +694,13 @@ mod tests {
 
         let manager = GameManager::new();
         let response = manager.create_game(500, None).unwrap();
-        let mut sub = manager.subscribe(response.game_id, None).unwrap();
+        let mut sub = manager.subscribe(response.game_id, None).await.unwrap();
 
-        manager.make_transition(response.game_id, GameTransition::Start).unwrap();
+        manager.make_transition(response.game_id, GameTransition::Start).await.unwrap();
         for i in 0..80 {
             manager
                 .set_player_name(response.game_id, response.player_ids[0], Some(format!("p{i}")))
+                .await
                 .unwrap();
         }
 

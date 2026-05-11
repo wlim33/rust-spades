@@ -67,7 +67,7 @@ impl Matchmaker {
 
     /// Add a seek to the queue. Returns (player_id, receiver) so the caller
     /// can cancel the seek on disconnect.
-    pub fn add_seek(&self, max_points: i32, timer_config: TimerConfig, name: Option<String>) -> (Uuid, mpsc::UnboundedReceiver<SeekEvent>) {
+    pub async fn add_seek(&self, max_points: i32, timer_config: TimerConfig, name: Option<String>) -> (Uuid, mpsc::UnboundedReceiver<SeekEvent>) {
         let player_id = Uuid::new_v4();
         let (tx, rx) = mpsc::unbounded_channel();
 
@@ -82,7 +82,7 @@ impl Matchmaker {
             });
         }
 
-        self.try_match(max_points, timer_config);
+        self.try_match(max_points, timer_config).await;
         self.notify_seekers(max_points, timer_config);
         (player_id, rx)
     }
@@ -131,30 +131,33 @@ impl Matchmaker {
     }
 
     /// Check if there are 4 seeks with the same max_points and timer_config and create a game.
-    fn try_match(&self, max_points: i32, timer_config: TimerConfig) {
-        let mut queue = self.seek_queue.lock_or_recover();
+    async fn try_match(&self, max_points: i32, timer_config: TimerConfig) {
+        // Scope the std::sync::MutexGuard tightly so it cannot leak into the
+        // generated future state across any later `.await` — std::sync guards
+        // are `!Send` and the handler must produce a `Send` future for axum.
+        let seeks: Vec<PendingSeek> = {
+            let mut queue = self.seek_queue.lock_or_recover();
 
-        let matching: Vec<usize> = queue
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| s.max_points == max_points && s.timer_config == timer_config)
-            .map(|(i, _)| i)
-            .collect();
+            let matching: Vec<usize> = queue
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.max_points == max_points && s.timer_config == timer_config)
+                .map(|(i, _)| i)
+                .collect();
 
-        if matching.len() < 4 {
-            return;
-        }
+            if matching.len() < 4 {
+                return;
+            }
 
-        // Take the first 4 matching seeks (remove from back to preserve indices)
-        let indices: Vec<usize> = matching.into_iter().take(4).collect();
-        let mut seeks: Vec<PendingSeek> = Vec::with_capacity(4);
-        for &i in indices.iter().rev() {
-            seeks.push(queue.remove(i));
-        }
-        seeks.reverse();
-
-        // Drop the lock before calling game_manager
-        drop(queue);
+            // Take the first 4 matching seeks (remove from back to preserve indices)
+            let indices: Vec<usize> = matching.into_iter().take(4).collect();
+            let mut seeks: Vec<PendingSeek> = Vec::with_capacity(4);
+            for &i in indices.iter().rev() {
+                seeks.push(queue.remove(i));
+            }
+            seeks.reverse();
+            seeks
+        };
 
         let player_ids: [Uuid; 4] = [
             seeks[0].player_id,
@@ -183,7 +186,7 @@ impl Matchmaker {
             }
         };
 
-        if self.game_manager.make_transition(response.game_id, GameTransition::Start).is_err() {
+        if self.game_manager.make_transition(response.game_id, GameTransition::Start).await.is_err() {
             // Game was created but couldn't start — remove it and re-queue seeks
             let _ = self.game_manager.remove_game(response.game_id);
             let mut queue = self.seek_queue.lock_or_recover();
@@ -196,7 +199,7 @@ impl Matchmaker {
         // Set player names on the game
         for (i, name) in player_names.iter().enumerate() {
             if name.is_some() {
-                let _ = self.game_manager.set_player_name(response.game_id, player_ids[i], name.clone());
+                let _ = self.game_manager.set_player_name(response.game_id, player_ids[i], name.clone()).await;
             }
         }
 
@@ -245,7 +248,7 @@ mod tests {
         let mut receivers = Vec::new();
 
         for _ in 0..4 {
-            let (_pid, rx) = mm.add_seek(500, default_timer(), None);
+            let (_pid, rx) = mm.add_seek(500, default_timer(), None).await;
             receivers.push(rx);
         }
 
@@ -272,7 +275,7 @@ mod tests {
         let mm = make_matchmaker();
 
         for _ in 0..3 {
-            let _ = mm.add_seek(500, default_timer(), None);
+            let _ = mm.add_seek(500, default_timer(), None).await;
         }
 
         let summary = mm.list_seeks();
@@ -286,9 +289,9 @@ mod tests {
         let mm = make_matchmaker();
 
         for _ in 0..3 {
-            let _ = mm.add_seek(500, default_timer(), None);
+            let _ = mm.add_seek(500, default_timer(), None).await;
         }
-        let _ = mm.add_seek(300, default_timer(), None);
+        let _ = mm.add_seek(300, default_timer(), None).await;
 
         let summary = mm.list_seeks();
         assert_eq!(summary.len(), 2);
@@ -297,7 +300,7 @@ mod tests {
     #[tokio::test]
     async fn test_cancel_seek() {
         let mm = make_matchmaker();
-        let (player_id, _rx) = mm.add_seek(500, default_timer(), None);
+        let (player_id, _rx) = mm.add_seek(500, default_timer(), None).await;
 
         mm.cancel_seek(player_id);
 
@@ -312,7 +315,7 @@ mod tests {
         let names = ["Alice", "Bob", "Carol", "Dave"];
 
         for name in &names {
-            let (_pid, rx) = mm.add_seek(500, default_timer(), Some(name.to_string()));
+            let (_pid, rx) = mm.add_seek(500, default_timer(), Some(name.to_string())).await;
             receivers.push(rx);
         }
 
@@ -332,9 +335,9 @@ mod tests {
     #[tokio::test]
     async fn test_seek_list_after_partial_cancel() {
         let mm = make_matchmaker();
-        let (p1, _rx1) = mm.add_seek(500, default_timer(), None);
-        let (_p2, _rx2) = mm.add_seek(500, default_timer(), None);
-        let (_p3, _rx3) = mm.add_seek(500, default_timer(), None);
+        let (p1, _rx1) = mm.add_seek(500, default_timer(), None).await;
+        let (_p2, _rx2) = mm.add_seek(500, default_timer(), None).await;
+        let (_p3, _rx3) = mm.add_seek(500, default_timer(), None).await;
 
         mm.cancel_seek(p1);
 
@@ -350,12 +353,12 @@ mod tests {
         let slow_timer = TimerConfig { initial_time_secs: 600, increment_secs: 5 };
 
         // 2 seeks: 500 pts + fast timer
-        let (_p1, _rx1) = mm.add_seek(500, fast_timer, None);
-        let (_p2, _rx2) = mm.add_seek(500, fast_timer, None);
+        let (_p1, _rx1) = mm.add_seek(500, fast_timer, None).await;
+        let (_p2, _rx2) = mm.add_seek(500, fast_timer, None).await;
         // 1 seek: 500 pts + slow timer
-        let (_p3, _rx3) = mm.add_seek(500, slow_timer, None);
+        let (_p3, _rx3) = mm.add_seek(500, slow_timer, None).await;
         // 1 seek: 300 pts + fast timer
-        let (_p4, _rx4) = mm.add_seek(300, fast_timer, None);
+        let (_p4, _rx4) = mm.add_seek(300, fast_timer, None).await;
 
         let sizes = mm.queue_sizes();
         assert_eq!(sizes.len(), 3);

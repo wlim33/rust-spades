@@ -20,7 +20,7 @@ pub async fn game_ws(
     Query(query): Query<WsQuery>,
     ws: WebSocketUpgrade,
 ) -> Result<impl axum::response::IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    let sub = state.game_manager.subscribe(game_id, query.since).map_err(|e| {
+    let sub = state.game_manager.subscribe(game_id, query.since).await.map_err(|e| {
         let status = match e {
             spades_server::game_manager::GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
