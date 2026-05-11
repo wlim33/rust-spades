@@ -95,9 +95,20 @@ impl<'a> Parser<'a> {
                     if value == "*" {
                         self.result_was_star = true;
                     } else {
-                        let (a_str, b_str) = value
-                            .split_once('-')
+                        // Find the '-' that separates A from B.  The separator
+                        // is the first '-' that immediately follows a digit
+                        // (i.e. not the leading '-' of a negative number).
+                        let sep = value
+                            .char_indices()
+                            .find(|&(i, c)| {
+                                c == '-'
+                                    && i > 0
+                                    && value.as_bytes()[i - 1].is_ascii_digit()
+                            })
+                            .map(|(i, _)| i)
                             .ok_or_else(|| DecodeError::BadResult { line: ln, value: value.clone() })?;
+                        let a_str = &value[..sep];
+                        let b_str = &value[sep + 1..];
                         let a = a_str.parse::<i32>().map_err(|_| DecodeError::BadResult { line: ln, value: value.clone() })?;
                         let b = b_str.parse::<i32>().map_err(|_| DecodeError::BadResult { line: ln, value: value.clone() })?;
                         self.result = Some((a, b));

@@ -226,7 +226,7 @@ fn tricks_for_round(g: &Game, round_idx: usize) -> Vec<Vec<Card>> {
                 trick[2].unwrap(),
                 trick[3].unwrap(),
             ];
-            lead = get_trick_winner(lead, &by_seat);
+            lead = get_trick_winner((lead + 3) % 4, &by_seat);
         }
         out.push(play_order);
     }

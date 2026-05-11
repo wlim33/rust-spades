@@ -627,4 +627,14 @@ impl Game {
             self.players[i].hand.sort();
         }
     }
+
+    /// Override each player's hand with the given cards (used by transcript replay
+    /// to seed the engine with the hands declared in the transcript rather than the
+    /// randomly-dealt ones).  The caller is responsible for correctness; this does
+    /// not validate that the supplied cards form a legal deal.
+    pub(crate) fn override_hands(&mut self, hands: [Vec<Card>; 4]) {
+        for (i, hand) in hands.into_iter().enumerate() {
+            self.players[i].hand = hand;
+        }
+    }
 }
