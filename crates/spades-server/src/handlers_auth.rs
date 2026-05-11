@@ -1,4 +1,4 @@
-use axum::{extract::{ConnectInfo, Query, State}, response::{Json, Redirect}};
+use axum::{extract::{ConnectInfo, Path, Query, State}, response::{Json, Redirect}};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use tower_sessions::Session;
@@ -7,6 +7,7 @@ use uuid::Uuid;
 use crate::auth::{
     AuthError, AuthState, AuthUser,
     mailer::Email,
+    oauth::{google_client, github_client, PendingSignup},
     password::{hash_password, validate_password, verify_password, verify_against_dummy},
     rate_limit::{check_email, check_ip},
     session_ext,
@@ -224,4 +225,267 @@ pub async fn password_reset_confirm(
         .map_err(AuthError::Storage)?;
     session_ext::set_claimed(&session, consumed.user_id, new_version).await?;
     Ok(axum::http::StatusCode::OK)
+}
+
+// ---------------------------------------------------------------------------
+// OAuth handlers
+// ---------------------------------------------------------------------------
+
+use oauth2::{AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, Scope, TokenResponse};
+
+pub async fn oauth_login(
+    State(auth): State<AuthState>,
+    session: Session,
+    Path(provider): Path<String>,
+) -> Result<Redirect, AuthError> {
+    let s = session_ext::load_or_init(&session).await?;
+    let anon_id = s.user_id;
+
+    let client = match provider.as_str() {
+        "google" => google_client(&auth.oauth),
+        "github" => github_client(&auth.oauth),
+        _ => return Err(AuthError::OauthFailed("unknown provider".into())),
+    }.ok_or_else(|| AuthError::OauthFailed("provider not configured".into()))?;
+
+    let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
+    let scopes: Vec<Scope> = match provider.as_str() {
+        "google" => vec![Scope::new("openid".into()), Scope::new("email".into()), Scope::new("profile".into())],
+        "github" => vec![Scope::new("read:user".into()), Scope::new("user:email".into())],
+        _ => vec![],
+    };
+    let (auth_url, csrf_token) = client.authorize_url(CsrfToken::new_random)
+        .add_scopes(scopes)
+        .set_pkce_challenge(challenge)
+        .url();
+
+    auth.oauth.csrf.lock().unwrap().insert(
+        csrf_token.secret().clone(),
+        (anon_id, time::OffsetDateTime::now_utc() + time::Duration::minutes(10), verifier.secret().to_string()),
+    );
+
+    Ok(Redirect::to(auth_url.as_str()))
+}
+
+#[derive(Deserialize)]
+pub struct OauthCallbackQuery {
+    pub code: String,
+    pub state: String,
+}
+
+#[derive(Deserialize)]
+struct GoogleUserinfo {
+    sub: String,
+    email: String,
+    #[serde(default)]
+    email_verified: bool,
+    #[serde(default)]
+    name: Option<String>,
+}
+
+pub async fn oauth_google_callback(
+    State(auth): State<AuthState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    session: Session,
+    Query(q): Query<OauthCallbackQuery>,
+) -> Result<axum::response::Response, AuthError> {
+    use axum::response::IntoResponse as _;
+    check_ip(&auth.rate.oauth_callback, addr.ip())?;
+
+    let entry = auth.oauth.csrf.lock().unwrap().remove(&q.state);
+    let (anon_from_csrf, _expires, verifier_secret) = entry.ok_or_else(|| AuthError::OauthFailed("invalid state".into()))?;
+    let client = google_client(&auth.oauth)
+        .ok_or_else(|| AuthError::OauthFailed("google not configured".into()))?;
+
+    let verifier = PkceCodeVerifier::new(verifier_secret);
+    let token = client.exchange_code(AuthorizationCode::new(q.code))
+        .set_pkce_verifier(verifier)
+        .request_async(oauth2::reqwest::async_http_client).await
+        .map_err(|e| AuthError::OauthFailed(format!("token exchange: {e}")))?;
+
+    let info: GoogleUserinfo = reqwest::Client::new()
+        .get("https://openidconnect.googleapis.com/v1/userinfo")
+        .bearer_auth(token.access_token().secret())
+        .send().await.map_err(|e| AuthError::OauthFailed(format!("userinfo fetch: {e}")))?
+        .error_for_status().map_err(|e| AuthError::OauthFailed(format!("userinfo status: {e}")))?
+        .json().await.map_err(|e| AuthError::OauthFailed(format!("userinfo parse: {e}")))?;
+
+    if let Some(uid) = auth.store.find_oauth_account("google", &info.sub).map_err(AuthError::Storage)? {
+        let user = auth.store.find_user_by_id(uid).map_err(AuthError::Storage)?
+            .ok_or_else(|| AuthError::Internal("oauth account refs missing user".into()))?;
+        oauth_claim_and_login(&session, &auth, anon_from_csrf, &user).await?;
+        return Ok(Redirect::to("/").into_response());
+    }
+
+    if info.email_verified {
+        if let Some(existing) = auth.store.find_user_by_email(&info.email).map_err(AuthError::Storage)? {
+            if existing.email_verified {
+                auth.store.insert_oauth_account("google", &info.sub, existing.id, &info.email)
+                    .map_err(AuthError::Storage)?;
+                oauth_claim_and_login(&session, &auth, anon_from_csrf, &existing).await?;
+                return Ok(Redirect::to("/").into_response());
+            }
+        }
+    }
+
+    // Pending signup
+    let temp_id = generate_token();
+    let suggested = info.name.clone()
+        .map(|n| n.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').take(20).collect::<String>())
+        .filter(|s| s.len() >= 2)
+        .unwrap_or_else(|| "user".into());
+    let expires_at = time::OffsetDateTime::now_utc() + time::Duration::minutes(15);
+    auth.oauth.pending.lock().unwrap().insert(temp_id.clone(), PendingSignup {
+        provider: "google".into(),
+        provider_uid: info.sub,
+        email: info.email,
+        email_verified: info.email_verified,
+        suggested_username: suggested,
+        expires_at,
+    });
+    let cookie = format!("__oauth_pending={temp_id}; Max-Age=900; HttpOnly; SameSite=Lax; Path=/");
+    let mut resp = Redirect::to("/").into_response();
+    resp.headers_mut().append(axum::http::header::SET_COOKIE, cookie.parse().unwrap());
+    Ok(resp)
+}
+
+async fn oauth_claim_and_login(
+    session: &Session,
+    auth: &AuthState,
+    anon_from_csrf: Uuid,
+    user: &User,
+) -> Result<(), AuthError> {
+    let live = session_ext::load_or_init(session).await?;
+    let anon = live.user_id;
+    auth.store.claim_anon_game_seats(anon, user.id).map_err(AuthError::Storage)?;
+    if anon != anon_from_csrf {
+        auth.store.claim_anon_game_seats(anon_from_csrf, user.id).map_err(AuthError::Storage)?;
+    }
+    session_ext::set_claimed(session, user.id, user.token_version).await?;
+    Ok(())
+}
+
+#[derive(Deserialize)]
+pub struct OauthCompleteRequest {
+    pub username: String,
+}
+
+pub async fn oauth_complete(
+    State(auth): State<AuthState>,
+    session: Session,
+    cookie_jar: axum_extra::extract::CookieJar,
+    Json(req): Json<OauthCompleteRequest>,
+) -> Result<(axum::http::StatusCode, Json<UserResponse>), AuthError> {
+    let temp_id = cookie_jar.get("__oauth_pending")
+        .ok_or(AuthError::TokenInvalid)?
+        .value().to_string();
+    let pending = auth.oauth.pending.lock().unwrap().remove(&temp_id)
+        .ok_or(AuthError::TokenInvalid)?;
+    if pending.expires_at < time::OffsetDateTime::now_utc() {
+        return Err(AuthError::TokenInvalid);
+    }
+    let username = validate_username(&req.username)?;
+
+    let user_id = auth.store.insert_user(&NewUser {
+        username,
+        email: pending.email.clone(),
+        password_hash: None,
+        email_verified: pending.email_verified,
+    }).map_err(|e| match e.as_str() {
+        "username_taken" => AuthError::UsernameTaken,
+        "email_taken" => AuthError::EmailTaken,
+        other => AuthError::Storage(other.into()),
+    })?;
+    auth.store.insert_oauth_account(&pending.provider, &pending.provider_uid, user_id, &pending.email)
+        .map_err(AuthError::Storage)?;
+
+    let s = session_ext::load_or_init(&session).await?;
+    auth.store.claim_anon_game_seats(s.user_id, user_id).map_err(AuthError::Storage)?;
+    let user = auth.store.find_user_by_id(user_id).map_err(AuthError::Storage)?
+        .ok_or_else(|| AuthError::Internal("user vanished".into()))?;
+    session_ext::set_claimed(&session, user_id, user.token_version).await?;
+
+    Ok((axum::http::StatusCode::CREATED, Json(UserResponse::from(&user))))
+}
+
+#[derive(Deserialize)]
+struct GithubUser {
+    id: u64,
+    login: String,
+}
+
+#[derive(Deserialize)]
+struct GithubEmail {
+    email: String,
+    primary: bool,
+    verified: bool,
+}
+
+pub async fn oauth_github_callback(
+    State(auth): State<AuthState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    session: Session,
+    Query(q): Query<OauthCallbackQuery>,
+) -> Result<axum::response::Response, AuthError> {
+    use axum::response::IntoResponse as _;
+    check_ip(&auth.rate.oauth_callback, addr.ip())?;
+
+    let entry = auth.oauth.csrf.lock().unwrap().remove(&q.state);
+    let (anon_from_csrf, _expires, verifier_secret) = entry.ok_or_else(|| AuthError::OauthFailed("invalid state".into()))?;
+    let client = github_client(&auth.oauth)
+        .ok_or_else(|| AuthError::OauthFailed("github not configured".into()))?;
+
+    let verifier = PkceCodeVerifier::new(verifier_secret);
+    let token = client.exchange_code(AuthorizationCode::new(q.code))
+        .set_pkce_verifier(verifier)
+        .request_async(oauth2::reqwest::async_http_client).await
+        .map_err(|e| AuthError::OauthFailed(format!("token exchange: {e}")))?;
+
+    let http = reqwest::Client::new();
+    let user: GithubUser = http.get("https://api.github.com/user")
+        .bearer_auth(token.access_token().secret())
+        .header("User-Agent", "rust-spades")
+        .send().await.map_err(|e| AuthError::OauthFailed(format!("user fetch: {e}")))?
+        .error_for_status().map_err(|e| AuthError::OauthFailed(format!("user status: {e}")))?
+        .json().await.map_err(|e| AuthError::OauthFailed(format!("user parse: {e}")))?;
+    let emails: Vec<GithubEmail> = http.get("https://api.github.com/user/emails")
+        .bearer_auth(token.access_token().secret())
+        .header("User-Agent", "rust-spades")
+        .send().await.map_err(|e| AuthError::OauthFailed(format!("emails fetch: {e}")))?
+        .error_for_status().map_err(|e| AuthError::OauthFailed(format!("emails status: {e}")))?
+        .json().await.map_err(|e| AuthError::OauthFailed(format!("emails parse: {e}")))?;
+    let primary = emails.iter().find(|e| e.primary)
+        .ok_or_else(|| AuthError::OauthFailed("no primary email".into()))?;
+
+    if let Some(uid) = auth.store.find_oauth_account("github", &user.id.to_string()).map_err(AuthError::Storage)? {
+        let u = auth.store.find_user_by_id(uid).map_err(AuthError::Storage)?
+            .ok_or_else(|| AuthError::Internal("oauth account refs missing".into()))?;
+        oauth_claim_and_login(&session, &auth, anon_from_csrf, &u).await?;
+        return Ok(Redirect::to("/").into_response());
+    }
+    if primary.verified {
+        if let Some(existing) = auth.store.find_user_by_email(&primary.email).map_err(AuthError::Storage)? {
+            if existing.email_verified {
+                auth.store.insert_oauth_account("github", &user.id.to_string(), existing.id, &primary.email)
+                    .map_err(AuthError::Storage)?;
+                oauth_claim_and_login(&session, &auth, anon_from_csrf, &existing).await?;
+                return Ok(Redirect::to("/").into_response());
+            }
+        }
+    }
+
+    let temp_id = generate_token();
+    let suggested: String = user.login.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-').take(20).collect();
+    let expires_at = time::OffsetDateTime::now_utc() + time::Duration::minutes(15);
+    auth.oauth.pending.lock().unwrap().insert(temp_id.clone(), PendingSignup {
+        provider: "github".into(),
+        provider_uid: user.id.to_string(),
+        email: primary.email.clone(),
+        email_verified: primary.verified,
+        suggested_username: suggested,
+        expires_at,
+    });
+    let mut resp = Redirect::to("/").into_response();
+    let cookie = format!("__oauth_pending={temp_id}; Max-Age=900; HttpOnly; SameSite=Lax; Path=/");
+    resp.headers_mut().append(axum::http::header::SET_COOKIE, cookie.parse().unwrap());
+    Ok(resp)
 }

@@ -1,6 +1,8 @@
 //! Shared test scaffolding for auth integration tests.
 
 use axum::{extract::connect_info::MockConnectInfo, routing::{get, post}, Router};
+#[allow(unused_imports)]
+use axum::routing::put;
 use axum_test::{TestServer, TestServerConfig};
 use spades_server::{
     auth::{AuthState, mailer::LogMailer, oauth::OauthState, rate_limit::RateLimitState},
@@ -29,6 +31,10 @@ pub fn test_server() -> TestServer {
         .route("/auth/verify-email", get(handlers_auth::verify_email))
         .route("/auth/password-reset/request", post(handlers_auth::password_reset_request))
         .route("/auth/password-reset/confirm", post(handlers_auth::password_reset_confirm))
+        .route("/auth/oauth/{provider}/login", get(handlers_auth::oauth_login))
+        .route("/auth/oauth/google/callback", get(handlers_auth::oauth_google_callback))
+        .route("/auth/oauth/github/callback", get(handlers_auth::oauth_github_callback))
+        .route("/auth/oauth/complete", post(handlers_auth::oauth_complete))
         .with_state(auth);
 
     let session_store = MemoryStore::default();

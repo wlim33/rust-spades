@@ -32,6 +32,35 @@ pub struct PendingSignup {
     pub expires_at: OffsetDateTime,
 }
 
+use oauth2::basic::BasicClient;
+use oauth2::{AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
+
+pub fn google_client(state: &OauthState) -> Option<BasicClient> {
+    let cfg = state.google.as_ref()?;
+    let auth = AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".into()).ok()?;
+    let token = TokenUrl::new("https://oauth2.googleapis.com/token".into()).ok()?;
+    let redirect = RedirectUrl::new(format!("{}/auth/oauth/google/callback", state.redirect_base_url)).ok()?;
+    Some(BasicClient::new(
+        ClientId::new(cfg.client_id.clone()),
+        Some(ClientSecret::new(cfg.client_secret.clone())),
+        auth,
+        Some(token),
+    ).set_redirect_uri(redirect))
+}
+
+pub fn github_client(state: &OauthState) -> Option<BasicClient> {
+    let cfg = state.github.as_ref()?;
+    let auth = AuthUrl::new("https://github.com/login/oauth/authorize".into()).ok()?;
+    let token = TokenUrl::new("https://github.com/login/oauth/access_token".into()).ok()?;
+    let redirect = RedirectUrl::new(format!("{}/auth/oauth/github/callback", state.redirect_base_url)).ok()?;
+    Some(BasicClient::new(
+        ClientId::new(cfg.client_id.clone()),
+        Some(ClientSecret::new(cfg.client_secret.clone())),
+        auth,
+        Some(token),
+    ).set_redirect_uri(redirect))
+}
+
 impl OauthState {
     pub fn from_env() -> Self {
         let google = match (std::env::var("GOOGLE_OAUTH_CLIENT_ID"), std::env::var("GOOGLE_OAUTH_CLIENT_SECRET")) {

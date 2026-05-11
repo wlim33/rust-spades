@@ -114,6 +114,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/verify-email", get(handlers::auth::verify_email))
         .route("/auth/password-reset/request", post(handlers::auth::password_reset_request))
         .route("/auth/password-reset/confirm", post(handlers::auth::password_reset_confirm))
+        .route("/auth/oauth/{provider}/login", get(handlers::auth::oauth_login))
+        .route("/auth/oauth/google/callback", get(handlers::auth::oauth_google_callback))
+        .route("/auth/oauth/github/callback", get(handlers::auth::oauth_github_callback))
+        .route("/auth/oauth/complete", post(handlers::auth::oauth_complete))
         .with_state(state)
 }
 
