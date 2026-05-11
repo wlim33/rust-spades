@@ -1,4 +1,10 @@
-use oasgen::{OaSchema, Schema, SchemaData, SchemaKind, Type, ObjectType};
+use oasgen::{OaParameter, OaSchema, Schema, SchemaData, SchemaKind, Type, ObjectType};
+
+// Identity is an auth-derived extractor that should not appear as an OpenAPI
+// parameter on routes that take it (auth is handled out-of-band via session
+// cookie). A no-op `OaParameter` lets oasgen-annotated handlers accept the
+// extractor without polluting the schema.
+impl OaParameter for crate::auth::Identity {}
 
 /// Helper to create an array schema for a fixed-size array.
 fn array_schema<T: OaSchema>() -> Schema {

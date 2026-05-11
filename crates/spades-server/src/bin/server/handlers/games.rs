@@ -42,6 +42,9 @@ pub async fn create_game(
     identity: spades_server::auth::Identity,
     Json(request): Json<CreateGameRequest>,
 ) -> Result<Json<CreateGameResponse>, (StatusCode, Json<ErrorResponse>)> {
+    spades_server::auth::rate_limit::check_user(&state.auth.rate.create_game, identity.anon_id())
+        .map_err(super::super::dto::auth_err_response)?;
+
     let map_err = |e: GameManagerError| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -240,8 +243,12 @@ pub async fn delete_game(
 pub async fn make_transition(
     AxumState(state): AxumState<AppState>,
     Path(game_id): Path<Uuid>,
+    identity: spades_server::auth::Identity,
     Json(request): Json<TransitionRequest>,
 ) -> Result<Json<TransitionResponse>, (StatusCode, Json<ErrorResponse>)> {
+    spades_server::auth::rate_limit::check_user(&state.auth.rate.transition, identity.anon_id())
+        .map_err(super::super::dto::auth_err_response)?;
+
     let transition = match request.transition {
         TransitionType::Start => GameTransition::Start,
         TransitionType::Bet { amount } => GameTransition::Bet(amount),

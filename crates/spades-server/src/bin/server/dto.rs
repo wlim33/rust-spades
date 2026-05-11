@@ -56,6 +56,21 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
+/// Convert an `AuthError` produced by `check_user` (or any rate-limit check)
+/// into the tuple shape that game/match/challenge handlers return on error.
+/// Loses the Retry-After header `AuthError::into_response` would set —
+/// acceptable until handler return types are unified on `axum::response::Response`.
+pub fn auth_err_response(
+    e: spades_server::auth::AuthError,
+) -> (axum::http::StatusCode, axum::response::Json<ErrorResponse>) {
+    (
+        e.status(),
+        axum::response::Json(ErrorResponse {
+            error: format!("{}", e),
+        }),
+    )
+}
+
 #[derive(Debug, Serialize, OaSchema)]
 pub struct PlayerUrlResponse {
     pub game_id: Uuid,

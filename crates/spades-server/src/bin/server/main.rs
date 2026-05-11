@@ -575,6 +575,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_game_returns_429_after_per_user_burst() {
+        // create_game burst is 10, so the 11th rapid POST from the same
+        // session should be rejected with 429 — same anon_id across requests
+        // because axum-test preserves session cookies on the TestServer.
+        let server = test_app();
+        let mut statuses = Vec::new();
+        for _ in 0..15 {
+            let resp = server
+                .post("/games")
+                .json(&serde_json::json!({"max_points": 500}))
+                .await;
+            statuses.push(resp.status_code());
+        }
+        assert!(
+            statuses.contains(&StatusCode::TOO_MANY_REQUESTS),
+            "expected at least one 429 within 15 rapid POSTs; got {statuses:?}",
+        );
+        // The first 10 should still have succeeded (burst capacity).
+        assert!(
+            statuses.iter().take(10).all(|s| *s == StatusCode::OK),
+            "first 10 should be within burst; got {:?}",
+            &statuses[..10],
+        );
+    }
+
+    #[tokio::test]
     async fn test_create_game() {
         let server = test_app();
         let response = server

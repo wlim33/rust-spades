@@ -47,7 +47,7 @@ struct ErrorBody<'a> {
 }
 
 impl AuthError {
-    fn status(&self) -> StatusCode {
+    pub fn status(&self) -> StatusCode {
         match self {
             AuthError::Unauthenticated | AuthError::InvalidCredentials => StatusCode::UNAUTHORIZED,
             AuthError::Forbidden => StatusCode::FORBIDDEN,

@@ -35,6 +35,9 @@ pub async fn seek(
     identity: spades_server::auth::Identity,
     Json(request): Json<SeekRequest>,
 ) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<ErrorResponse>)> {
+    spades_server::auth::rate_limit::check_user(&state.auth.rate.create_seek, identity.anon_id())
+        .map_err(super::super::dto::auth_err_response)?;
+
     if request.max_points <= 0 {
         return Err((
             StatusCode::BAD_REQUEST,

@@ -44,6 +44,9 @@ pub async fn create_challenge_handler(
     identity: spades_server::auth::Identity,
     Json(mut config): Json<ChallengeConfig>,
 ) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<ErrorResponse>)> {
+    spades_server::auth::rate_limit::check_user(&state.auth.rate.challenge_action, identity.anon_id())
+        .map_err(super::super::dto::auth_err_response)?;
+
     if config.max_points <= 0 {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -243,6 +246,9 @@ pub async fn join_challenge_handler(
     Path((challenge_id, seat_str)): Path<(Uuid, String)>,
     body: Option<Json<JoinChallengeRequest>>,
 ) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<ErrorResponse>)> {
+    spades_server::auth::rate_limit::check_user(&state.auth.rate.challenge_action, identity.anon_id())
+        .map_err(super::super::dto::auth_err_response)?;
+
     let seat: Seat = seat_str.parse().map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
