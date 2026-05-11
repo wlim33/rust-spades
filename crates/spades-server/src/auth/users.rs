@@ -46,6 +46,40 @@ pub fn validate_email(input: &str) -> Result<(), AuthError> {
     Ok(())
 }
 
+use uuid::Uuid;
+
+#[derive(Debug, Clone)]
+pub struct User {
+    pub id: Uuid,
+    pub username: String,
+    pub username_canon: String,
+    pub email: String,
+    pub email_verified: bool,
+    pub password_hash: Option<String>,
+    pub token_version: i32,
+    pub created_at: String,
+    pub last_login_at: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewUser {
+    pub username: String,
+    pub email: String,
+    pub password_hash: Option<String>,
+    pub email_verified: bool,
+}
+
+impl User {
+    pub fn public_view(&self) -> serde_json::Value {
+        serde_json::json!({
+            "id": self.id,
+            "username": self.username,
+            "email": self.email,
+            "email_verified": self.email_verified,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

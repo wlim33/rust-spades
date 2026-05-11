@@ -124,6 +124,139 @@ impl SqliteStore {
         ).map_err(|e| e.to_string())?;
         Ok(())
     }
+
+    pub fn insert_user(&self, new: &crate::auth::users::NewUser) -> Result<uuid::Uuid, String> {
+        use crate::auth::users::canonicalize_username;
+        let id = uuid::Uuid::new_v4();
+        let canon = canonicalize_username(&new.username);
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO users (id, username, username_canon, email, email_verified, password_hash, token_version) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
+            rusqlite::params![
+                id.to_string(),
+                &new.username,
+                canon,
+                &new.email,
+                new.email_verified as i32,
+                new.password_hash.as_deref(),
+            ],
+        ).map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("UNIQUE constraint failed: users.username_canon") {
+                "username_taken".to_string()
+            } else if msg.contains("UNIQUE constraint failed: users.email") {
+                "email_taken".to_string()
+            } else {
+                msg
+            }
+        })?;
+        Ok(id)
+    }
+
+    pub fn find_user_by_id(&self, id: uuid::Uuid) -> Result<Option<crate::auth::users::User>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT id, username, username_canon, email, email_verified, password_hash, token_version, created_at, last_login_at \
+             FROM users WHERE id = ?1",
+            rusqlite::params![id.to_string()],
+            row_to_user,
+        ).map(Some).or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other.to_string()),
+        })
+    }
+
+    pub fn find_user_by_email(&self, email: &str) -> Result<Option<crate::auth::users::User>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT id, username, username_canon, email, email_verified, password_hash, token_version, created_at, last_login_at \
+             FROM users WHERE email = ?1",
+            rusqlite::params![email],
+            row_to_user,
+        ).map(Some).or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other.to_string()),
+        })
+    }
+
+    pub fn find_user_by_username(&self, username: &str) -> Result<Option<crate::auth::users::User>, String> {
+        use crate::auth::users::canonicalize_username;
+        let canon = canonicalize_username(username);
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT id, username, username_canon, email, email_verified, password_hash, token_version, created_at, last_login_at \
+             FROM users WHERE username_canon = ?1",
+            rusqlite::params![canon],
+            row_to_user,
+        ).map(Some).or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other.to_string()),
+        })
+    }
+
+    pub fn update_user_password(&self, user_id: uuid::Uuid, new_hash: &str) -> Result<i32, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let new_version: i32 = conn.query_row(
+            "UPDATE users SET password_hash = ?1, token_version = token_version + 1 \
+             WHERE id = ?2 RETURNING token_version",
+            rusqlite::params![new_hash, user_id.to_string()],
+            |r| r.get(0),
+        ).map_err(|e| e.to_string())?;
+        Ok(new_version)
+    }
+
+    pub fn set_user_email_verified(&self, user_id: uuid::Uuid) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE users SET email_verified = 1 WHERE id = ?1",
+            rusqlite::params![user_id.to_string()],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn touch_user_login(&self, user_id: uuid::Uuid) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE users SET last_login_at = datetime('now') WHERE id = ?1",
+            rusqlite::params![user_id.to_string()],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn update_user_email(&self, user_id: uuid::Uuid, new_email: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE users SET email = ?1, email_verified = 0 WHERE id = ?2",
+            rusqlite::params![new_email, user_id.to_string()],
+        ).map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("UNIQUE constraint failed: users.email") {
+                "email_taken".to_string()
+            } else {
+                msg
+            }
+        })?;
+        Ok(())
+    }
+}
+
+fn row_to_user(r: &rusqlite::Row<'_>) -> rusqlite::Result<crate::auth::users::User> {
+    let id_s: String = r.get(0)?;
+    let id = uuid::Uuid::parse_str(&id_s).map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+        0, rusqlite::types::Type::Text, Box::new(e),
+    ))?;
+    Ok(crate::auth::users::User {
+        id,
+        username: r.get(1)?,
+        username_canon: r.get(2)?,
+        email: r.get(3)?,
+        email_verified: r.get::<_, i32>(4)? != 0,
+        password_hash: r.get(5)?,
+        token_version: r.get(6)?,
+        created_at: r.get(7)?,
+        last_login_at: r.get(8)?,
+    })
 }
 
 #[cfg(test)]
@@ -232,5 +365,73 @@ mod tests {
             rusqlite::params!["u2", "ALICE", "alice", "a2@x.com", None::<String>],
         );
         assert!(err.is_err(), "username_canon should be UNIQUE");
+    }
+
+    use crate::auth::users::NewUser;
+
+    fn new_user(name: &str, email: &str) -> NewUser {
+        NewUser {
+            username: name.into(),
+            email: email.into(),
+            password_hash: Some("$argon2id$dummy".into()),
+            email_verified: false,
+        }
+    }
+
+    #[test]
+    fn insert_and_find_user() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let id = store.insert_user(&new_user("Alice", "alice@x.com")).unwrap();
+        let u = store.find_user_by_id(id).unwrap().unwrap();
+        assert_eq!(u.username, "Alice");
+        assert_eq!(u.username_canon, "alice");
+        assert_eq!(u.email_verified, false);
+        assert_eq!(u.token_version, 0);
+    }
+
+    #[test]
+    fn find_by_email_and_username_works() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        store.insert_user(&new_user("Alice", "alice@x.com")).unwrap();
+        let by_email = store.find_user_by_email("alice@x.com").unwrap().unwrap();
+        let by_username = store.find_user_by_username("ALICE").unwrap().unwrap();
+        assert_eq!(by_email.id, by_username.id);
+    }
+
+    #[test]
+    fn duplicate_username_rejected() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        store.insert_user(&new_user("Alice", "a1@x.com")).unwrap();
+        let err = store.insert_user(&new_user("alice", "a2@x.com")).unwrap_err();
+        assert_eq!(err, "username_taken");
+    }
+
+    #[test]
+    fn duplicate_email_rejected() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        store.insert_user(&new_user("Alice", "a@x.com")).unwrap();
+        let err = store.insert_user(&new_user("Bob", "a@x.com")).unwrap_err();
+        assert_eq!(err, "email_taken");
+    }
+
+    #[test]
+    fn password_update_bumps_token_version() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let id = store.insert_user(&new_user("Alice", "alice@x.com")).unwrap();
+        let v1 = store.update_user_password(id, "$argon2id$new").unwrap();
+        let v2 = store.update_user_password(id, "$argon2id$newer").unwrap();
+        assert_eq!(v1, 1);
+        assert_eq!(v2, 2);
+    }
+
+    #[test]
+    fn email_verify_and_touch_login() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let id = store.insert_user(&new_user("Alice", "alice@x.com")).unwrap();
+        store.set_user_email_verified(id).unwrap();
+        store.touch_user_login(id).unwrap();
+        let u = store.find_user_by_id(id).unwrap().unwrap();
+        assert!(u.email_verified);
+        assert!(u.last_login_at.is_some());
     }
 }
