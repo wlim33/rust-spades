@@ -111,7 +111,22 @@ pub struct PresenceSnapshot {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum ServerEvent {
-    StateChanged(GameStateResponse),
-    GameAborted { game_id: Uuid, reason: String },
+    /// Game state changed. `seq` is the per-game monotonic cursor; the
+    /// initial snapshot sent on connect carries the cursor value clients
+    /// should expect the next streamed event to match.
+    StateChanged {
+        seq: u64,
+        #[serde(flatten)]
+        state: GameStateResponse,
+    },
+    GameAborted {
+        seq: u64,
+        game_id: Uuid,
+        reason: String,
+    },
     PresenceChanged(PresenceSnapshot),
+    /// Server detected that this subscription lagged past the broadcast
+    /// buffer and cannot continue cleanly. Client should reconnect to
+    /// receive a fresh snapshot.
+    Resync { reason: String },
 }

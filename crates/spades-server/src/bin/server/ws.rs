@@ -28,7 +28,7 @@ pub async fn game_ws(
         (status, Json(ErrorResponse { error: format!("{}", e) }))
     })?;
 
-    let rx = state.game_manager.subscribe(game_id).map_err(|e| {
+    let (rx, initial_seq) = state.game_manager.subscribe(game_id).map_err(|e| {
         (
             StatusCode::NOT_FOUND,
             Json(ErrorResponse { error: format!("{}", e) }),
@@ -44,13 +44,14 @@ pub async fn game_ws(
     let player_id = query.player_id.as_deref().and_then(parse_uuid_or_short_id);
     let presence = state.presence.clone();
     Ok(ws.on_upgrade(move |socket| {
-        handle_game_ws(socket, initial_state, rx, player_id, game_id, presence, presence_rx, initial_presence)
+        handle_game_ws(socket, initial_state, initial_seq, rx, player_id, game_id, presence, presence_rx, initial_presence)
     }))
 }
 
 async fn handle_game_ws(
     mut socket: WebSocket,
     initial_state: GameStateResponse,
+    initial_seq: u64,
     mut rx: broadcast::Receiver<GameEvent>,
     player_id: Option<Uuid>,
     game_id: Uuid,
@@ -58,7 +59,7 @@ async fn handle_game_ws(
     presence_rx: Option<broadcast::Receiver<PresenceSnapshot>>,
     initial_presence: Option<PresenceSnapshot>,
 ) {
-    let initial_event = ServerEvent::StateChanged(initial_state);
+    let initial_event = ServerEvent::StateChanged { seq: initial_seq, state: initial_state };
     if let Ok(json) = serde_json::to_string(&initial_event) {
         if socket.send(Message::Text(json.into())).await.is_err() {
             return;
@@ -88,8 +89,8 @@ async fn handle_game_ws(
                 match event {
                     Ok(game_event) => {
                         let server_event = match game_event {
-                            GameEvent::StateChanged(state) => ServerEvent::StateChanged(state),
-                            GameEvent::GameAborted { game_id, reason } => ServerEvent::GameAborted { game_id, reason },
+                            GameEvent::StateChanged { seq, state } => ServerEvent::StateChanged { seq, state },
+                            GameEvent::GameAborted { seq, game_id, reason } => ServerEvent::GameAborted { seq, game_id, reason },
                         };
                         if let Ok(json) = serde_json::to_string(&server_event) {
                             if socket.send(Message::Text(json.into())).await.is_err() {
@@ -97,7 +98,19 @@ async fn handle_game_ws(
                             }
                         }
                     }
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        // Subscriber fell more than capacity events behind. The
+                        // remaining stream would silently desync from server
+                        // truth — force the client to reconnect for a fresh
+                        // snapshot.
+                        eprintln!("game ws {} lagged {} event(s); forcing resync", game_id, n);
+                        let resync = ServerEvent::Resync { reason: format!("lagged {n}") };
+                        if let Ok(json) = serde_json::to_string(&resync) {
+                            let _ = socket.send(Message::Text(json.into())).await;
+                        }
+                        let _ = socket.send(Message::Close(None)).await;
+                        break;
+                    }
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
             }

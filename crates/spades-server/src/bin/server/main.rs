@@ -465,6 +465,85 @@ mod tests {
         assert_eq!(resp.status_code(), StatusCode::REQUEST_TIMEOUT);
     }
 
+    #[test]
+    fn server_event_resync_serializes_with_tag() {
+        use crate::dto::ServerEvent;
+        let event = ServerEvent::Resync { reason: "lagged 5".to_string() };
+        let json = serde_json::to_string(&event).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["event"], "resync");
+        assert_eq!(parsed["reason"], "lagged 5");
+    }
+
+    #[test]
+    fn server_event_state_changed_carries_seq() {
+        use crate::dto::ServerEvent;
+        use spades_server::game_manager::GameStateResponse;
+        let state = GameStateResponse {
+            game_id: Uuid::nil(),
+            short_id: spades::uuid_to_short_id(Uuid::nil()),
+            state: spades::State::NotStarted,
+            team_a_score: None,
+            team_b_score: None,
+            team_a_bags: None,
+            team_b_bags: None,
+            current_player_id: None,
+            player_names: [
+                spades_server::game_manager::PlayerNameEntry { player_id: Uuid::nil(), name: None },
+                spades_server::game_manager::PlayerNameEntry { player_id: Uuid::nil(), name: None },
+                spades_server::game_manager::PlayerNameEntry { player_id: Uuid::nil(), name: None },
+                spades_server::game_manager::PlayerNameEntry { player_id: Uuid::nil(), name: None },
+            ],
+            timer_config: None,
+            player_clocks_ms: None,
+            active_player_clock_ms: None,
+            table_cards: None,
+            player_bets: None,
+            player_tricks_won: None,
+            last_trick_winner_id: None,
+            last_completed_trick: None,
+        };
+        let event = ServerEvent::StateChanged { seq: 42, state };
+        let parsed: serde_json::Value = serde_json::from_str(&serde_json::to_string(&event).unwrap()).unwrap();
+        assert_eq!(parsed["event"], "state_changed");
+        assert_eq!(parsed["seq"], 42);
+        // GameStateResponse is flattened — its fields appear at the top level.
+        assert_eq!(parsed["state"], "NotStarted");
+    }
+
+    #[tokio::test]
+    async fn lagged_subscriber_observes_lagged_error() {
+        // Drives more broadcasts than the per-game buffer holds (64) without
+        // consuming them, then verifies tokio's broadcast surfaces Lagged.
+        // This is what the WS handler now translates into a `Resync` close
+        // frame; the WS plumbing itself is too involved to unit-test here, so
+        // we cover the broadcast layer plus the wire-format Resync separately.
+        use spades_server::game_manager::{GameManager, GameEvent};
+        use spades::GameTransition;
+        use tokio::sync::broadcast;
+
+        let manager = GameManager::new();
+        let response = manager.create_game(500, None).unwrap();
+        let (mut rx, _) = manager.subscribe(response.game_id).unwrap();
+
+        manager.make_transition(response.game_id, GameTransition::Start).unwrap();
+        for i in 0..80 {
+            manager
+                .set_player_name(response.game_id, response.player_ids[0], Some(format!("p{i}")))
+                .unwrap();
+        }
+
+        let mut saw_lagged = false;
+        for _ in 0..200 {
+            match rx.try_recv() {
+                Ok(GameEvent::StateChanged { .. }) | Ok(GameEvent::GameAborted { .. }) => continue,
+                Err(broadcast::error::TryRecvError::Lagged(_)) => { saw_lagged = true; break; }
+                Err(_) => break,
+            }
+        }
+        assert!(saw_lagged, "expected Lagged after overflowing the broadcast buffer");
+    }
+
     #[tokio::test]
     async fn test_create_game() {
         let server = test_app();

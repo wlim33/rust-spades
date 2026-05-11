@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, RwLock};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 use tokio::sync::broadcast;
@@ -11,12 +12,51 @@ use crate::sqlite_store::SqliteStore;
 use serde::{Serialize, Deserialize};
 use rand::seq::SliceRandom;
 
-/// Event broadcast to WebSocket subscribers when game state changes
+/// Event broadcast to WebSocket subscribers when game state changes.
+///
+/// `seq` is a per-game monotonically-increasing cursor allocated atomically
+/// inside the per-game write lock — events for one game are totally ordered
+/// across threads, and a subscriber can detect a missed event by observing
+/// a gap in seq.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum GameEvent {
-    StateChanged(GameStateResponse),
-    GameAborted { game_id: Uuid, reason: String },
+    StateChanged {
+        seq: u64,
+        #[serde(flatten)]
+        state: GameStateResponse,
+    },
+    GameAborted {
+        seq: u64,
+        game_id: Uuid,
+        reason: String,
+    },
+}
+
+/// Per-game fan-out channel paired with the seq cursor. The cursor is the
+/// seq value that will be assigned to the NEXT event; reading it without
+/// incrementing gives subscribers a "you are here" marker for the snapshot
+/// they receive on connect.
+pub struct GameBroadcaster {
+    pub sender: broadcast::Sender<GameEvent>,
+    pub next_seq: AtomicU64,
+}
+
+impl GameBroadcaster {
+    pub fn new(capacity: usize) -> Self {
+        let (sender, _) = broadcast::channel(capacity);
+        Self { sender, next_seq: AtomicU64::new(0) }
+    }
+
+    /// Allocate the next seq value (and advance the cursor).
+    pub fn allocate_seq(&self) -> u64 {
+        self.next_seq.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// Read the current cursor without advancing — used for snapshot stamping.
+    pub fn current_seq(&self) -> u64 {
+        self.next_seq.load(Ordering::Relaxed)
+    }
 }
 
 /// Runtime-only timer state for an active turn (not serialized)
@@ -37,7 +77,7 @@ pub struct AiPlayerConfig {
 #[derive(Clone)]
 pub struct GameManager {
     games: Arc<RwLock<HashMap<Uuid, Arc<RwLock<Game>>>>>,
-    broadcasters: Arc<RwLock<HashMap<Uuid, broadcast::Sender<GameEvent>>>>,
+    broadcasters: Arc<RwLock<HashMap<Uuid, Arc<GameBroadcaster>>>>,
     db: Option<Arc<SqliteStore>>,
     active_timers: Arc<Mutex<HashMap<Uuid, ActiveTurnTimer>>>,
     ai_configs: Arc<RwLock<HashMap<Uuid, AiPlayerConfig>>>,
@@ -176,8 +216,7 @@ impl GameManager {
         for game in existing_games {
             let id = *game.get_id();
             games_map.insert(id, Arc::new(RwLock::new(game)));
-            let (tx, _) = broadcast::channel(64);
-            broadcasters_map.insert(id, tx);
+            broadcasters_map.insert(id, Arc::new(GameBroadcaster::new(64)));
         }
         let count = games_map.len();
         println!("Loaded {} game(s) from database", count);
@@ -261,9 +300,8 @@ impl GameManager {
         games.insert(game_id, Arc::new(RwLock::new(game)));
         drop(games);
 
-        let (tx, _) = broadcast::channel(64);
         let mut broadcasters = self.broadcasters.write().map_err(|_| GameManagerError::LockError)?;
-        broadcasters.insert(game_id, tx);
+        broadcasters.insert(game_id, Arc::new(GameBroadcaster::new(64)));
 
         Ok(CreateGameResponse {
             game_id,
@@ -281,9 +319,8 @@ impl GameManager {
         games.insert(game_id, Arc::new(RwLock::new(game)));
         drop(games);
 
-        let (tx, _) = broadcast::channel(64);
         let mut broadcasters = self.broadcasters.write().map_err(|_| GameManagerError::LockError)?;
-        broadcasters.insert(game_id, tx);
+        broadcasters.insert(game_id, Arc::new(GameBroadcaster::new(64)));
 
         Ok(CreateGameResponse {
             game_id,
@@ -539,13 +576,16 @@ impl GameManager {
         let state_response = Self::build_state_response(game_id, &game, active_timer);
         drop(timers);
 
+        // Allocate seq + broadcast while the per-game write lock is still held
+        // so concurrent transitions see seq values in transition order.
+        if let Ok(broadcasters) = self.broadcasters.read()
+            && let Some(b) = broadcasters.get(&game_id) {
+                let seq = b.allocate_seq();
+                let _ = b.sender.send(GameEvent::StateChanged { seq, state: state_response });
+            }
+
         drop(game);
         drop(games);
-
-        if let Ok(broadcasters) = self.broadcasters.read()
-            && let Some(tx) = broadcasters.get(&game_id) {
-                let _ = tx.send(GameEvent::StateChanged(state_response));
-            }
 
         Ok(result)
     }
@@ -646,25 +686,22 @@ impl GameManager {
 
     /// Abort a game (used for round 1 betting timeout)
     fn abort_game(&self, game_id: Uuid, reason: String) {
-        {
-            let games = match self.games.read() {
-                Ok(g) => g,
-                Err(_) => return,
-            };
-            if let Some(game_lock) = games.get(&game_id)
-                && let Ok(mut game) = game_lock.write() {
-                    game.set_state(State::Aborted);
-                    game.set_turn_started_at_epoch_ms(None);
-                    self.persist_update(&game);
-                }
-        }
+        let games = match self.games.read() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        if let Some(game_lock) = games.get(&game_id)
+            && let Ok(mut game) = game_lock.write() {
+                game.set_state(State::Aborted);
+                game.set_turn_started_at_epoch_ms(None);
+                self.persist_update(&game);
 
-        if let Ok(broadcasters) = self.broadcasters.read()
-            && let Some(tx) = broadcasters.get(&game_id) {
-                let _ = tx.send(GameEvent::GameAborted {
-                    game_id,
-                    reason,
-                });
+                // Broadcast under the write lock so seq matches state order.
+                if let Ok(broadcasters) = self.broadcasters.read()
+                    && let Some(b) = broadcasters.get(&game_id) {
+                        let seq = b.allocate_seq();
+                        let _ = b.sender.send(GameEvent::GameAborted { seq, game_id, reason });
+                    }
             }
     }
 
@@ -681,13 +718,15 @@ impl GameManager {
 
         let state_response = Self::build_state_response(game_id, &game, None);
 
+        // Broadcast under the write lock so seq matches state order.
+        if let Ok(broadcasters) = self.broadcasters.read()
+            && let Some(b) = broadcasters.get(&game_id) {
+                let seq = b.allocate_seq();
+                let _ = b.sender.send(GameEvent::StateChanged { seq, state: state_response });
+            }
+
         drop(game);
         drop(games);
-
-        if let Ok(broadcasters) = self.broadcasters.read()
-            && let Some(tx) = broadcasters.get(&game_id) {
-                let _ = tx.send(GameEvent::StateChanged(state_response));
-            }
 
         Ok(())
     }
@@ -725,11 +764,17 @@ impl GameManager {
         Ok(())
     }
 
-    /// Subscribe to game state change events
-    pub fn subscribe(&self, game_id: Uuid) -> Result<broadcast::Receiver<GameEvent>, GameManagerError> {
+    /// Subscribe to game state change events. Returns the receiver paired with
+    /// the current seq cursor — i.e. the seq that will be assigned to the next
+    /// broadcast event. A subscriber receives the snapshot stamped with this
+    /// cursor, then expects subsequent events to carry seq >= cursor.
+    pub fn subscribe(
+        &self,
+        game_id: Uuid,
+    ) -> Result<(broadcast::Receiver<GameEvent>, u64), GameManagerError> {
         let broadcasters = self.broadcasters.read().map_err(|_| GameManagerError::LockError)?;
-        let tx = broadcasters.get(&game_id).ok_or(GameManagerError::GameNotFound)?;
-        Ok(tx.subscribe())
+        let b = broadcasters.get(&game_id).ok_or(GameManagerError::GameNotFound)?;
+        Ok((b.sender.subscribe(), b.current_seq()))
     }
 }
 
@@ -939,17 +984,44 @@ mod tests {
     fn test_subscribe_receives_state_changed() {
         let manager = GameManager::new();
         let response = manager.create_game(500, None).unwrap();
-        let mut rx = manager.subscribe(response.game_id).unwrap();
+        let (mut rx, initial_seq) = manager.subscribe(response.game_id).unwrap();
+        assert_eq!(initial_seq, 0, "fresh game starts at seq 0");
 
         manager.make_transition(response.game_id, GameTransition::Start).unwrap();
 
         let event = rx.try_recv().unwrap();
         match event {
-            GameEvent::StateChanged(state) => {
+            GameEvent::StateChanged { seq, state } => {
+                assert_eq!(seq, 0, "first broadcast event has seq 0");
                 assert_eq!(state.state, State::Betting(0));
             }
             _ => panic!("Expected StateChanged event"),
         }
+    }
+
+    #[test]
+    fn subscribe_seq_advances_with_each_broadcast() {
+        let manager = GameManager::new();
+        let response = manager.create_game(500, None).unwrap();
+        let (mut rx, initial_seq) = manager.subscribe(response.game_id).unwrap();
+        assert_eq!(initial_seq, 0);
+
+        // Start transition + a few bets — each is a broadcast event.
+        manager.make_transition(response.game_id, GameTransition::Start).unwrap();
+        manager.make_transition(response.game_id, GameTransition::Bet(3)).unwrap();
+        manager.make_transition(response.game_id, GameTransition::Bet(3)).unwrap();
+
+        let mut seqs = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            if let GameEvent::StateChanged { seq, .. } = event {
+                seqs.push(seq);
+            }
+        }
+        assert_eq!(seqs, vec![0, 1, 2], "seq is monotonic from 0");
+
+        // Subscribing again returns the cursor at the post-broadcast value.
+        let (_rx2, next_cursor) = manager.subscribe(response.game_id).unwrap();
+        assert_eq!(next_cursor, 3, "cursor matches count of broadcasts so far");
     }
 
     #[test]
@@ -992,11 +1064,14 @@ mod tests {
             last_trick_winner_id: None,
             last_completed_trick: None,
         };
-        let event = GameEvent::StateChanged(state);
+        let event = GameEvent::StateChanged { seq: 7, state };
         let json = serde_json::to_string(&event).unwrap();
         let deserialized: GameEvent = serde_json::from_str(&json).unwrap();
         match deserialized {
-            GameEvent::StateChanged(s) => assert_eq!(s.state, State::NotStarted),
+            GameEvent::StateChanged { seq, state: s } => {
+                assert_eq!(seq, 7);
+                assert_eq!(s.state, State::NotStarted);
+            }
             _ => panic!("Expected StateChanged"),
         }
     }
@@ -1004,13 +1079,17 @@ mod tests {
     #[test]
     fn test_game_event_serde_game_aborted() {
         let event = GameEvent::GameAborted {
+            seq: 12,
             game_id: Uuid::nil(),
             reason: "timeout".to_string(),
         };
         let json = serde_json::to_string(&event).unwrap();
         let deserialized: GameEvent = serde_json::from_str(&json).unwrap();
         match deserialized {
-            GameEvent::GameAborted { reason, .. } => assert_eq!(reason, "timeout"),
+            GameEvent::GameAborted { seq, reason, .. } => {
+                assert_eq!(seq, 12);
+                assert_eq!(reason, "timeout");
+            },
             _ => panic!("Expected GameAborted"),
         }
     }
