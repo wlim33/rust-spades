@@ -240,6 +240,35 @@ impl SqliteStore {
         Ok(())
     }
 
+    pub fn find_oauth_account(&self, provider: &str, provider_uid: &str)
+        -> Result<Option<uuid::Uuid>, String>
+    {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT user_id FROM oauth_accounts WHERE provider = ?1 AND provider_uid = ?2",
+            rusqlite::params![provider, provider_uid],
+            |r| {
+                let s: String = r.get(0)?;
+                Ok(s)
+            },
+        ).map(|s| Some(uuid::Uuid::parse_str(&s).unwrap()))
+         .or_else(|e| match e {
+             rusqlite::Error::QueryReturnedNoRows => Ok(None),
+             other => Err(other.to_string()),
+         })
+    }
+
+    pub fn insert_oauth_account(&self, provider: &str, provider_uid: &str, user_id: uuid::Uuid, email: &str)
+        -> Result<(), String>
+    {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO oauth_accounts (provider, provider_uid, user_id, email) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![provider, provider_uid, user_id.to_string(), email],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn claim_anon_game_seats(&self, anon_id: uuid::Uuid, user_id: uuid::Uuid) -> Result<usize, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let n = conn.execute(
