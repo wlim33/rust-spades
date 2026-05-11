@@ -526,14 +526,14 @@ Per-account lockout (see Data flows / Login) operates in addition to per-IP buck
 
 ### Secrets
 
-- `SERVER_SECRET` (32 random bytes, hex) signs cookies. Rotation invalidates all sessions. Required at startup unless `--insecure-cookies` is set.
+- No global signing-key environment variable. Tower-sessions cookies are opaque session IDs (no signing required — the cookie is just a pointer to a server-side blob); the prior draft's `SERVER_SECRET` is unnecessary.
 - Required env vars validated at startup. Missing required env → server refuses to start.
 
 ### Deferred to future slices
 
 - **Transition-endpoint authentication.** Today any caller with the `game_id` can `POST /games/:id/transition`. The fix (require session-or-bearer match against the seat's `user_id`/`player_id`) is its own slice; this one lays the data needed to do it.
 - `GET /auth/sessions` + `DELETE /auth/sessions/:id` (user-managed device list).
-- Per-key rotation for `SERVER_SECRET`.
+- "Log out everywhere" UI (already enabled at the data layer by `token_version`).
 - Audit / security history (Lila's `security_history`).
 - Account deletion and data export (GDPR).
 - Personal API access tokens.
