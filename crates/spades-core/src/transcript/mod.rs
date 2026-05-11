@@ -76,7 +76,6 @@ pub enum DecodeError {
     DuplicateTag { line: usize, key: String },
     MissingRequiredTag { key: &'static str },
     BadCard { line: usize, token: String },
-    DuplicateRound { round: usize },
     NonMonotonicRound { expected: usize, found: usize },
     TooManyTricks { round: usize },
     TooManyBets { round: usize },

@@ -557,4 +557,104 @@ mod tests {
 ";
         assert!(matches!(decode(s), Err(DecodeError::BadCard { token, .. }) if token == "1X"));
     }
+
+    #[test]
+    fn decode_rejects_bad_termination() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"Forfeit\"]
+[Result \"*\"]
+";
+        assert!(matches!(decode(s), Err(DecodeError::BadTermination { .. })));
+    }
+
+    #[test]
+    fn decode_rejects_bad_result() {
+        // After the Task-9 format change, Result is space-separated. A single-token
+        // value with no space is invalid.
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"Completed\"]
+[Result \"100\"]
+";
+        assert!(matches!(decode(s), Err(DecodeError::BadResult { .. })));
+    }
+
+    #[test]
+    fn decode_rejects_unknown_tag() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[Mystery \"x\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+";
+        assert!(matches!(decode(s), Err(DecodeError::BadTag { .. })));
+    }
+
+    #[test]
+    fn decode_rejects_trailing_content() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+
+garbage
+";
+        assert!(matches!(decode(s), Err(DecodeError::TrailingContent { .. })));
+    }
+
+    #[test]
+    fn decode_rejects_bad_escape() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[Name0 \"A\\nB\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+";
+        assert!(matches!(decode(s), Err(DecodeError::BadEscape { .. })));
+    }
+
+    #[test]
+    fn decode_rejects_timer_half_specified() {
+        let s = "\
+[GameId \"01010101-0101-0101-0101-010101010101\"]
+[MaxPoints \"500\"]
+[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
+[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]
+[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]
+[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]
+[TimerInitial \"300\"]
+[Termination \"InProgress\"]
+[Result \"*\"]
+";
+        assert!(matches!(
+            decode(s),
+            Err(DecodeError::MissingRequiredTag { key }) if key == "TimerInitial/Increment pair"
+        ));
+    }
 }
