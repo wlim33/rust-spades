@@ -86,7 +86,7 @@ impl Ord for Card {
 
 impl PartialOrd for Card {
     fn partial_cmp(&self, other: &Card) -> Option<Ordering> {
-        Some(((self.suit as u64) * 15 + (self.rank as u64)).cmp(&(((other.suit as u64)* 15) + (other.rank as u64))))
+        Some(self.cmp(other))
     }
 }
 
@@ -99,23 +99,22 @@ impl PartialOrd for Card {
 /// * Spades trump all other suits
 /// * The suit the first player (given by index) plays sets the suit of the trick
 /// * The highest ranking spades card or card of suit of first player's card wins the trick.
-pub fn get_trick_winner(index: usize, others: &[Card ; 4]) -> usize {
+pub fn get_trick_winner(index: usize, others: &[Card; 4]) -> usize {
     let mut winning_index = index;
     let mut max_card = &others[index];
 
-    for i in 0..4 {
-        let other = &others[i];
+    for (i, other) in others.iter().enumerate() {
         if other.suit == max_card.suit {
-            if other.rank as u8  > max_card.rank as u8 {
-                max_card = &other;
+            if (other.rank as u8) > max_card.rank as u8 {
+                max_card = other;
                 winning_index = i;
             }
         } else if other.suit == Suit::Spade {
-            max_card = &other;
+            max_card = other;
             winning_index = i;
         }
     }
-    return winning_index;
+    winning_index
 }
 
 
@@ -151,7 +150,7 @@ pub fn new_deck() -> Vec<Card> {
         }
     }
 
-    return cards;
+    cards
 }
 
 /// Returns an array of `Blank` suited and ranked cards.
@@ -164,8 +163,8 @@ pub fn new_pot() -> [Card; 4] {
     ]
 }
 
-/// Shuffles a `Vector` of cards in place, see [`rand::seq::SliceRandom::shuffle`](https://docs.rs/rand/latest/rand/seq/trait.SliceRandom.html#tymethod.shuffle).
-pub fn shuffle(cards: &mut Vec<Card>) {
+/// Shuffles a slice of cards in place, see [`rand::seq::SliceRandom::shuffle`].
+pub fn shuffle(cards: &mut [Card]) {
     let mut rng = thread_rng();
     cards.shuffle(&mut rng);
 }
@@ -177,11 +176,11 @@ pub fn deal_four_players(cards: &mut Vec<Card>) -> Vec<Vec<Card>> {
     let mut hands = vec![vec![], vec![], vec![], vec![]];
 
     let mut i = 0;
-    while cards.len() > 0 {
-        hands[i].push(cards.pop().unwrap());
+    while let Some(element) = cards.pop() {
+        hands[i].push(element);
         i = (i + 1) % 4;
     }
 
-    return hands;
+    hands
 }
 

@@ -30,7 +30,7 @@ impl TeamState {
         if team_tricks >= team_bets {
             let round_bags = team_tricks - team_bets;
             self.bags += round_bags;
-            self.cumulative_points += round_bags + (team_bets * 10) as i32;
+            self.cumulative_points += round_bags + (team_bets * 10);
         } else {
             self.cumulative_points -= team_bets * 10;
         }
@@ -82,7 +82,7 @@ impl Scoring {
             is_over: false,
             round: 0,
             trick: 0,
-            config: GameConfig {max_points: max_points},
+            config: GameConfig {max_points},
             nil_check: [false, false, false, false],
             player_tricks_won: [0; 4],
 
@@ -101,11 +101,11 @@ impl Scoring {
     }
 
     pub fn trick(&mut self, starting_player_index: usize, cards: &[Card; 4]) -> usize {
-        let winner = get_trick_winner(starting_player_index, &cards);
+        let winner = get_trick_winner(starting_player_index, cards);
         self.nil_check[winner] = true;
         self.player_tricks_won[winner] += 1;
 
-        if winner % 2 == 0 {
+        if winner.is_multiple_of(2) {
             self.team_a.current_round_tricks_won[self.trick] += 1;
         } else {
             self.team_b.current_round_tricks_won[self.trick] += 1;
@@ -137,7 +137,7 @@ impl Scoring {
             self.trick += 1;
         }
 
-        return winner;
+        winner
     }
 }
 

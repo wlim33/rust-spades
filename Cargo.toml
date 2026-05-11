@@ -10,9 +10,6 @@ license = "MIT"
 description = "A popular four person card game implemented in Rust."
 edition = "2024"
 
-[badges]
-travis-ci = { repository = "wlim33/rust-spades", branch = "master" }
-
 [dependencies]
 rand = "0.8"
 uuid = { version = "1.18", features = ["v4", "serde"] }

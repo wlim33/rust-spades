@@ -8,7 +8,7 @@ fn test_random_strategy_bet_in_range() {
     let game = Game::new(Uuid::new_v4(), [Uuid::new_v4(); 4], 500, None);
     for _ in 0..100 {
         let bet = strategy.choose_bet(&game, 0);
-        assert!(bet >= 1 && bet <= 4, "bet {} out of range", bet);
+        assert!((1..=4).contains(&bet), "bet {} out of range", bet);
     }
 }
 

@@ -226,19 +226,19 @@ pub fn api_main_unit() {
     assert_eq!(g.play(GameTransition::Bet(3)), Ok(TransitionSuccess::BetComplete));
 
     let mut trick_test_closure = |trick_number: usize, played_cards: &[Card; 4], team_a_won : usize| {
-        assert_eq!(g.play(GameTransition::Card(played_cards[0].clone())), Ok(TransitionSuccess::PlayCard));
+        assert_eq!(g.play(GameTransition::Card(played_cards[0])), Ok(TransitionSuccess::PlayCard));
         assert_eq!(g.play(GameTransition::Start), Err(TransitionError::AlreadyStarted));
         assert_eq!(g.play(GameTransition::Bet(3)), Err(TransitionError::BetInTrickStage));
 
-        assert_eq!(g.play(GameTransition::Card(played_cards[1].clone())), Ok(TransitionSuccess::PlayCard));
+        assert_eq!(g.play(GameTransition::Card(played_cards[1])), Ok(TransitionSuccess::PlayCard));
         assert_eq!(g.play(GameTransition::Start), Err(TransitionError::AlreadyStarted));
         assert_eq!(g.play(GameTransition::Bet(3)), Err(TransitionError::BetInTrickStage));
 
-        assert_eq!(g.play(GameTransition::Card(played_cards[2].clone())), Ok(TransitionSuccess::PlayCard));
+        assert_eq!(g.play(GameTransition::Card(played_cards[2])), Ok(TransitionSuccess::PlayCard));
         assert_eq!(g.play(GameTransition::Start), Err(TransitionError::AlreadyStarted));
         assert_eq!(g.play(GameTransition::Bet(3)), Err(TransitionError::BetInTrickStage));
 
-        assert_eq!(g.play(GameTransition::Card(played_cards[3].clone())), Ok(TransitionSuccess::Trick));
+        assert_eq!(g.play(GameTransition::Card(played_cards[3])), Ok(TransitionSuccess::Trick));
         assert_eq!(g.play(GameTransition::Start), Err(TransitionError::AlreadyStarted));
         assert_eq!(g.play(GameTransition::Bet(3)), Err(TransitionError::BetInTrickStage));
 

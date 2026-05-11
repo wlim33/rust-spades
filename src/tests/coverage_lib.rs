@@ -196,7 +196,7 @@ fn test_get_legal_cards_must_follow_suit() {
     let (mut g, _) = make_game_in_trick_state();
     // Play a card from player A to set leading suit
     let hand = g.get_current_hand().unwrap().clone();
-    let first_card = hand[0].clone();
+    let first_card = hand[0];
     let leading_suit = first_card.suit;
     g.play(GameTransition::Card(first_card)).unwrap();
 
@@ -311,7 +311,7 @@ fn test_card_incorrect_suit() {
     let (mut g, _) = make_game_in_trick_state();
     // Play first card to establish leading suit
     let hand = g.get_current_hand().unwrap().clone();
-    let first_card = hand[0].clone();
+    let first_card = hand[0];
     let leading_suit = first_card.suit;
     g.play(GameTransition::Card(first_card)).unwrap();
 
@@ -322,7 +322,7 @@ fn test_card_incorrect_suit() {
         // Find a card that is NOT the leading suit
         if let Some(wrong_card) = hand_b.iter().find(|c| c.suit != leading_suit) {
             assert_eq!(
-                g.play(GameTransition::Card(wrong_card.clone())),
+                g.play(GameTransition::Card(*wrong_card)),
                 Err(TransitionError::CardIncorrectSuit)
             );
         }

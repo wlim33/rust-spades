@@ -223,27 +223,24 @@ impl GameManager {
     }
 
     fn persist_insert(&self, game: &Game) {
-        if let Some(db) = &self.db {
-            if let Err(e) = db.insert_game(game) {
+        if let Some(db) = &self.db
+            && let Err(e) = db.insert_game(game) {
                 eprintln!("Failed to persist game insert: {}", e);
             }
-        }
     }
 
     fn persist_update(&self, game: &Game) {
-        if let Some(db) = &self.db {
-            if let Err(e) = db.update_game(game) {
+        if let Some(db) = &self.db
+            && let Err(e) = db.update_game(game) {
                 eprintln!("Failed to persist game update: {}", e);
             }
-        }
     }
 
     fn persist_delete(&self, game_id: Uuid) {
-        if let Some(db) = &self.db {
-            if let Err(e) = db.delete_game(game_id) {
+        if let Some(db) = &self.db
+            && let Err(e) = db.delete_game(game_id) {
                 eprintln!("Failed to persist game delete: {}", e);
             }
-        }
     }
 
     /// Create a new game with 4 players
@@ -500,11 +497,10 @@ impl GameManager {
             } else {
                 0
             };
-            if let Some(idx) = prev_idx {
-                if let Some(clocks) = game.get_player_clocks_mut() {
+            if let Some(idx) = prev_idx
+                && let Some(clocks) = game.get_player_clocks_mut() {
                     clocks.remaining_ms[idx] = clocks.remaining_ms[idx].saturating_sub(elapsed_ms) + increment_ms;
                 }
-            }
         }
 
         let result = game.play(transition)?;
@@ -545,11 +541,10 @@ impl GameManager {
         drop(game);
         drop(games);
 
-        if let Ok(broadcasters) = self.broadcasters.read() {
-            if let Some(tx) = broadcasters.get(&game_id) {
+        if let Ok(broadcasters) = self.broadcasters.read()
+            && let Some(tx) = broadcasters.get(&game_id) {
                 let _ = tx.send(GameEvent::StateChanged(state_response));
             }
-        }
 
         Ok(result)
     }
@@ -581,11 +576,10 @@ impl GameManager {
         // Verify expected_player_index matches (race condition guard)
         {
             let timers = self.active_timers.lock().unwrap();
-            if let Some(timer) = timers.get(&game_id) {
-                if timer.expected_player_index != player_idx {
+            if let Some(timer) = timers.get(&game_id)
+                && timer.expected_player_index != player_idx {
                     return;
                 }
-            }
         }
 
         // Set clock to 0 for the timed-out player
@@ -594,13 +588,11 @@ impl GameManager {
                 Ok(g) => g,
                 Err(_) => return,
             };
-            if let Some(game_lock) = games.get(&game_id) {
-                if let Ok(mut game) = game_lock.write() {
-                    if let Some(clocks) = game.get_player_clocks_mut() {
+            if let Some(game_lock) = games.get(&game_id)
+                && let Ok(mut game) = game_lock.write()
+                    && let Some(clocks) = game.get_player_clocks_mut() {
                         clocks.remaining_ms[player_idx] = 0;
                     }
-                }
-            }
         }
 
         // Clean up the timer entry (timeout already fired, just remove state)
@@ -658,23 +650,21 @@ impl GameManager {
                 Ok(g) => g,
                 Err(_) => return,
             };
-            if let Some(game_lock) = games.get(&game_id) {
-                if let Ok(mut game) = game_lock.write() {
+            if let Some(game_lock) = games.get(&game_id)
+                && let Ok(mut game) = game_lock.write() {
                     game.set_state(State::Aborted);
                     game.set_turn_started_at_epoch_ms(None);
                     self.persist_update(&game);
                 }
-            }
         }
 
-        if let Ok(broadcasters) = self.broadcasters.read() {
-            if let Some(tx) = broadcasters.get(&game_id) {
+        if let Ok(broadcasters) = self.broadcasters.read()
+            && let Some(tx) = broadcasters.get(&game_id) {
                 let _ = tx.send(GameEvent::GameAborted {
                     game_id,
                     reason,
                 });
             }
-        }
     }
 
     /// Set a player's display name
@@ -693,11 +683,10 @@ impl GameManager {
         drop(game);
         drop(games);
 
-        if let Ok(broadcasters) = self.broadcasters.read() {
-            if let Some(tx) = broadcasters.get(&game_id) {
+        if let Ok(broadcasters) = self.broadcasters.read()
+            && let Some(tx) = broadcasters.get(&game_id) {
                 let _ = tx.send(GameEvent::StateChanged(state_response));
             }
-        }
 
         Ok(())
     }
@@ -1081,7 +1070,7 @@ mod tests {
         // Play a valid card from the current player's hand
         let current_pid = state.current_player_id.unwrap();
         let hand = manager.get_hand(game_id, current_pid).unwrap();
-        let card = hand.cards[0].clone();
+        let card = hand.cards[0];
         let result = manager.make_transition(game_id, GameTransition::Card(card));
         assert!(result.is_ok());
     }
@@ -1169,7 +1158,7 @@ mod tests {
         // Play a valid card
         let current_pid = state.current_player_id.unwrap();
         let hand = manager.get_hand(game_id, current_pid).unwrap();
-        let card = hand.cards[0].clone();
+        let card = hand.cards[0];
         manager.make_transition(game_id, GameTransition::Card(card)).unwrap();
     }
 
@@ -1308,7 +1297,7 @@ mod tests {
                         let hand = gm.get_hand(game_id, human_player_id).unwrap();
                         let mut played = false;
                         for card in &hand.cards {
-                            if gm.make_transition(game_id, GameTransition::Card(card.clone())).is_ok() {
+                            if gm.make_transition(game_id, GameTransition::Card(*card)).is_ok() {
                                 played = true;
                                 break;
                             }

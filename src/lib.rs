@@ -25,6 +25,8 @@
 //! assert_eq!(*g.get_state(), State::Completed);
 //! ```
 
+#![allow(clippy::large_enum_variant)]
+
 mod scoring;
 mod game_state;
 mod cards;
@@ -360,13 +362,13 @@ impl Game {
         match self.state {
             State::Completed => {
                 if self.scoring.team_a.cumulative_points > self.scoring.team_b.cumulative_points {
-                    return Ok((&self.players[0].id, &self.players[2].id));
+                    Ok((&self.players[0].id, &self.players[2].id))
                 } else if self.scoring.team_b.cumulative_points > self.scoring.team_a.cumulative_points {
-                    return Ok((&self.players[1].id, &self.players[3].id));
+                    Ok((&self.players[1].id, &self.players[3].id))
                 } else {
                     // Unreachable: Scoring keeps is_over = false on a tie at max_points,
                     // so the game never transitions to State::Completed with equal scores.
-                    return Err(GetError::GameNotCompleted);
+                    Err(GetError::GameNotCompleted)
                 }
             },
             _ => {
@@ -386,13 +388,13 @@ impl Game {
             GameTransition::Bet(bet) => {
                 match self.state {
                     State::NotStarted => {
-                        return Err(TransitionError::NotStarted);
+                        Err(TransitionError::NotStarted)
                     },
                     State::Trick(_rotation_status) => {
-                        return Err(TransitionError::BetInTrickStage);
+                        Err(TransitionError::BetInTrickStage)
                     },
                     State::Completed | State::Aborted => {
-                        return Err(TransitionError::CompletedGame);
+                        Err(TransitionError::CompletedGame)
                     },
                     State::Betting(rotation_status) => {
                         self.scoring.add_bet(self.current_player_index,bet);
@@ -406,20 +408,20 @@ impl Game {
                             self.state = State::Betting((rotation_status + 1) % 4);
                         }
 
-                        return Ok(TransitionSuccess::Bet);
+                        Ok(TransitionSuccess::Bet)
                     },
-                };
+                }
             },
             GameTransition::Card(card) => {
                 match self.state {
                     State::NotStarted => {
-                        return Err(TransitionError::NotStarted);
+                        Err(TransitionError::NotStarted)
                     },
                     State::Completed | State::Aborted => {
-                        return Err(TransitionError::CompletedGame);
+                        Err(TransitionError::CompletedGame)
                     },
                     State::Betting(_rotation_status) => {
-                        return Err(TransitionError::CardInBettingStage)
+                        Err(TransitionError::CardInBettingStage)
                     },
                     State::Trick(rotation_status) => {
                         {
@@ -439,7 +441,7 @@ impl Game {
                             if rotation_status == 0 {
                                 self.leading_suit = card.suit;
                             }
-                            if self.leading_suit != card.suit && player_hand.iter().any(|ref x| x.suit == leading_suit) {
+                            if self.leading_suit != card.suit && player_hand.iter().any(|x| x.suit == leading_suit) {
                                 return Err(TransitionError::CardIncorrectSuit);
                             }
 
@@ -471,14 +473,14 @@ impl Game {
                                 self.state = State::Trick((rotation_status + 1) % 4);
                                 self.hands_played.push(new_pot());
                             }
-                            return Ok(TransitionSuccess::Trick);
+                            Ok(TransitionSuccess::Trick)
                         } else {
                             self.current_player_index = (self.current_player_index + 1) % 4;
                             self.state = State::Trick((rotation_status + 1) % 4);
-                            return Ok(TransitionSuccess::PlayCard);
+                            Ok(TransitionSuccess::PlayCard)
                         }
                     }
-                };
+                }
             },
             GameTransition::Start => {
                 if self.state != State::NotStarted {
@@ -486,7 +488,7 @@ impl Game {
                 }
                 self.deal_cards();
                 self.state = State::Betting(0);
-                return Ok(TransitionSuccess::Start);
+                Ok(TransitionSuccess::Start)
             }
         }
     }

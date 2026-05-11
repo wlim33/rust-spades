@@ -378,11 +378,10 @@ impl ChallengeManager {
                         }
 
                         // Update challenge status
-                        if let Ok(mut challenges) = self.challenges.write() {
-                            if let Some(c) = challenges.get_mut(&challenge_id) {
+                        if let Ok(mut challenges) = self.challenges.write()
+                            && let Some(c) = challenges.get_mut(&challenge_id) {
                                 c.status = ChallengeStatusKindInternal::Started { game_id: response.game_id };
                             }
-                        }
 
                         let _ = broadcast_tx.send(ChallengeEvent::GameStart(MatchResult {
                             game_id: response.game_id,
@@ -420,8 +419,8 @@ impl ChallengeManager {
         }
 
         let idx = seat.to_index();
-        if let Some(occupant) = &challenge.seats[idx] {
-            if occupant.player_id == player_id {
+        if let Some(occupant) = &challenge.seats[idx]
+            && occupant.player_id == player_id {
                 challenge.seats[idx] = None;
                 let seats_snapshot = challenge.seats_snapshot();
                 let _ = challenge.broadcast_tx.send(ChallengeEvent::SeatUpdate {
@@ -429,7 +428,6 @@ impl ChallengeManager {
                     seats: seats_snapshot,
                 });
             }
-        }
     }
 
     /// Cancel a challenge. Only the creator can cancel it.

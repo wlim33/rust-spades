@@ -1,3 +1,10 @@
+#![allow(
+    clippy::collapsible_if,
+    clippy::collapsible_match,
+    clippy::large_enum_variant,
+    clippy::too_many_arguments,
+)]
+
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -2172,7 +2179,7 @@ mod tests {
         response.assert_status_ok();
         let body: serde_json::Value = response.json();
         assert_eq!(body["info"]["title"], "Spades Game Server");
-        assert!(body["paths"].as_object().unwrap().len() > 0);
+        assert!(!body["paths"].as_object().unwrap().is_empty());
     }
 
     #[tokio::test]
