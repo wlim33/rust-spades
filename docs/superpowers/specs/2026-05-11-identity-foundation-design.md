@@ -10,6 +10,14 @@
 
 `rust-spades` v2.0.0 is a working Spades game server: `spades-core` (game engine library) + `spades-server` (Axum REST + WebSocket + SSE + optional SQLite, with seek queue, lobbies, challenge links, Fischer timers, name validation, random AI). 238 tests pass. The server is single-binary, single-box, currently deployable to a Linux VM via the gitignored deploy scripts.
 
+**Existing identity infrastructure (discovered during planning, not previously documented):** the server already uses `tower-sessions` + `tower-sessions-sqlx-store` (SQLite-backed sessions, 30-day inactivity expiry, wired in `bin/server/main.rs:150-162`). It exposes:
+
+- `UserSession { user_id: Uuid, display_name: Option<String> }` as the session payload (`bin/server/dto.rs:11-15`).
+- `GET /player` — mints a fresh `user_id` into the session on first call and returns it.
+- `PUT /player/name` — validates and stores a display name.
+
+Crucially, **game/lobby/challenge handlers do not consult the session**; they take `name` in request bodies and ignore the session-stored `user_id`. So the in-place infrastructure provides per-browser anonymous identity (cookie-lifetime stable) but doesn't propagate into the game flow. This design leverages that infrastructure rather than building a parallel cookie/session system, and routes the existing `user_id` into game seats.
+
 The product goal driving this design is **"ship a public Spades site"** — i.e., get rust-spades into a state where strangers on the internet can register, play, and come back. Lila (`github.com/lichess-org/lila`) is the reference architecture; this spec ports Lila's identity layer (the `user`, `oauth`, `security`, `pref` cluster) into rust-spades.
 
 Out-of-scope for this slice but anticipated as future slices:
@@ -43,14 +51,14 @@ These were settled in brainstorming and are *not* open for re-litigation at plan
 
 | Axis | Decision |
 |---|---|
-| Anonymous vs registered | Anon-first, claimable. Guests get a long-lived `__anon_id` cookie; on register/login, the anon-session's games attach to the new user. |
+| Anonymous vs registered | Anon-first, claimable. The existing `tower-sessions` session blob carries the anon `user_id`; on register/login, a `claimed_by` field is set in the same blob, and the anon's existing game seats are reattributed to the new registered user. |
 | Auth methods | Email/password and OAuth (Google, GitHub). No magic links. No OAuth-provider role. |
 | Datastore | SQLite (becomes mandatory; was optional). No Postgres, no Redis in this slice. |
 | Username model | Lila-style: immutable, case-insensitive, ASCII `[a-zA-Z0-9_-]`, length 2-20. |
 | Email | Pluggable `Mailer` trait. Default `SmtpMailer` via `lettre`, configured via `SMTP_*` env vars. `LogMailer` for dev/CI. |
 | Rate limiting | Auth endpoints only, in-process token bucket via `governor`, plus per-account lockout. No global tower-governor in this slice. |
 | Architectural shape | New `auth/` module inside `spades-server`. Not a new crate. |
-| Sessions | Server-side stored, opaque random ID, cookie-based, 30-day sliding. Tower-sessions or hand-rolled (decided at plan time). |
+| Sessions | **Reuse `tower-sessions` (already integrated).** The session cookie is the transport for both anon and registered identity. Per-user session invalidation uses a `token_version` counter on `users` (compared inside the auth extractor) — no separate `sessions` table. |
 | Login identifier | Either email or username. `login` field; `'@'` discriminates. |
 
 ---
@@ -63,54 +71,67 @@ These were settled in brainstorming and are *not* open for re-litigation at plan
 crates/spades-server/src/
 ├── auth/                       ← NEW module
 │   ├── mod.rs                  ← AuthState, pub re-exports, Identity / AuthUser extractors
-│   ├── users.rs                ← User struct, repo (CRUD), username rules
-│   ├── sessions.rs             ← Session struct, repo, cookie helpers
-│   ├── anon.rs                 ← AnonSession struct, claim logic, middleware
-│   ├── oauth.rs                ← Google + GitHub flow, state CSRF, PKCE
+│   ├── users.rs                ← User struct, repo (CRUD), username rules, token_version
+│   ├── session_ext.rs          ← UserSession helpers: get/set claimed_by, ensure_anon_id, token_version checks
+│   ├── oauth.rs                ← Google + GitHub flow, state CSRF, PKCE, pending-signup store
 │   ├── password.rs             ← argon2id hash/verify, weak-password reject list
 │   ├── mailer.rs               ← Mailer trait + SmtpMailer + LogMailer
 │   ├── rate_limit.rs           ← Per-endpoint token buckets, per-account lockout
+│   ├── tokens.rs               ← auth_tokens repo (verify_email, password_reset)
+│   ├── game_seats.rs           ← game_seats repo (insert on create, update on join, claim, list-by-user)
 │   └── error.rs                ← AuthError → HTTP response
 ├── sqlite_store.rs             ← MODIFIED: new tables (see Data model)
 ├── game_manager.rs             ← unchanged
-├── matchmaking.rs              ← unchanged shape; handlers pass Option<&Identity> in
+├── matchmaking.rs              ← unchanged shape; handlers pass Identity in
 ├── challenges.rs               ← same
 ├── validation.rs               ← unchanged
 └── bin/server/
-    ├── main.rs                 ← MODIFIED: build AuthState, mount /auth/* and /users/*
+    ├── main.rs                 ← MODIFIED: build AuthState, mount /auth/*, /users/*, configurable Secure cookies
     ├── handlers/
     │   ├── auth.rs             ← NEW: register, login, logout, me, password-reset/*, verify-email
-    │   ├── oauth.rs            ← NEW: /auth/oauth/:provider/{login,callback}
+    │   ├── oauth.rs            ← NEW: /auth/oauth/:provider/{login,callback}, /auth/oauth/complete
     │   ├── users.rs            ← NEW: GET /users/:username, GET /users/:username/games, PATCH /users/me
     │   ├── games.rs            ← MODIFIED: Identity extractor, write to game_seats
     │   ├── matchmaking.rs      ← MODIFIED: same
     │   ├── challenges.rs       ← MODIFIED: same
     │   └── players.rs          ← MODIFIED: rename rejects if seat is user-bound
-    └── dto.rs                  ← MODIFIED: auth request/response DTOs
+    └── dto.rs                  ← MODIFIED: auth request/response DTOs; `UserSession` grows `claimed_by: Option<Uuid>` and `token_version: i32`
 ```
+
+Key change vs naive port: there is no `auth/sessions.rs` and no `auth/anon.rs` — both responsibilities are handled by `tower-sessions` (cookie + session blob transport) plus `auth/session_ext.rs` (typed helpers over the existing `UserSession` blob).
 
 ### Extractors
 
-`auth::mod` exports two Axum extractors:
+`auth::mod` exports two Axum extractors built on top of `tower_sessions::Session`:
 
-- **`AuthUser(User)`** — 401 if no valid `__sid`. Use on `/auth/me`, `PATCH /users/me`, etc.
-- **`Identity`** — `enum Identity { Registered(User), Anonymous(AnonSession) }`. Never fails because anon middleware auto-provisions an anon-session if `__anon_id` is missing. Use on game/lobby/challenge endpoints.
+- **`Identity`** — `enum Identity { Registered { user: User, anon_id: Uuid }, Anonymous { anon_id: Uuid } }`. Never fails. On extraction:
+  1. Reads `UserSession` from the session; if absent, mints one with a fresh `user_id` and writes it back.
+  2. If `UserSession.claimed_by` is `Some(uid)`, looks up `users(id = uid)`. Compares stored `users.token_version` with `UserSession.token_version`; mismatch (or missing user) → drops `claimed_by` and treats as anonymous.
+  3. Returns either `Registered { user, anon_id }` or `Anonymous { anon_id }`.
+- **`AuthUser(User)`** — wraps `Identity`; returns 401 if the variant is `Anonymous`.
 
-Anonymous-session middleware runs before extractors and ensures every request has an `__anon_id` cookie (issuing one if absent or stale).
+Use `Identity` on game/lobby/challenge endpoints. Use `AuthUser` on registered-only endpoints (`/auth/me`, `PATCH /users/me`, etc.).
+
+The "anon_id" is whatever `UserSession.user_id` currently holds. It's stable for the cookie's lifetime (30-day inactivity sliding), and becomes invalid only when tower-sessions garbage-collects the session.
 
 ### Dependencies added to `spades-server/Cargo.toml`
 
 - `argon2` — password hashing
-- `oauth2` — OAuth client
-- `lettre` — SMTP mailer
+- `oauth2` — OAuth client (Google + GitHub)
+- `lettre` — SMTP mailer (default backend behind the `Mailer` trait)
 - `governor` — token-bucket rate limit
-- `cookie` (likely already transitive) — signed cookie helpers
-- `tower-sessions` + `tower-sessions-sqlx-store` *or* hand-rolled session middleware on `rusqlite` (decision deferred to plan)
+- `sha2` — for hashing email/password tokens before storage
+- `reqwest` — OAuth provider userinfo fetch (Google /v1/userinfo, GitHub /user, /user/emails)
+
+Already in tree (no change required):
+- `tower-sessions` 0.14, `tower-sessions-sqlx-store` 0.15 (SQLite-backed) — sessions transport
+- `time` 0.3 — timestamps
+- `rand` 0.8, `uuid`, `serde`, `serde_json`, `rusqlite`
 
 ### Untouched surfaces
 
 - `spades-core` — no changes. The library remains identity-free.
-- `Game` JSON shape persisted in `games.state` — no changes. Identity lives in a sibling `game_seats` table.
+- `Game` JSON shape persisted in `games.data` — no changes. Identity lives in a sibling `game_seats` table.
 - `GameManager` public surface — unchanged.
 - `GameTransition` semantics, including bearer-`player_id` auth for `POST /games/:id/transition` — unchanged.
 
@@ -119,6 +140,8 @@ Anonymous-session middleware runs before extractors and ensures every request ha
 ## Data model
 
 All new tables. SQLite, WAL mode (already required).
+
+**Tower-sessions already owns its own tables** (`tower_sessions` migration creates a `tower_sessions` table for blob storage on startup, `main.rs:158`). No changes there — that's the transport. The tables below are all new, added by our own migration code in `sqlite_store.rs`.
 
 ```sql
 -- Registered users
@@ -129,31 +152,11 @@ CREATE TABLE users (
     email           TEXT NOT NULL UNIQUE,
     email_verified  INTEGER NOT NULL DEFAULT 0,    -- bool
     password_hash   TEXT,                          -- argon2id PHC; NULL = OAuth-only account
+    token_version   INTEGER NOT NULL DEFAULT 0,    -- bumped to invalidate all live sessions
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     last_login_at   TEXT
 );
 CREATE INDEX users_username_canon ON users(username_canon);
-
--- Active and recent sessions
-CREATE TABLE sessions (
-    id              TEXT PRIMARY KEY,              -- opaque random 32B base64url
-    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-    last_seen_at    TEXT NOT NULL DEFAULT (datetime('now')),
-    expires_at      TEXT NOT NULL,                 -- 30 days from creation, sliding
-    user_agent      TEXT,
-    ip              TEXT
-);
-CREATE INDEX sessions_user_id ON sessions(user_id);
-CREATE INDEX sessions_expires_at ON sessions(expires_at);
-
--- Anonymous browser identity (long-lived)
-CREATE TABLE anon_sessions (
-    id              TEXT PRIMARY KEY,              -- UUID, in __anon_id cookie
-    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-    last_seen_at    TEXT NOT NULL DEFAULT (datetime('now')),
-    claimed_by      TEXT REFERENCES users(id) ON DELETE SET NULL
-);
 
 -- OAuth provider accounts
 CREATE TABLE oauth_accounts (
@@ -185,23 +188,31 @@ CREATE TABLE login_failures (
 
 -- Seat-to-identity binding for past and live games
 CREATE TABLE game_seats (
-    game_id         TEXT NOT NULL,                 -- not FK; games may live in-memory only
+    game_id         TEXT NOT NULL,                 -- not FK; see note below
     seat_index      INTEGER NOT NULL,              -- 0..3 for A,B,C,D
-    player_id       TEXT NOT NULL,                 -- bearer-auth UUID (unchanged)
-    user_id         TEXT REFERENCES users(id) ON DELETE SET NULL,
-    anon_session_id TEXT REFERENCES anon_sessions(id) ON DELETE SET NULL,
+    player_id       TEXT NOT NULL,                 -- the per-game seat UUID returned at create time
+    user_id         TEXT REFERENCES users(id) ON DELETE SET NULL,  -- registered owner (if any)
+    anon_user_id    TEXT,                          -- the UserSession.user_id of the seat's anon owner
     is_bot          INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (game_id, seat_index)
 );
 CREATE INDEX game_seats_user_id ON game_seats(user_id);
-CREATE INDEX game_seats_anon_session_id ON game_seats(anon_session_id);
+CREATE INDEX game_seats_anon_user_id ON game_seats(anon_user_id);
 ```
+
+### What is *not* in this list (vs the original draft)
+
+- ❌ `sessions` table — tower-sessions owns the session-blob store; per-user invalidation is done via the `token_version` counter on `users`.
+- ❌ `anon_sessions` table — the anonymous "user_id" is whatever `UserSession.user_id` holds in the session blob. It has no separate persistence; if the session expires, the anon identity is gone (and any unclaimed game seats become orphaned, which is acceptable).
 
 ### Key data-model choices
 
 - **`username_canon` as a separate column**, not `LOWER(username) UNIQUE`. Explicit, portable, easy to keep consistent in code.
-- **`game_seats` is a separate table from `games`.** Keeps `spades-core::Game` JSON identity-free and avoids a destructive migration of existing rows. The `games.state` JSON column is left untouched.
-- **`game_seats.game_id` is intentionally not a foreign key** to `games.id`. Games live in-memory in `GameManager` between transitions and are persisted to the `games` table on each state change; there's a small window where a game exists in memory before its first persist. `game_seats` rows are written eagerly on seat-assignment (game create, lobby join, challenge join), independently of whether the `games` row has hit disk yet. No FK keeps this decoupled.
+- **`game_seats` is a separate table from `games`.** Keeps `spades-core::Game` JSON identity-free and avoids a destructive migration of existing rows. The `games` table is left untouched.
+- **`game_seats.game_id` is intentionally not a foreign key** to `games.id`. Games live in-memory in `GameManager` between transitions and are persisted by `SqliteStore::update_game` after each state change; there's a small window where a game exists in memory before its first persist. `game_seats` rows are written eagerly on seat-assignment (game create, lobby join, challenge join), independently of whether the `games` row has hit disk yet. No FK keeps this decoupled.
+- **`game_seats.anon_user_id` is a TEXT, not a FK.** It references `UserSession.user_id`, which has no durable storage outside the session blob — there's nothing to FK to. The value is mostly used for "claim my anon games" on register/login (`UPDATE game_seats SET user_id = ? WHERE anon_user_id = ? AND user_id IS NULL`).
+- **`users.token_version`** is the global per-user "invalidate everything" lever. Increment it on password change, password reset, or future "log out everywhere" feature. The `Identity` extractor compares it against the value stored in the session blob and drops `claimed_by` on mismatch.
 - **Per-account lockout is per-account, not per-(account, IP).** Simpler and harder for a griefer to abuse to lock a victim's account from a third IP.
 
 ---
@@ -214,21 +225,28 @@ CREATE INDEX game_seats_anon_session_id ON game_seats(anon_session_id);
 POST /auth/register
 body: { username, email, password }
 
+The handler takes the tower_sessions::Session extractor so it can read the
+current anon user_id and write claimed_by back.
+
 1. Validate: username 2-20 ASCII [a-zA-Z0-9_-], reserved-name reject list,
    email parseable (basic syntax + MX optional), password >= 8 chars, not in
    embedded top-10k weak list.
 2. Check users.username_canon and users.email for uniqueness.
-3. argon2id(password, m=64MB, t=3, p=4) → users.password_hash.
-4. INSERT users (email_verified=0).
-5. Claim anon if __anon_id cookie present:
-     BEGIN;
-     UPDATE anon_sessions SET claimed_by = :user_id WHERE id = :anon_id AND claimed_by IS NULL;
-     UPDATE game_seats   SET user_id = :user_id WHERE anon_session_id = :anon_id;
-     COMMIT;
-6. Generate verification token (32B random); SHA-256 store in auth_tokens; mailer.send(verify_link).
-7. Create session (32B random id); INSERT sessions (expires_at = now + 30d).
-8. Set-Cookie: __sid=<id>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000.
+3. argon2id(password, m=64MB, t=3, p=4) → password_hash.
+4. INSERT users (email_verified=0, token_version=0).
+5. Read UserSession from the session (ensure_anon_id mints one if absent).
+   anon_id = UserSession.user_id.
+6. Claim anon's game seats:
+     UPDATE game_seats SET user_id = :new_user_id
+      WHERE anon_user_id = :anon_id AND user_id IS NULL;
+7. Update UserSession in the session: claimed_by = Some(new_user_id),
+   token_version = 0. Session blob is written back by tower-sessions on
+   response.
+8. Generate verification token (32B random); SHA-256 store in auth_tokens
+   (purpose=verify_email, expires_at = now + 24h); mailer.send(verify_link).
 9. Return 201 { user: { id, username, email, email_verified: false } }.
+   The session cookie was set on a prior anon request (or by this response if
+   no session existed yet). No new __sid cookie.
 ```
 
 ### Login (email or username + password)
@@ -237,6 +255,8 @@ body: { username, email, password }
 POST /auth/login
 body: { login, password }
 
+The handler takes the tower_sessions::Session extractor.
+
 1. Rate-limit by IP (10/min, 60/hr).
 2. Lookup user:
    - login.contains('@') → SELECT * FROM users WHERE email = ?
@@ -244,7 +264,15 @@ body: { login, password }
    Constant-time on miss: argon2.verify against a stored dummy hash so wall time matches.
 3. Check login_failures.locked_until > now → 423 Locked.
 4. argon2.verify(password, user.password_hash). NULL password_hash (OAuth-only) treated as wrong password.
-5. On success: clear login_failures, create session, claim anon if cookie present, set __sid cookie, 200 with user object.
+5. On success:
+     a. DELETE FROM login_failures WHERE user_id = :user_id.
+     b. UPDATE users SET last_login_at = datetime('now') WHERE id = :user_id.
+     c. Read UserSession, anon_id = UserSession.user_id (mint if missing).
+     d. UPDATE game_seats SET user_id = :user_id
+          WHERE anon_user_id = :anon_id AND user_id IS NULL.
+     e. Write UserSession back with claimed_by = Some(user_id),
+        token_version = user.token_version. tower-sessions persists on response.
+     f. 200 with user object.
 6. On failure: UPSERT login_failures.failure_count + 1.
      5 fails  → locked_until = now + 15min.
      10 fails → locked_until = now + 1hr.
@@ -284,22 +312,31 @@ POST /auth/oauth/complete  body: { username }
   2. Validate username.
   3. INSERT users (email_verified = pending.email_verified, password_hash = NULL)
      + INSERT oauth_accounts.
-  4. Claim anon if __anon_id cookie present.
-  5. Create session, set __sid cookie, clear __oauth_pending, drop pending record.
+  4. Claim anon: read current session's UserSession, anon_id = UserSession.user_id;
+     UPDATE game_seats SET user_id = :new_user_id WHERE anon_user_id = :anon_id AND user_id IS NULL.
+  5. Write UserSession back with claimed_by = Some(new_user_id), token_version = 0.
+     Clear __oauth_pending cookie. Drop the in-memory pending record.
   6. Return 201 with user object.
 ```
 
 ### Anonymous identity provisioning
 
-Middleware applied to every request (early in the stack):
+Replaces the spec's earlier custom-middleware design. With tower-sessions in place, anon-id is just the `user_id` field on `UserSession`, lazily minted by `Identity::ensure_anon_id`:
 
+```rust
+// In auth/session_ext.rs
+pub async fn ensure_anon_id(session: &Session) -> Result<Uuid, AuthError> {
+    if let Some(s) = session.get::<UserSession>(SESSION_USER_KEY).await? {
+        return Ok(s.user_id);
+    }
+    let s = UserSession { user_id: Uuid::new_v4(), display_name: None,
+                          claimed_by: None, token_version: 0 };
+    session.insert(SESSION_USER_KEY, &s).await?;
+    Ok(s.user_id)
+}
 ```
-1. Read __anon_id cookie.
-2. If absent: generate UUID v4, INSERT anon_sessions, set Set-Cookie __anon_id (1-year sliding).
-3. If present but row missing (stale or tampered): treat as absent, regenerate.
-4. UPDATE anon_sessions.last_seen_at debounced — track an in-memory map of (id → last_write_at);
-   only hit DB if >= 5 minutes since last write.
-```
+
+No middleware needed; the `Identity` extractor calls this. Tower-sessions handles cookie issuance, expiry, and persistence. The existing `GET /player` handler keeps working unchanged (it calls the same code path via the session API).
 
 ### Password reset
 
@@ -313,10 +350,17 @@ POST /auth/password-reset/confirm { token, new_password }
   1. SHA-256 token, lookup auth_tokens row.
   2. Check purpose, expires_at > now, used_at IS NULL.
   3. Validate new password (length, weak list).
-  4. argon2id hash new password, UPDATE users.password_hash.
-  5. Mark auth_tokens.used_at = now.
-  6. DELETE FROM sessions WHERE user_id = ?  -- invalidate all existing sessions.
-  7. Create new session, set __sid cookie, 200.
+  4. argon2id hash new password.
+  5. UPDATE users SET password_hash = :hash, token_version = token_version + 1
+       WHERE id = :user_id.
+     The token_version bump is what invalidates every other live session for
+     this user — when their browsers next hit an authenticated endpoint, the
+     Identity extractor will compare the stored token_version against the
+     stale one in their session blob and drop claimed_by.
+  6. Mark auth_tokens.used_at = now.
+  7. Write the current session's UserSession with claimed_by = Some(user_id),
+     token_version = new_version. The reset flow leaves the requester logged in.
+  8. 200.
 ```
 
 ### Email verification
@@ -333,11 +377,13 @@ GET /auth/verify-email?token=...
 
 ```
 POST /auth/logout
-  1. DELETE FROM sessions WHERE id = current.
-  2. Set-Cookie: __sid=; Max-Age=0.
-  3. Do NOT clear __anon_id — user reverts to guest identity with games still on profile.
-  4. Return 204.
+  1. Read UserSession; set claimed_by = None, leave user_id (anon_id) intact.
+  2. Write UserSession back. tower-sessions persists. The session cookie is
+     NOT cleared — the same browser stays as guest with the same anon_id.
+  3. Return 204.
 ```
+
+Note: this is intentionally not a `session.delete()`. Deleting the session would generate a new anon_id on the next request, orphaning the user's anon game seats. Keeping the session and just nulling `claimed_by` gives the user "back to guest" semantics while preserving their anon game history view.
 
 ---
 
@@ -347,7 +393,7 @@ The seat-token (`player_id` UUID) keeps working unchanged everywhere. Identity *
 
 ### `POST /games`
 
-Response unchanged. New side effect: each of the four created seats is inserted into `game_seats` with `anon_session_id = <creator's anon>` (and `user_id = <creator's user_id>` if registered). The creator initially owns all four seats; later joins (lobby, challenge, seek) overwrite the relevant rows.
+Response unchanged. New side effect: each of the four created seats is inserted into `game_seats` with `anon_user_id = <creator's session user_id>` (always set) and `user_id = <creator's registered user_id>` (only if the creator is logged in). The creator initially owns all four seats; later joins (lobby, challenge, seek) overwrite the relevant rows.
 
 ### `POST /matchmaking/seek`, `POST /lobbies`, `POST /lobbies/:id/join`, `POST /challenges/:id/join/:seat`
 
@@ -355,17 +401,17 @@ Each takes the `Identity` extractor. On join:
 
 ```sql
 UPDATE game_seats
-   SET user_id = :user_id, anon_session_id = :anon_id
+   SET user_id = :user_id_or_null, anon_user_id = :anon_id
  WHERE game_id = :game_id AND seat_index = :seat_index;
 ```
 
-(`user_id` and `anon_session_id` are mutually exclusive — exactly one is non-null per `Identity` variant.)
+`anon_user_id` is always set (every Identity carries an anon_id). `user_id` is set only when the joiner is registered; for anon joiners it's NULL. Both columns being populated on a registered join is intentional — it preserves the link "this registered user originated from session anon_X," which the anon-claim transaction relies on.
 
 **DTO change:** these requests keep optional `name` for backward compat, but **if `Identity` is `Registered`, the registered username overrides the request's `name`.** Anti-impersonation rule.
 
 ### `POST /games/:game_id/transition`
 
-**Unchanged in this slice.** The current handler takes `(game_id, transition)` and authenticates nothing — it relies on the game's internal `current_player_id` to gate which seat can move when. Tightening transition auth (requiring `__sid` matching the current seat's `user_id`, or a bearer `player_id` header) is recognized as critical for a public site but is **deferred to its own slice**. The identity foundation laid here makes the eventual fix straightforward — every seat now has a queryable `user_id`/`anon_session_id` to compare the requester against.
+**Unchanged in this slice.** The current handler takes `(game_id, transition)` and authenticates nothing — it relies on the game's internal `current_player_id` to gate which seat can move when. Tightening transition auth (requiring the request's `Identity` to match the current seat's `user_id`/`anon_user_id`, or a bearer `player_id` header) is recognized as critical for a public site but is **deferred to its own slice**. The identity foundation laid here makes the eventual fix straightforward — every seat now has a queryable owner to compare the requester against.
 
 ### `PUT /games/:game_id/players/:player_id/name`
 
@@ -378,13 +424,13 @@ Both anon and registered can connect. The connection still authenticates as a sp
 ### New endpoints
 
 ```
-POST   /auth/register                      → 201, sets __sid
-POST   /auth/login                         → 200, sets __sid
-POST   /auth/logout                        → 204, clears __sid
+POST   /auth/register                      → 201, writes claimed_by into session
+POST   /auth/login                         → 200, writes claimed_by into session
+POST   /auth/logout                        → 204, clears claimed_by; session cookie preserved
 GET    /auth/me                            → 200 with current AuthUser
 GET    /auth/oauth/:provider/login         → 302 to provider
-GET    /auth/oauth/:provider/callback      → 302 to / on success (sets __sid or __oauth_pending)
-POST   /auth/oauth/complete                → 201, sets __sid, clears __oauth_pending
+GET    /auth/oauth/:provider/callback      → 302 to / on success (sets __oauth_pending if pick-username flow, else writes claimed_by)
+POST   /auth/oauth/complete                → 201, writes claimed_by, clears __oauth_pending
 POST   /auth/password-reset/request        → 202
 POST   /auth/password-reset/confirm        → 200
 GET    /auth/verify-email                  → 302 to /
@@ -404,7 +450,7 @@ PATCH  /users/me                           → 200 (email change kicks off re-ve
 
 | Condition | Status | Body |
 |---|---|---|
-| Missing/invalid `__sid` on `AuthUser`-required endpoint | 401 | `{"error":"unauthenticated"}` |
+| `AuthUser`-required endpoint with no `claimed_by` in session (or stale `token_version`) | 401 | `{"error":"unauthenticated"}` |
 | Authenticated but unauthorized | 403 | `{"error":"forbidden"}` |
 | Username taken on register | 409 | `{"error":"username_taken"}` |
 | Email taken on register | 409 | `{"error":"email_taken"}` |
@@ -426,15 +472,24 @@ All bodies use the existing `Display`-formatting convention. `AuthError` impls `
 
 ### Cookies
 
-```
-Set-Cookie: __sid=<32B base64url>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000
-Set-Cookie: __anon_id=<UUID>;       HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=31536000
+There is exactly **one** session cookie, owned by `tower-sessions`. Default name `id`; we override to a more descriptive name (`spades_session`) at `SessionManagerLayer` construction. Configuration:
+
+```rust
+SessionManagerLayer::new(session_store)
+    .with_name("spades_session")
+    .with_secure(!insecure_cookies_flag)   // default true; opt-out via --insecure-cookies
+    .with_same_site(SameSite::Lax)
+    .with_http_only(true)
+    .with_expiry(Expiry::OnInactivity(Duration::days(30)));
 ```
 
-- `Secure` defaults to true. Opt out via `--insecure-cookies` CLI flag for dev. **Fail-closed.**
+- `Secure` defaults to true. Opt out via `--insecure-cookies` CLI flag for dev. **Fail-closed** — production deployments without the flag get Secure-only cookies.
 - `SameSite=Lax` so top-level navigations (including OAuth callback) carry the cookie; cross-site form posts and iframes don't.
+- 30-day inactivity expiry (sliding). Tower-sessions handles the sliding bookkeeping.
 - No CSRF token framework. SameSite=Lax + `POST`-only mutations cover the common case. OAuth callback uses the explicit `state` param for CSRF.
-- Session IDs are opaque, generated by `getrandom`, base64url-encoded. Never derived from user_id.
+- Tower-sessions generates opaque session IDs; we never derive them from user_id.
+
+A second short-lived `__oauth_pending` cookie is set only during the OAuth pick-username flow (15-minute Max-Age) and cleared on completion.
 
 ### Password storage
 
@@ -519,7 +574,7 @@ Each test gets a tempfile SQLite + `AuthState` with `LogMailer` + `wiremock` for
 - `auth_csrf_oauth.rs` — bad state → 400
 - `auth_secure_cookie_default.rs` — without `--insecure-cookies`, Set-Cookie has Secure flag
 - `auth_game_integration.rs` — registered user creates game and joins lobby; game_seats updated; lobby `name` field overridden by username
-- `auth_logout_anon_preserved.rs` — logout clears __sid, leaves __anon_id
+- `auth_logout_anon_preserved.rs` — logout clears UserSession.claimed_by; user_id (anon) and the session cookie itself are preserved
 
 ### Property tests
 
@@ -544,7 +599,6 @@ Each test gets a tempfile SQLite + `AuthState` with `LogMailer` + `wiremock` for
 
 These are deliberately *not* settled in the design — they don't change the shape, but the plan needs to pick:
 
-1. **Tower-sessions vs hand-rolled session middleware.** Tower-sessions is convenient but pulls in `tower-sessions-sqlx-store` (or a custom store) and an opinionated cookie model. Hand-rolled gives ~150 lines of code with `rusqlite` directly and zero new abstractions. Decide based on whether tower-sessions' cookie defaults match this spec without fighting them.
-2. **Anon-session middleware vs per-handler extractor.** Middleware is simpler (every request gets an anon-id whether it needs one or not). Extractor avoids DB writes on truly anonymous endpoints like `/healthz`. Middleware probably wins on simplicity unless an unauthenticated read-heavy endpoint emerges.
-3. **In-memory state for OAuth `state` CSRF + per-email password-reset throttle.** Both could be in SQLite for simplicity at the cost of writes. Probably fine in-memory; if the server restarts mid-OAuth-flow, the user just retries.
-4. **Reserved-name list.** Must include at least: `me`, `admin`, `root`, `auth`, `oauth`, `api`, `users`, `games`, `lobbies`, `challenges`, `matchmaking`, `ws`, `static`, `assets`. Plan should finalize.
+1. **In-memory state for OAuth `state` CSRF + per-email password-reset throttle + OAuth pending-signup records.** All three could be in SQLite for simplicity at the cost of writes, or kept in `Arc<Mutex<HashMap<...>>>` for speed at the cost of "lost across restarts." Probably fine in-memory — restarts are rare, and the worst case is the user retries the flow. Plan picks.
+2. **Reserved-name list.** Must include at least: `me`, `admin`, `root`, `auth`, `oauth`, `api`, `users`, `games`, `lobbies`, `challenges`, `matchmaking`, `ws`, `static`, `assets`, `docs`, `openapi`, `swagger-ui`, `player`. Plan should finalize.
+3. **`/player` and `/player/name` deprecation path.** The existing endpoints overlap with `GET /auth/me` and `PATCH /users/me`. Options: (a) keep them as ergonomic anon-only aliases (no `claimed_by` returned), (b) deprecate and remove, (c) leave them and document the overlap. Plan picks.
