@@ -14,6 +14,7 @@ use crate::auth::{
     tokens::{generate_token, hash_token, PURPOSE_PASSWORD_RESET, PURPOSE_VERIFY_EMAIL},
     users::{validate_email, validate_username, NewUser, User},
 };
+use crate::lock_util::MutexExt;
 
 #[derive(Deserialize)]
 pub struct RegisterRequest {
@@ -258,7 +259,7 @@ pub async fn oauth_login(
         .set_pkce_challenge(challenge)
         .url();
 
-    auth.oauth.csrf.lock().unwrap().insert(
+    auth.oauth.csrf.lock_or_recover().insert(
         csrf_token.secret().clone(),
         (anon_id, time::OffsetDateTime::now_utc() + time::Duration::minutes(10), verifier.secret().to_string()),
     );
@@ -291,7 +292,7 @@ pub async fn oauth_google_callback(
     use axum::response::IntoResponse as _;
     check_ip(&auth.rate.oauth_callback, addr.ip())?;
 
-    let entry = auth.oauth.csrf.lock().unwrap().remove(&q.state);
+    let entry = auth.oauth.csrf.lock_or_recover().remove(&q.state);
     let (anon_from_csrf, _expires, verifier_secret) = entry.ok_or_else(|| AuthError::OauthFailed("invalid state".into()))?;
     let client = google_client(&auth.oauth)
         .ok_or_else(|| AuthError::OauthFailed("google not configured".into()))?;
@@ -334,7 +335,7 @@ pub async fn oauth_google_callback(
         .filter(|s| s.len() >= 2)
         .unwrap_or_else(|| "user".into());
     let expires_at = time::OffsetDateTime::now_utc() + time::Duration::minutes(15);
-    auth.oauth.pending.lock().unwrap().insert(temp_id.clone(), PendingSignup {
+    auth.oauth.pending.lock_or_recover().insert(temp_id.clone(), PendingSignup {
         provider: "google".into(),
         provider_uid: info.sub,
         email: info.email,
@@ -380,7 +381,7 @@ pub async fn oauth_complete(
     let temp_id = cookie_jar.get("__oauth_pending")
         .ok_or(AuthError::TokenInvalid)?
         .value().to_string();
-    let pending = auth.oauth.pending.lock().unwrap().remove(&temp_id)
+    let pending = auth.oauth.pending.lock_or_recover().remove(&temp_id)
         .ok_or(AuthError::TokenInvalid)?;
     if pending.expires_at < time::OffsetDateTime::now_utc() {
         return Err(AuthError::TokenInvalid);
@@ -431,7 +432,7 @@ pub async fn oauth_github_callback(
     use axum::response::IntoResponse as _;
     check_ip(&auth.rate.oauth_callback, addr.ip())?;
 
-    let entry = auth.oauth.csrf.lock().unwrap().remove(&q.state);
+    let entry = auth.oauth.csrf.lock_or_recover().remove(&q.state);
     let (anon_from_csrf, _expires, verifier_secret) = entry.ok_or_else(|| AuthError::OauthFailed("invalid state".into()))?;
     let client = github_client(&auth.oauth)
         .ok_or_else(|| AuthError::OauthFailed("github not configured".into()))?;
@@ -478,7 +479,7 @@ pub async fn oauth_github_callback(
     let temp_id = generate_token();
     let suggested: String = user.login.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-').take(20).collect();
     let expires_at = time::OffsetDateTime::now_utc() + time::Duration::minutes(15);
-    auth.oauth.pending.lock().unwrap().insert(temp_id.clone(), PendingSignup {
+    auth.oauth.pending.lock_or_recover().insert(temp_id.clone(), PendingSignup {
         provider: "github".into(),
         provider_uid: user.id.to_string(),
         email: primary.email.clone(),

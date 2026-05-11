@@ -4,6 +4,7 @@ use uuid::Uuid;
 use serde::{Serialize, Deserialize};
 use tokio::sync::mpsc;
 use crate::game_manager::GameManager;
+use crate::lock_util::MutexExt;
 use spades::{GameTransition, TimerConfig};
 
 /// Result sent to matched players
@@ -71,7 +72,7 @@ impl Matchmaker {
         let (tx, rx) = mpsc::unbounded_channel();
 
         {
-            let mut queue = self.seek_queue.lock().unwrap();
+            let mut queue = self.seek_queue.lock_or_recover();
             queue.push(PendingSeek {
                 player_id,
                 max_points,
@@ -90,7 +91,7 @@ impl Matchmaker {
     pub fn cancel_seek(&self, player_id: Uuid) {
         let seek_info;
         {
-            let mut queue = self.seek_queue.lock().unwrap();
+            let mut queue = self.seek_queue.lock_or_recover();
             seek_info = queue.iter().find(|s| s.player_id == player_id).map(|s| (s.max_points, s.timer_config));
             queue.retain(|s| s.player_id != player_id);
         }
@@ -101,7 +102,7 @@ impl Matchmaker {
 
     /// List a summary of active seeks grouped by max_points.
     pub fn list_seeks(&self) -> Vec<SeekSummary> {
-        let queue = self.seek_queue.lock().unwrap();
+        let queue = self.seek_queue.lock_or_recover();
         let mut counts: HashMap<i32, usize> = HashMap::new();
         for seek in queue.iter() {
             *counts.entry(seek.max_points).or_insert(0) += 1;
@@ -114,7 +115,7 @@ impl Matchmaker {
 
     /// List queue sizes grouped by game configuration (max_points + timer_config).
     pub fn queue_sizes(&self) -> Vec<QueueSizeEntry> {
-        let queue = self.seek_queue.lock().unwrap();
+        let queue = self.seek_queue.lock_or_recover();
         let mut counts: HashMap<(i32, TimerConfig), usize> = HashMap::new();
         for seek in queue.iter() {
             *counts.entry((seek.max_points, seek.timer_config)).or_insert(0) += 1;
@@ -131,7 +132,7 @@ impl Matchmaker {
 
     /// Check if there are 4 seeks with the same max_points and timer_config and create a game.
     fn try_match(&self, max_points: i32, timer_config: TimerConfig) {
-        let mut queue = self.seek_queue.lock().unwrap();
+        let mut queue = self.seek_queue.lock_or_recover();
 
         let matching: Vec<usize> = queue
             .iter()
@@ -174,7 +175,7 @@ impl Matchmaker {
             Ok(r) => r,
             Err(_) => {
                 // Re-queue the seeks so players aren't lost
-                let mut queue = self.seek_queue.lock().unwrap();
+                let mut queue = self.seek_queue.lock_or_recover();
                 for seek in seeks {
                     queue.push(seek);
                 }
@@ -185,7 +186,7 @@ impl Matchmaker {
         if self.game_manager.make_transition(response.game_id, GameTransition::Start).is_err() {
             // Game was created but couldn't start — remove it and re-queue seeks
             let _ = self.game_manager.remove_game(response.game_id);
-            let mut queue = self.seek_queue.lock().unwrap();
+            let mut queue = self.seek_queue.lock_or_recover();
             for seek in seeks {
                 queue.push(seek);
             }
@@ -216,7 +217,7 @@ impl Matchmaker {
 
     /// Notify all seekers for a given max_points and timer_config of the current queue count.
     fn notify_seekers(&self, max_points: i32, timer_config: TimerConfig) {
-        let queue = self.seek_queue.lock().unwrap();
+        let queue = self.seek_queue.lock_or_recover();
         let matches = |s: &&PendingSeek| s.max_points == max_points && s.timer_config == timer_config;
         let waiting = queue.iter().filter(matches).count();
         for seek in queue.iter().filter(|s| s.max_points == max_points && s.timer_config == timer_config) {

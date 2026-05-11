@@ -1,6 +1,7 @@
 //! Pluggable Mailer trait. LogMailer (dev/CI) + SmtpMailer (lettre).
 
 use crate::auth::AuthError;
+use crate::lock_util::MutexExt;
 use std::sync::{Arc, Mutex};
 
 /// A single email message to send.
@@ -27,7 +28,7 @@ impl LogMailer {
         Self::default()
     }
     pub fn sent(&self) -> Vec<Email> {
-        self.sent.lock().unwrap().clone()
+        self.sent.lock_or_recover().clone()
     }
 }
 
@@ -35,7 +36,7 @@ impl LogMailer {
 impl Mailer for LogMailer {
     async fn send(&self, email: Email) -> Result<(), AuthError> {
         eprintln!("LogMailer: to={} subject={}", email.to, email.subject);
-        self.sent.lock().unwrap().push(email);
+        self.sent.lock_or_recover().push(email);
         Ok(())
     }
 }

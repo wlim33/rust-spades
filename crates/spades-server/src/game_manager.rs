@@ -6,6 +6,7 @@ use tokio::sync::broadcast;
 use spades::{Game, GameTransition, State, Card, TimerConfig};
 use spades::ai::AiStrategy;
 use spades::{GetError, TransitionError, TransitionSuccess};
+use crate::lock_util::MutexExt;
 use crate::sqlite_store::SqliteStore;
 use serde::{Serialize, Deserialize};
 use rand::seq::SliceRandom;
@@ -411,7 +412,7 @@ impl GameManager {
 
     /// Build state response with real-time timer data
     pub fn build_state_response_with_timer(&self, game_id: Uuid, game: &Game) -> GameStateResponse {
-        let timers = self.active_timers.lock().unwrap();
+        let timers = self.active_timers.lock_or_recover();
         let active_timer = timers.get(&game_id);
         Self::build_state_response(game_id, game, active_timer)
     }
@@ -445,7 +446,7 @@ impl GameManager {
     /// Cancel the active turn timer for a game.
     /// Returns (elapsed_ms, previous_player_index).
     fn cancel_turn_timer(&self, game_id: Uuid) -> (u64, Option<usize>) {
-        let mut timers = self.active_timers.lock().unwrap();
+        let mut timers = self.active_timers.lock_or_recover();
         if let Some(timer) = timers.remove(&game_id) {
             timer.timeout_handle.abort();
             let elapsed = timer.turn_started_at.elapsed().as_millis() as u64;
@@ -463,7 +464,7 @@ impl GameManager {
             mgr.handle_timeout(game_id);
         });
 
-        let mut timers = self.active_timers.lock().unwrap();
+        let mut timers = self.active_timers.lock_or_recover();
         timers.insert(game_id, ActiveTurnTimer {
             turn_started_at: tokio::time::Instant::now(),
             remaining_at_turn_start_ms: remaining_ms,
@@ -533,7 +534,7 @@ impl GameManager {
             }
         }
 
-        let timers = self.active_timers.lock().unwrap();
+        let timers = self.active_timers.lock_or_recover();
         let active_timer = timers.get(&game_id);
         let state_response = Self::build_state_response(game_id, &game, active_timer);
         drop(timers);
@@ -575,7 +576,7 @@ impl GameManager {
 
         // Verify expected_player_index matches (race condition guard)
         {
-            let timers = self.active_timers.lock().unwrap();
+            let timers = self.active_timers.lock_or_recover();
             if let Some(timer) = timers.get(&game_id)
                 && timer.expected_player_index != player_idx {
                     return;
@@ -597,7 +598,7 @@ impl GameManager {
 
         // Clean up the timer entry (timeout already fired, just remove state)
         {
-            let mut timers = self.active_timers.lock().unwrap();
+            let mut timers = self.active_timers.lock_or_recover();
             timers.remove(&game_id);
         }
 
@@ -701,7 +702,7 @@ impl GameManager {
     pub fn remove_game(&self, game_id: Uuid) -> Result<(), GameManagerError> {
         // Cancel any active timer
         {
-            let mut timers = self.active_timers.lock().unwrap();
+            let mut timers = self.active_timers.lock_or_recover();
             if let Some(timer) = timers.remove(&game_id) {
                 timer.timeout_handle.abort();
             }

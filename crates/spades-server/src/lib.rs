@@ -10,6 +10,7 @@ pub mod handlers_auth;
 pub mod handlers_users;
 pub mod challenges;
 pub mod game_manager;
+pub mod lock_util;
 pub mod matchmaking;
 pub mod oasgen_impls;
 pub mod sqlite_store;

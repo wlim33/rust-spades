@@ -31,6 +31,7 @@ use spades_server::game_manager::GameManager;
 use spades_server::challenges::ChallengeManager;
 use spades_server::matchmaking::Matchmaker;
 use std::net::SocketAddr;
+use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::cors::CorsLayer;
 use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::SqliteStore as SessionSqliteStore;
@@ -124,6 +125,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/users/{username}", get(spades_server::handlers_users::get_profile))
         .route("/users/{username}/games", get(spades_server::handlers_users::get_profile_games))
         .with_state(state)
+        .layer(CatchPanicLayer::new())
 }
 
 /// Build a CORS layer from a list of allowed origins.
@@ -373,6 +375,27 @@ mod tests {
         response.assert_status_ok();
         let body: serde_json::Value = response.json();
         assert_eq!(body["name"], "Spades Game Server");
+    }
+
+    #[tokio::test]
+    async fn test_catch_panic_layer_isolates_failures() {
+        use axum::Router;
+        use axum::routing::get;
+        use tower_http::catch_panic::CatchPanicLayer;
+
+        async fn healthy() -> &'static str { "ok" }
+        async fn boom() -> &'static str { panic!("intentional test panic") }
+
+        let app: Router = Router::new()
+            .route("/healthy", get(healthy))
+            .route("/boom", get(boom))
+            .layer(CatchPanicLayer::new());
+        let server = TestServer::new(app).unwrap();
+
+        server.get("/healthy").await.assert_status_ok();
+        let resp = server.get("/boom").await;
+        assert_eq!(resp.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+        server.get("/healthy").await.assert_status_ok();
     }
 
     #[tokio::test]
