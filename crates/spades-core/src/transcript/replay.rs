@@ -3,6 +3,19 @@ use crate::{Game, GameTransition, State};
 
 use super::{ReplayError, Round, Termination, Transcript};
 
+/// Drive a parsed `Transcript` back into a fresh `Game` via the engine.
+///
+/// Replay constructs a new `Game` with the transcript's headers, then issues
+/// `GameTransition::{Start, Bet, Card}` calls in order. Each round's declared
+/// dealt hands are injected via `Game::override_hands` (because `Game::Start`
+/// shuffles randomly). Any rule violation surfaces as `ReplayError::Transition`.
+///
+/// After replay, declared `Termination` and `Result` are verified against the
+/// engine's actual end state; mismatches return `ReplayError::TerminationMismatch`
+/// or `ReplayError::ResultMismatch`.
+///
+/// Aborted termination is applied via `Game::set_state(Aborted)` if the
+/// transcript declares Aborted and the engine hasn't already reached Completed.
 pub fn replay(t: &Transcript) -> Result<Game, ReplayError> {
     let mut game = Game::new(
         t.headers.game_id,

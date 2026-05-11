@@ -5,6 +5,15 @@ use crate::TimerConfig;
 use super::format::{parse_card, unescape_tag_value};
 use super::{DecodeError, Headers, Round, Termination, Transcript};
 
+/// Parse a transcript text into a structured `Transcript`.
+///
+/// This function performs *syntactic* validation only: it confirms the format
+/// is well-formed (tag pairs, escape sequences, card notation, monotonic round
+/// numbers, count bounds). It does NOT verify that the encoded moves form a
+/// legal game — that semantic check happens in [`replay`].
+///
+/// Returns specific `DecodeError` variants pointing to the offending line for
+/// every failure mode.
 pub fn decode(text: &str) -> Result<Transcript, DecodeError> {
     let mut parser = Parser::new(text);
     let headers = parser.parse_headers()?;

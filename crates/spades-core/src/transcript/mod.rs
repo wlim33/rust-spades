@@ -1,6 +1,14 @@
 //! Spades Transcript Format (STF) — PGN-inspired serialization of full game history.
 //!
 //! See `docs/superpowers/specs/2026-05-11-spades-transcript-format-design.md`.
+//!
+//! # Known limitations
+//!
+//! - **Aborted-mid-betting is lossy.** When a game is aborted while in the
+//!   betting phase, the encoder emits all 4 bet slots (un-placed bets default
+//!   to 0). Replay then treats them as 4 real bets, so the replayed game's
+//!   state will not be observationally equal to the source for this specific
+//!   case. Aborted from `Trick(_)` or terminal states round-trips cleanly.
 
 use std::fmt;
 use uuid::Uuid;
@@ -98,8 +106,6 @@ impl std::error::Error for DecodeError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReplayError {
-    /// One of TimerInitial/TimerIncrement was present without the other.
-    TimerHalfSpecified,
     /// Round R seat S's declared dealt hand contradicts the cards actually played.
     HandMismatch { round: usize, seat: usize },
     /// `Game::play` rejected a transition synthesized from the transcript.

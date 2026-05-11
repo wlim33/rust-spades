@@ -54,7 +54,7 @@ Tag pairs in **fixed order**, one per line, with the form `[Key "Value"]`:
 | `TimerInitial` | optional | u64 seconds; both timer tags present or both absent |
 | `TimerIncrement` | optional | u64 seconds |
 | `Termination` | yes | `Completed` \| `Aborted` \| `InProgress` |
-| `Result` | yes | `"A-B"` cumulative scores (decimal, may be negative) or `"*"` when `InProgress` |
+| `Result` | yes | `"A B"` cumulative scores, space-separated (decimal, may be negative), or `"*"` when `InProgress` |
 
 **Quoting:** value is double-quoted. Tag values support two escape sequences and only these two: `\"` for a literal `"`, `\\` for a literal `\`. Encoder applies escapes when writing names; decoder unescapes when reading. No other backslash sequences are recognized — `\n`, `\t`, etc. inside a tag value are a `DecodeError::BadTag`. This keeps `encode` total over any `Game` state without inviting general-purpose escape parsing.
 
@@ -151,7 +151,6 @@ pub mod transcript {
     }
 
     pub enum ReplayError {
-        TimerHalfSpecified,                                  // one of TimerInitial/Increment present, not both
         HandMismatch { round: usize, seat: usize },          // declared hand doesn't match the cards played
         TransitionError { round: usize, trick: Option<usize>, seat: usize, err: TransitionError },
         TerminationMismatch { declared: Termination, actual: Termination },
@@ -181,6 +180,7 @@ pub mod transcript {
 - **Player clocks / turn-started-at-epoch:** intentionally omitted. These are runtime/transport concerns, not part of the canonical history.
 - **Deck remainder:** the unplayed-deck pile is internal mechanism, not part of history.
 - **Tag value escaping:** only `\"` and `\\` are recognized in tag values. Encoder applies these escapes; decoder reverses them. Any other backslash is a decode error.
+- **`Result` separator:** scores are space-separated rather than hyphen-separated because scores may be negative (failed bid penalties), and `format!("{}-{}", -60, 62)` produces the unambiguous-looking but unparseable `"-60-62"`. Space separation sidesteps the issue.
 
 ## Testing plan
 

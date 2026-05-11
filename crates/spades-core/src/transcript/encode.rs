@@ -5,6 +5,18 @@ use crate::{Game, State};
 
 use super::format::{card_to_str, escape_tag_value};
 
+/// Serialize a `Game` to its Spades Transcript Format (STF) representation.
+///
+/// This function is total — every valid `Game` produces a valid transcript,
+/// including mid-game states (NotStarted, Betting, Trick) and terminal states
+/// (Completed, Aborted). The output is deterministic for a given `Game`: the
+/// same state always produces byte-equal output.
+///
+/// For round-trip use:
+/// ```text
+/// encode(replay(decode(s))?) == s
+/// ```
+/// holds for any well-formed transcript `s`.
 pub fn encode(game: &Game) -> String {
     let mut out = String::with_capacity(1024);
     encode_headers(&mut out, game);
