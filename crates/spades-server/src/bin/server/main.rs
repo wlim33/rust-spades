@@ -184,6 +184,7 @@ fn build_cors_layer(origins: &[String]) -> Option<CorsLayer> {
 #[tokio::main]
 async fn main() {
     init_tracing();
+    validate_startup_config();
 
     let db_path = std::env::args()
         .skip_while(|a| a != "--db")
@@ -367,6 +368,66 @@ async fn main() {
         .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap();
+}
+
+/// Surface partial config at startup with loud warnings so operators don't
+/// have to discover at first user attempt that e.g. `SMTP_HOST` is set but
+/// `SMTP_USER` is missing (which silently falls back to `LogMailer`). Each
+/// case is independently warned and the server still starts — easier to
+/// deploy than fatal errors when env vars get juggled.
+fn validate_startup_config() {
+    for w in collect_config_warnings(|name| std::env::var(name).ok()) {
+        warn!("{w}");
+    }
+}
+
+/// Pure-logic core of `validate_startup_config`. Reads env vars via the
+/// caller-supplied `get` closure so tests can drive it with a mock map
+/// without touching process-global `std::env`.
+fn collect_config_warnings(get: impl Fn(&str) -> Option<String>) -> Vec<String> {
+    let mut warnings = Vec::new();
+
+    // SMTP: setting HOST without the credential / sender vars silently
+    // disables outbound email; password-reset and email-verify links will
+    // never be delivered to the user.
+    if get("SMTP_HOST").is_some() {
+        for v in ["SMTP_USER", "SMTP_PASS", "SMTP_FROM"] {
+            if get(v).is_none() {
+                warnings.push(format!(
+                    "SMTP_HOST is set but {v} is missing — outbound email will silently fall back to LogMailer"
+                ));
+            }
+        }
+    }
+
+    // OAuth: setting the client ID without the secret (or vice versa)
+    // silently disables that provider, leaving the login button broken.
+    for (id_var, secret_var) in [
+        ("GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET"),
+        ("GITHUB_OAUTH_CLIENT_ID", "GITHUB_OAUTH_CLIENT_SECRET"),
+    ] {
+        let id_set = get(id_var).is_some();
+        let sec_set = get(secret_var).is_some();
+        if id_set ^ sec_set {
+            let missing = if id_set { secret_var } else { id_var };
+            warnings.push(format!("partial OAuth config — {missing} missing; provider will be disabled"));
+        }
+    }
+
+    // OAUTH_REDIRECT_BASE_URL must look like a URL; the OAuth flow builds
+    // callback URLs by appending paths to it, so a malformed value produces
+    // confusing runtime errors. Don't pull in a URL parser for this single
+    // check — a cheap scheme-prefix gate catches the common typo.
+    if let Some(url) = get("OAUTH_REDIRECT_BASE_URL") {
+        let looks_like_url = url.starts_with("http://") || url.starts_with("https://");
+        if !looks_like_url {
+            warnings.push(format!(
+                "OAUTH_REDIRECT_BASE_URL ({url}) does not start with http:// or https:// — OAuth callback URLs will be malformed"
+            ));
+        }
+    }
+
+    warnings
 }
 
 /// Initialize the tracing subscriber. Log level defaults to `info`; override
@@ -644,6 +705,87 @@ mod tests {
             }
         }
         assert!(saw_lagged, "expected Lagged after overflowing the broadcast buffer");
+    }
+
+    fn env_map<const N: usize>(pairs: [(&str, &str); N]) -> impl Fn(&str) -> Option<String> {
+        let m: std::collections::HashMap<String, String> = pairs
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |name: &str| m.get(name).cloned()
+    }
+
+    #[test]
+    fn config_warnings_empty_when_nothing_set() {
+        let warnings = super::collect_config_warnings(env_map([]));
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn config_warnings_smtp_partial_flags_each_missing_var() {
+        let warnings = super::collect_config_warnings(env_map([("SMTP_HOST", "mail.example.com")]));
+        // All three of SMTP_USER / SMTP_PASS / SMTP_FROM are missing.
+        assert_eq!(warnings.len(), 3);
+        for v in ["SMTP_USER", "SMTP_PASS", "SMTP_FROM"] {
+            assert!(
+                warnings.iter().any(|w| w.contains(v)),
+                "expected a warning mentioning {v}; got {warnings:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn config_warnings_smtp_complete_is_quiet() {
+        let warnings = super::collect_config_warnings(env_map([
+            ("SMTP_HOST", "mail.example.com"),
+            ("SMTP_USER", "u"),
+            ("SMTP_PASS", "p"),
+            ("SMTP_FROM", "noreply@example.com"),
+        ]));
+        assert!(warnings.is_empty(), "no warnings when all SMTP vars set; got {warnings:?}");
+    }
+
+    #[test]
+    fn config_warnings_partial_oauth_flags_missing_side() {
+        let warnings = super::collect_config_warnings(env_map([
+            ("GOOGLE_OAUTH_CLIENT_ID", "abc"),
+        ]));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("GOOGLE_OAUTH_CLIENT_SECRET"));
+
+        let warnings = super::collect_config_warnings(env_map([
+            ("GITHUB_OAUTH_CLIENT_SECRET", "xyz"),
+        ]));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("GITHUB_OAUTH_CLIENT_ID"));
+    }
+
+    #[test]
+    fn config_warnings_complete_oauth_is_quiet() {
+        let warnings = super::collect_config_warnings(env_map([
+            ("GOOGLE_OAUTH_CLIENT_ID", "g_id"),
+            ("GOOGLE_OAUTH_CLIENT_SECRET", "g_sec"),
+        ]));
+        assert!(warnings.is_empty(), "no warnings when both sides set; got {warnings:?}");
+    }
+
+    #[test]
+    fn config_warnings_redirect_url_must_have_http_scheme() {
+        let warnings = super::collect_config_warnings(env_map([
+            ("OAUTH_REDIRECT_BASE_URL", "example.com/cb"),
+        ]));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("OAUTH_REDIRECT_BASE_URL"));
+
+        let warnings = super::collect_config_warnings(env_map([
+            ("OAUTH_REDIRECT_BASE_URL", "http://example.com"),
+        ]));
+        assert!(warnings.is_empty());
+
+        let warnings = super::collect_config_warnings(env_map([
+            ("OAUTH_REDIRECT_BASE_URL", "https://example.com"),
+        ]));
+        assert!(warnings.is_empty());
     }
 
     #[tokio::test]
