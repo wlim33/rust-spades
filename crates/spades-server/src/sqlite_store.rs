@@ -309,6 +309,44 @@ impl SqliteStore {
         ).map_err(|e| e.to_string())?;
         Ok(())
     }
+
+    pub fn consume_auth_token(&self, token_hash: &str, expected_purpose: &str)
+        -> Result<crate::auth::tokens::ConsumedToken, String>
+    {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let row: Option<(String, String, String, Option<String>)> = conn.query_row(
+            "SELECT user_id, purpose, expires_at, used_at FROM auth_tokens WHERE token_hash = ?1",
+            rusqlite::params![token_hash],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        ).map(Some).or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other.to_string()),
+        })?;
+        let Some((user_id_s, purpose, expires_at, used_at)) = row else {
+            return Err("token_invalid".into());
+        };
+        if used_at.is_some() { return Err("token_invalid".into()); }
+        if purpose != expected_purpose { return Err("token_invalid".into()); }
+        let now = chrono::Utc::now().naive_utc();
+        if let Ok(when) = chrono::NaiveDateTime::parse_from_str(&expires_at, "%Y-%m-%d %H:%M:%S") {
+            if when < now { return Err("token_invalid".into()); }
+        }
+        conn.execute(
+            "UPDATE auth_tokens SET used_at = datetime('now') WHERE token_hash = ?1",
+            rusqlite::params![token_hash],
+        ).map_err(|e| e.to_string())?;
+        let user_id = uuid::Uuid::parse_str(&user_id_s).map_err(|e| e.to_string())?;
+        Ok(crate::auth::tokens::ConsumedToken { user_id, purpose })
+    }
+
+    pub fn cleanup_expired_tokens(&self) -> Result<usize, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let n = conn.execute(
+            "DELETE FROM auth_tokens WHERE expires_at < datetime('now') OR used_at IS NOT NULL",
+            [],
+        ).map_err(|e| e.to_string())?;
+        Ok(n)
+    }
 }
 
 fn row_to_user(r: &rusqlite::Row<'_>) -> rusqlite::Result<crate::auth::users::User> {
