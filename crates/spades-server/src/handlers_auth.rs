@@ -4,7 +4,7 @@ use tower_sessions::Session;
 use uuid::Uuid;
 
 use crate::auth::{
-    AuthError, AuthState,
+    AuthError, AuthState, AuthUser,
     mailer::Email,
     password::{hash_password, validate_password, verify_password, verify_against_dummy},
     session_ext,
@@ -154,4 +154,13 @@ pub async fn login(
     session_ext::set_claimed(&session, user.id, user.token_version).await?;
 
     Ok(Json(UserResponse::from(&user)))
+}
+
+pub async fn logout(session: Session) -> Result<axum::http::StatusCode, AuthError> {
+    session_ext::clear_claimed(&session).await?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+pub async fn me(AuthUser(user): AuthUser) -> Json<UserResponse> {
+    Json(UserResponse::from(&user))
 }

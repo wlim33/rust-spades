@@ -109,6 +109,8 @@ pub fn build_router(state: AppState) -> Router {
         // Auth endpoints
         .route("/auth/register", post(handlers::auth::register))
         .route("/auth/login", post(handlers::auth::login))
+        .route("/auth/logout", post(handlers::auth::logout))
+        .route("/auth/me", get(handlers::auth::me))
         .with_state(state)
 }
 
