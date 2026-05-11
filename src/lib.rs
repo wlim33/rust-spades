@@ -325,7 +325,8 @@ impl Game {
                 } else if self.scoring.team_b.cumulative_points > self.scoring.team_a.cumulative_points {
                     return Ok((&self.player_b.id, &self.player_d.id));
                 } else {
-                    // Tie should not happen (is_over prevents it), but guard against it
+                    // Unreachable: Scoring keeps is_over = false on a tie at max_points,
+                    // so the game never transitions to State::Completed with equal scores.
                     return Err(GetError::GameNotCompleted);
                 }
             },
