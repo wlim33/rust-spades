@@ -1,12 +1,13 @@
 //! Shared test scaffolding for auth integration tests.
 
-use axum::{routing::{get, post}, Router};
+use axum::{extract::connect_info::MockConnectInfo, routing::{get, post}, Router};
 use axum_test::{TestServer, TestServerConfig};
 use spades_server::{
     auth::{AuthState, mailer::LogMailer, oauth::OauthState, rate_limit::RateLimitState},
     handlers_auth,
     sqlite_store::SqliteStore,
 };
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
 
@@ -35,7 +36,9 @@ pub fn test_server() -> TestServer {
         .with_secure(false)
         .with_expiry(Expiry::OnInactivity(time::Duration::days(1)));
 
-    let app = router.layer(session_layer);
+    let app = router
+        .layer(session_layer)
+        .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 0))));
     TestServer::new_with_config(app, TestServerConfig {
         save_cookies: true,
         ..Default::default()

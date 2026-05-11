@@ -284,7 +284,9 @@ async fn main() {
         println!("WARNING: --insecure-cookies enabled. Session cookie lacks Secure flag. DO NOT use in production.");
     }
 
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
+        .await
+        .unwrap();
 }
 
 #[cfg(test)]
@@ -297,6 +299,8 @@ mod tests {
     use tower_sessions::MemoryStore;
 
     fn test_app() -> TestServer {
+        use axum::extract::connect_info::MockConnectInfo;
+
         let game_manager = GameManager::new();
         let matchmaker = Matchmaker::new(game_manager.clone());
         let challenge_manager = ChallengeManager::new(game_manager.clone());
@@ -324,7 +328,9 @@ mod tests {
         let session_layer = SessionManagerLayer::new(session_store)
             .with_secure(false);
 
-        let app = build_router(state).layer(session_layer);
+        let app = build_router(state)
+            .layer(session_layer)
+            .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 0))));
         TestServer::new_with_config(
             app,
             TestServerConfig {

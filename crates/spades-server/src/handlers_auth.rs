@@ -1,5 +1,6 @@
-use axum::{extract::{Query, State}, response::{Json, Redirect}};
+use axum::{extract::{ConnectInfo, Query, State}, response::{Json, Redirect}};
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use tower_sessions::Session;
 use uuid::Uuid;
 
@@ -7,6 +8,7 @@ use crate::auth::{
     AuthError, AuthState, AuthUser,
     mailer::Email,
     password::{hash_password, validate_password, verify_password, verify_against_dummy},
+    rate_limit::{check_email, check_ip},
     session_ext,
     tokens::{generate_token, hash_token, PURPOSE_PASSWORD_RESET, PURPOSE_VERIFY_EMAIL},
     users::{validate_email, validate_username, NewUser, User},
@@ -40,9 +42,11 @@ impl From<&User> for UserResponse {
 
 pub async fn register(
     State(auth): State<AuthState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     session: Session,
     Json(req): Json<RegisterRequest>,
 ) -> Result<(axum::http::StatusCode, Json<UserResponse>), AuthError> {
+    check_ip(&auth.rate.register, addr.ip())?;
     let username = validate_username(&req.username)?;
     validate_email(&req.email)?;
     validate_password(&req.password)?;
@@ -92,9 +96,11 @@ pub struct LoginRequest {
 
 pub async fn login(
     State(auth): State<AuthState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     session: Session,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<UserResponse>, AuthError> {
+    check_ip(&auth.rate.login, addr.ip())?;
     let user_opt = if req.login.contains('@') {
         auth.store.find_user_by_email(&req.login).map_err(AuthError::Storage)?
     } else {
@@ -176,8 +182,11 @@ pub struct PasswordResetRequestBody {
 
 pub async fn password_reset_request(
     State(auth): State<AuthState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(req): Json<PasswordResetRequestBody>,
 ) -> Result<axum::http::StatusCode, AuthError> {
+    check_ip(&auth.rate.password_reset_request_ip, addr.ip())?;
+    check_email(&auth.rate.password_reset_request_email, &req.email)?;
     if let Some(user) = auth.store.find_user_by_email(&req.email).map_err(AuthError::Storage)? {
         let token = generate_token();
         let hash = hash_token(&token);
@@ -201,9 +210,11 @@ pub struct PasswordResetConfirmBody {
 
 pub async fn password_reset_confirm(
     State(auth): State<AuthState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     session: Session,
     Json(req): Json<PasswordResetConfirmBody>,
 ) -> Result<axum::http::StatusCode, AuthError> {
+    check_ip(&auth.rate.password_reset_confirm, addr.ip())?;
     validate_password(&req.new_password)?;
     let hash = hash_token(&req.token);
     let consumed = auth.store.consume_auth_token(&hash, PURPOSE_PASSWORD_RESET)

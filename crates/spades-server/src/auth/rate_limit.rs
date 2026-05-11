@@ -38,6 +38,28 @@ impl RateLimitState {
     }
 }
 
+pub fn check_ip(
+    limiter: &governor::RateLimiter<IpAddr, DefaultKeyedStateStore<IpAddr>, DefaultClock>,
+    ip: IpAddr,
+) -> Result<(), crate::auth::AuthError> {
+    limiter.check_key(&ip).map_err(|nu| {
+        let wait_secs = nu.wait_time_from(std::time::Instant::now()).as_secs().max(1);
+        crate::auth::AuthError::RateLimited { retry_after_secs: wait_secs }
+    })?;
+    Ok(())
+}
+
+pub fn check_email(
+    limiter: &governor::RateLimiter<String, DefaultKeyedStateStore<String>, DefaultClock>,
+    email: &str,
+) -> Result<(), crate::auth::AuthError> {
+    limiter.check_key(&email.to_string()).map_err(|nu| {
+        let wait_secs = nu.wait_time_from(std::time::Instant::now()).as_secs().max(1);
+        crate::auth::AuthError::RateLimited { retry_after_secs: wait_secs }
+    })?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
