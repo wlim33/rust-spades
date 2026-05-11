@@ -49,6 +49,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
-axum-test = "18"
+axum-test = { version = "18", features = ["reqwest", "ws"] }
 ntest = "0.9"
 wiremock = "0.6"

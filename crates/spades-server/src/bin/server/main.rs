@@ -507,7 +507,7 @@ mod tests {
     use super::*;
     use crate::dto::PresenceSnapshot;
     use axum::http::StatusCode;
-    use axum_test::{TestServer, TestServerConfig};
+    use axum_test::{TestServer, TestServerConfig, Transport};
     use spades_server::game_manager::{CreateGameResponse, GameStateResponse};
     use tower_sessions::MemoryStore;
 
@@ -549,6 +549,7 @@ mod tests {
             app,
             TestServerConfig {
                 save_cookies: true,
+                transport: Some(Transport::HttpRandomPort),
                 ..Default::default()
             },
         )
@@ -761,6 +762,319 @@ mod tests {
         let response = server.get("/health").await;
         response.assert_status_ok();
         response.assert_text("ok");
+    }
+
+    // ---- WebSocket integration tests ----------------------------------
+    //
+    // These drive a real WS upgrade through the router, which is the only
+    // way the body of `handle_game_ws` (in bin/server/ws.rs) executes —
+    // REST-only test requests stop at `ws.on_upgrade(...)` and never run
+    // the inner future. Without these, ws.rs reports 0% line coverage
+    // despite the code being well-exercised in production.
+
+    /// Helper: drain WS events until one whose `event` field matches `wanted`
+    /// (or any value in `wanted_any`) is found. Fails the test if no match
+    /// arrives within a reasonable budget. Tolerant of presence/snapshot
+    /// ordering ambiguity under different transports.
+    async fn ws_recv_event_of(
+        ws: &mut axum_test::TestWebSocket,
+        wanted: &str,
+    ) -> serde_json::Value {
+        for _ in 0..16 {
+            let msg: serde_json::Value = ws.receive_json().await;
+            if msg["event"] == wanted {
+                return msg;
+            }
+        }
+        panic!("did not receive a `{wanted}` event within budget");
+    }
+
+    #[tokio::test]
+    async fn ws_player_receives_snapshot_then_state_change_on_transition() {
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        let path = format!("/games/{}/ws?player_id={}", create.game_id, create.player_ids[0]);
+        let mut ws = server
+            .get_websocket(&path)
+            .await
+            .into_websocket()
+            .await;
+
+        // Initial snapshot: seq 0, state NotStarted.
+        let snap = ws_recv_event_of(&mut ws, "state_changed").await;
+        assert_eq!(snap["seq"], 0);
+        assert_eq!(snap["state"], "NotStarted");
+
+        // Trigger a transition via REST.
+        server
+            .post(&format!("/games/{}/transition", create.game_id))
+            .json(&serde_json::json!({"type": "start"}))
+            .await
+            .assert_status_ok();
+
+        // After the snapshot, the next state_changed event must reflect
+        // the Start transition (state moves into Betting). The State enum
+        // is externally tagged by serde, so Betting(seat_idx) serializes
+        // to `{"Betting": <idx>}`.
+        let event = ws_recv_event_of(&mut ws, "state_changed").await;
+        assert!(event["state"]["Betting"].is_number());
+    }
+
+    #[tokio::test]
+    async fn ws_spectator_bumps_spectator_count() {
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        let path = format!("/games/{}/ws", create.game_id);
+        let mut ws = server
+            .get_websocket(&path)
+            .await
+            .into_websocket()
+            .await;
+
+        // Spectator's connect should drive presence to include
+        // `spectator_count: 1`. The first `presence_changed` after connect
+        // may be from `initial_presence` (count 0) or from the broadcast
+        // emitted after `spectator_connected` (count 1). Drain until we
+        // see the bumped count.
+        for _ in 0..16 {
+            let msg: serde_json::Value = ws.receive_json().await;
+            if msg["event"] == "presence_changed" && msg["spectator_count"] == 1 {
+                return;
+            }
+        }
+        panic!("never observed spectator_count == 1");
+    }
+
+    #[tokio::test]
+    async fn ws_subscriber_receives_chat_messages() {
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        let path = format!("/games/{}/ws?player_id={}", create.game_id, create.player_ids[0]);
+        let mut ws = server
+            .get_websocket(&path)
+            .await
+            .into_websocket()
+            .await;
+
+        // Wait for the initial snapshot before sending chat so the chat
+        // arrives during the WS streaming loop.
+        let _snap = ws_recv_event_of(&mut ws, "state_changed").await;
+
+        // Owner posts a chat message.
+        server
+            .post(&format!("/games/{}/chat", create.game_id))
+            .json(&serde_json::json!({
+                "player_id": create.player_ids[0],
+                "content": "ready",
+            }))
+            .await
+            .assert_status(StatusCode::ACCEPTED);
+
+        let chat = ws_recv_event_of(&mut ws, "chat_message").await;
+        assert_eq!(chat["content"], "ready");
+        assert_eq!(
+            chat["player_id"].as_str().unwrap(),
+            create.player_ids[0].to_string(),
+        );
+    }
+
+    // ---- matchmaking SSE handler: input validation ---------------------
+    //
+    // The seek SSE stream itself is hard to drive from axum-test (it never
+    // terminates on its own), but the validation branches before the
+    // stream yields a 4xx synchronously. Exercising them locks in the
+    // contract for the front-end and bumps coverage of handlers/matchmaking.rs.
+
+    #[tokio::test]
+    async fn seek_rejects_non_positive_max_points() {
+        let server = test_app();
+        let response = server
+            .post("/matchmaking/seek")
+            .json(&serde_json::json!({
+                "max_points": 0,
+                "timer_config": {"initial_time_secs": 60, "increment_secs": 5},
+            }))
+            .await;
+        response.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn seek_rejects_invalid_name() {
+        let server = test_app();
+        let response = server
+            .post("/matchmaking/seek")
+            .json(&serde_json::json!({
+                "max_points": 500,
+                "timer_config": {"initial_time_secs": 60, "increment_secs": 5},
+                "name": "",
+            }))
+            .await;
+        response.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    // ---- challenges handler: validation + lifecycle --------------------
+
+    #[tokio::test]
+    async fn create_challenge_rejects_non_positive_max_points() {
+        let server = test_app();
+        let response = server
+            .post("/challenges")
+            .json(&serde_json::json!({
+                "max_points": -1,
+            }))
+            .await;
+        response.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn create_challenge_rejects_invalid_creator_name() {
+        let server = test_app();
+        let response = server
+            .post("/challenges")
+            .json(&serde_json::json!({
+                "max_points": 500,
+                "creator_name": "",
+            }))
+            .await;
+        response.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn join_challenge_rejects_invalid_seat() {
+        let server = test_app();
+        let response = server
+            .post(&format!("/challenges/{}/join/Z", Uuid::new_v4()))
+            .json(&serde_json::json!({}))
+            .await;
+        response.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn join_challenge_rejects_invalid_name() {
+        let server = test_app();
+        let response = server
+            .post(&format!("/challenges/{}/join/A", Uuid::new_v4()))
+            .json(&serde_json::json!({"name": ""}))
+            .await;
+        response.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn join_challenge_returns_404_when_challenge_missing() {
+        let server = test_app();
+        let response = server
+            .post(&format!("/challenges/{}/join/A", Uuid::new_v4()))
+            .json(&serde_json::json!({}))
+            .await;
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    /// Helper: open an SSE POST, parse the first `event: <name>\ndata: <json>`
+    /// frame, then drop the connection. The reqwest Response's body stream is
+    /// dropped on return, which the server treats as a closed connection —
+    /// any Drop-based cleanup (e.g. SeekGuard / ChallengeGuard) runs.
+    async fn sse_first_event(
+        server: &TestServer,
+        path: &str,
+        body: serde_json::Value,
+    ) -> (String, serde_json::Value) {
+        let mut resp = server
+            .reqwest_post(path)
+            .json(&body)
+            .send()
+            .await
+            .expect("post failed");
+        assert!(resp.status().is_success(), "SSE POST not 2xx: {}", resp.status());
+        let mut buf = String::new();
+        while let Some(chunk) = resp.chunk().await.expect("chunk read failed") {
+            buf.push_str(&String::from_utf8_lossy(&chunk));
+            if buf.contains("\n\n") {
+                break;
+            }
+        }
+        // Parse the first SSE frame.
+        let frame = buf.split("\n\n").next().unwrap();
+        let mut event_name = String::new();
+        let mut data = String::new();
+        for line in frame.lines() {
+            if let Some(rest) = line.strip_prefix("event:") {
+                event_name = rest.trim().to_string();
+            } else if let Some(rest) = line.strip_prefix("data:") {
+                data.push_str(rest.trim());
+            }
+        }
+        let value: serde_json::Value = serde_json::from_str(&data).expect("invalid SSE data JSON");
+        (event_name, value)
+    }
+
+    #[tokio::test]
+    async fn create_challenge_emits_initial_event_and_cancel_403_for_stranger() {
+        // Drive the create-challenge SSE stream just far enough to extract
+        // the new `challenge_id`, then drop the stream. Issue a DELETE with
+        // a stranger's UUID and assert the handler maps `NotCreator` → 403.
+        let server = test_app();
+        let (event_name, value) = sse_first_event(
+            &server,
+            "/challenges",
+            serde_json::json!({
+                "max_points": 500,
+                "creator_seat": "A",
+            }),
+        )
+        .await;
+        assert_eq!(event_name, "challenge_created");
+        let challenge_id = value["challenge_id"].as_str().expect("challenge_id");
+        let creator_player_id = value["creator_player_id"]
+            .as_str()
+            .expect("creator_player_id");
+
+        // Stranger DELETE → 403.
+        server
+            .delete(&format!("/challenges/{}", challenge_id))
+            .json(&serde_json::json!({"creator_id": Uuid::new_v4()}))
+            .await
+            .assert_status(StatusCode::FORBIDDEN);
+
+        // Sanity: the real creator can cancel.
+        server
+            .delete(&format!("/challenges/{}", challenge_id))
+            .json(&serde_json::json!({"creator_id": creator_player_id}))
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn get_challenge_by_short_id_returns_full_status_on_match() {
+        let server = test_app();
+        let (_, value) = sse_first_event(
+            &server,
+            "/challenges",
+            serde_json::json!({
+                "max_points": 500,
+                "creator_seat": "A",
+            }),
+        )
+        .await;
+        let short_id = value["short_id"].as_str().expect("short_id");
+
+        let response = server
+            .get(&format!("/challenges/by-short-id/{}", short_id))
+            .await;
+        response.assert_status_ok();
+        let body: serde_json::Value = response.json();
+        assert_eq!(body["short_id"], short_id);
     }
 
     #[tokio::test]
