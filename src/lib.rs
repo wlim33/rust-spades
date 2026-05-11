@@ -220,31 +220,31 @@ impl Game {
         &self.state
     }
 
-    pub fn get_team_a_score(&self) ->  Result<&i32, GetError> {
-        match (&self.state, self.current_player_index) {
-            (State::NotStarted, _) => {Err(GetError::GameNotStarted)},
-            _ => {Ok(&self.scoring.team_a.cumulative_points)}
+    pub fn get_team_a_score(&self) -> Result<&i32, GetError> {
+        match self.state {
+            State::NotStarted => Err(GetError::GameNotStarted),
+            _ => Ok(&self.scoring.team_a.cumulative_points),
         }
     }
 
-    pub fn get_team_b_score(&self) ->  Result<&i32, GetError> {
-        match (&self.state, self.current_player_index) {
-            (State::NotStarted, _) => {Err(GetError::GameNotStarted)},
-            _ => {Ok(&self.scoring.team_b.cumulative_points)}
+    pub fn get_team_b_score(&self) -> Result<&i32, GetError> {
+        match self.state {
+            State::NotStarted => Err(GetError::GameNotStarted),
+            _ => Ok(&self.scoring.team_b.cumulative_points),
         }
     }
 
     pub fn get_team_a_bags(&self) -> Result<&i32, GetError> {
         match self.state {
-            State::NotStarted => {Err(GetError::GameNotStarted)},
-            _ => {Ok(&self.scoring.team_a.bags)}
+            State::NotStarted => Err(GetError::GameNotStarted),
+            _ => Ok(&self.scoring.team_a.bags),
         }
     }
 
     pub fn get_team_b_bags(&self) -> Result<&i32, GetError> {
         match self.state {
-            State::NotStarted => {Err(GetError::GameNotStarted)},
-            _ => {Ok(&self.scoring.team_b.bags)}
+            State::NotStarted => Err(GetError::GameNotStarted),
+            _ => Ok(&self.scoring.team_b.bags),
         }
     }
     
