@@ -296,13 +296,13 @@ impl Game {
         }
     }
 
-    /// Returns an array with (only if in the trick stage).
+    /// Returns the cards currently on the table. Only available in the Trick stage.
     pub fn get_current_trick_cards(&self) -> Result<&[cards::Card; 4], GetError> {
         match self.state {
-            State::NotStarted => {Err(GetError::GameNotStarted)},
-            State::Completed | State::Aborted => {Err(GetError::GameCompleted)},
-            State::Betting(_) => {Err(GetError::GameCompleted)},
-            State::Trick(_) => {Ok(self.hands_played.last().unwrap())},
+            State::NotStarted => Err(GetError::GameNotStarted),
+            State::Completed | State::Aborted => Err(GetError::GameCompleted),
+            State::Betting(_) => Err(GetError::Unknown),
+            State::Trick(_) => Ok(self.hands_played.last().unwrap()),
         }
     }
 

@@ -1,7 +1,20 @@
 use super::super::cards::{Card, Suit, Rank};
-use super::super::result::{TransitionSuccess, TransitionError};
+use super::super::result::{TransitionSuccess, TransitionError, GetError};
 use super::super::{Game, GameTransition};
 use super::super::game_state::State;
+
+#[test]
+fn get_current_trick_cards_in_betting_returns_unknown_not_completed() {
+    let mut g = Game::new(
+        uuid::Uuid::new_v4(),
+        [uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4()],
+        500,
+        None,
+    );
+    g.play(GameTransition::Start).unwrap();
+    assert!(matches!(g.get_state(), State::Betting(_)));
+    assert_eq!(g.get_current_trick_cards().err(), Some(GetError::Unknown));
+}
 
 #[allow(unused)]
 #[test]
