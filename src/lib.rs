@@ -61,17 +61,21 @@ pub mod challenges;
 #[cfg(test)]
 mod tests;
 
+use std::sync::OnceLock;
 use uuid::Uuid;
 use sqids::Sqids;
 pub use result::*;
 pub use cards::*;
 pub use game_state::*;
 
-fn sqids_instance() -> Sqids {
-    Sqids::builder()
-        .min_length(6)
-        .build()
-        .expect("valid sqids config")
+fn sqids_instance() -> &'static Sqids {
+    static SQIDS: OnceLock<Sqids> = OnceLock::new();
+    SQIDS.get_or_init(|| {
+        Sqids::builder()
+            .min_length(6)
+            .build()
+            .expect("valid sqids config")
+    })
 }
 
 pub fn uuid_to_short_id(uuid: Uuid) -> String {
