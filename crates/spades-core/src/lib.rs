@@ -460,6 +460,7 @@ impl Game {
                                 self.spades_broken = false;
                                 self.leading_suit = None;
                                 self.deal_cards();
+                                self.hands_played.push([None; 4]);
                             } else {
                                 self.current_player_index = winner;
                                 self.state = State::Trick((rotation_status + 1) % 4);
@@ -584,6 +585,37 @@ impl Game {
             }
             _ => Err(GetError::Unknown),
         }
+    }
+
+    /// Max points configured at game creation.
+    pub fn get_max_points(&self) -> i32 {
+        self.scoring.config.max_points
+    }
+
+    /// All trick slots, one per trick. For round R the slots live at indices
+    /// 13*R .. 13*(R+1). The final slot may be partially filled (current trick).
+    /// Empty trailing slot during betting between rounds is intentional.
+    pub fn get_history(&self) -> &[[Option<cards::Card>; 4]] {
+        &self.hands_played
+    }
+
+    /// All bets per round in seat order. `bets_placed[R][s]` is seat `s`'s bet
+    /// for round `R`. The trailing entry is a write target for the next round's
+    /// bets and may be all zeros even when no bets have been placed.
+    pub fn get_all_bets(&self) -> &[[i32; 4]] {
+        &self.scoring.bets_placed
+    }
+
+    /// Current 0-based round index (`scoring.round`).
+    pub fn get_round_index(&self) -> usize {
+        self.scoring.round
+    }
+
+    /// True when the game is in (or just finished) a betting phase rather than
+    /// a trick phase. Combined with `get_state()` this disambiguates Aborted
+    /// games.
+    pub fn get_in_betting_stage(&self) -> bool {
+        self.scoring.in_betting_stage
     }
 
     fn deal_cards(&mut self) {

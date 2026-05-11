@@ -295,5 +295,45 @@ pub fn api_main_unit() {
     // for t_n in 0..3 {
     //     trick_test_closure(t_n, &pots[t_n], trick_winners[t_n]);
     // }
-    
+
+}
+
+#[test]
+fn history_preserved_across_round_boundary() {
+    use crate::{Game, GameTransition, State};
+    use uuid::Uuid;
+
+    let mut g = Game::new(Uuid::new_v4(), [Uuid::new_v4(); 4], 50, None);
+    g.play(GameTransition::Start).unwrap();
+
+    // Bet round 0 — keep bets low so neither team reaches max_points after 1 round.
+    for _ in 0..4 {
+        g.play(GameTransition::Bet(1)).unwrap();
+    }
+
+    // Play all 13 tricks of round 0 by always picking the first legal card.
+    for _ in 0..13 {
+        for _ in 0..4 {
+            let legal = g.get_legal_cards().unwrap();
+            g.play(GameTransition::Card(legal[0])).unwrap();
+        }
+    }
+
+    // We should now be in betting state for round 1 (game isn't over with max_points=50 after 1 round of low bets).
+    assert!(matches!(g.get_state(), State::Betting(_)));
+
+    // History must already contain a slot for round 1's first trick (14 total entries),
+    // so round 0's tricks 0..12 remain intact.
+    assert_eq!(g.get_history().len(), 14);
+
+    // The slot pushed for round 1 must be empty.
+    let last = g.get_history().last().unwrap();
+    assert!(last.iter().all(|c| c.is_none()));
+
+    // All 13 round-0 trick slots must be fully populated.
+    for (i, trick) in g.get_history()[..13].iter().enumerate() {
+        for (s, c) in trick.iter().enumerate() {
+            assert!(c.is_some(), "round 0 trick {} seat {} should be Some", i, s);
+        }
+    }
 }
