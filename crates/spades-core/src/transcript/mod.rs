@@ -132,3 +132,59 @@ impl fmt::Display for ReplayError {
 }
 
 impl std::error::Error for ReplayError {}
+
+#[cfg(test)]
+mod property_tests {
+    use super::*;
+    use crate::{Game, GameTransition, State};
+    use rand::seq::SliceRandom;
+    use rand::rngs::StdRng;
+    use rand::{RngCore, SeedableRng};
+    use uuid::Uuid;
+
+    fn play_full_random_game(seed: u64) -> Game {
+        let mut rng = StdRng::seed_from_u64(seed);
+
+        let mut id_bytes = [0u8; 16];
+        id_bytes[..8].copy_from_slice(&seed.to_be_bytes());
+        id_bytes[8..].copy_from_slice(&(!seed).to_be_bytes());
+        let game_id = Uuid::from_bytes(id_bytes);
+
+        let player_ids = [
+            Uuid::from_bytes([1; 16]),
+            Uuid::from_bytes([2; 16]),
+            Uuid::from_bytes([3; 16]),
+            Uuid::from_bytes([4; 16]),
+        ];
+
+        let mut g = Game::new(game_id, player_ids, 60, None);
+        g.play(GameTransition::Start).unwrap();
+        loop {
+            match g.get_state().clone() {
+                State::Completed | State::Aborted => return g,
+                State::Betting(_) => {
+                    let b = (rng.next_u32() % 4) as i32 + 1;
+                    g.play(GameTransition::Bet(b)).unwrap();
+                }
+                State::Trick(_) => {
+                    let legal = g.get_legal_cards().unwrap();
+                    let card = *legal.choose(&mut rng).unwrap();
+                    g.play(GameTransition::Card(card)).unwrap();
+                }
+                State::NotStarted => unreachable!(),
+            }
+        }
+    }
+
+    #[test]
+    fn round_trip_is_idempotent_on_many_random_games() {
+        for seed in 0..30u64 {
+            let g = play_full_random_game(seed);
+            let s1 = encode(&g);
+            let parsed = decode(&s1).expect("decode");
+            let replayed = replay(&parsed).expect("replay");
+            let s2 = encode(&replayed);
+            assert_eq!(s1, s2, "round trip differed for seed {}", seed);
+        }
+    }
+}
