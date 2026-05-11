@@ -25,6 +25,9 @@ pub fn test_server() -> TestServer {
         .route("/auth/login", post(handlers_auth::login))
         .route("/auth/logout", post(handlers_auth::logout))
         .route("/auth/me", get(handlers_auth::me))
+        .route("/auth/verify-email", get(handlers_auth::verify_email))
+        .route("/auth/password-reset/request", post(handlers_auth::password_reset_request))
+        .route("/auth/password-reset/confirm", post(handlers_auth::password_reset_confirm))
         .with_state(auth);
 
     let session_store = MemoryStore::default();

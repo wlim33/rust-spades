@@ -111,6 +111,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/login", post(handlers::auth::login))
         .route("/auth/logout", post(handlers::auth::logout))
         .route("/auth/me", get(handlers::auth::me))
+        .route("/auth/verify-email", get(handlers::auth::verify_email))
+        .route("/auth/password-reset/request", post(handlers::auth::password_reset_request))
+        .route("/auth/password-reset/confirm", post(handlers::auth::password_reset_confirm))
         .with_state(state)
 }
 

@@ -1,4 +1,4 @@
-use axum::{extract::State, response::Json};
+use axum::{extract::{Query, State}, response::{Json, Redirect}};
 use serde::{Deserialize, Serialize};
 use tower_sessions::Session;
 use uuid::Uuid;
@@ -8,6 +8,7 @@ use crate::auth::{
     mailer::Email,
     password::{hash_password, validate_password, verify_password, verify_against_dummy},
     session_ext,
+    tokens::{generate_token, hash_token, PURPOSE_PASSWORD_RESET, PURPOSE_VERIFY_EMAIL},
     users::{validate_email, validate_username, NewUser, User},
 };
 
@@ -68,9 +69,9 @@ pub async fn register(
         .ok_or_else(|| AuthError::Internal("user vanished after insert".into()))?;
     session_ext::set_claimed(&session, user_id, user.token_version).await?;
 
-    let token = generate_email_token();
-    let token_hash = sha256_hex(&token);
-    auth.store.insert_auth_token(&token_hash, user_id, "verify_email", 24 * 3600)
+    let token = generate_token();
+    let token_hash = hash_token(&token);
+    auth.store.insert_auth_token(&token_hash, user_id, PURPOSE_VERIFY_EMAIL, 24 * 3600)
         .map_err(AuthError::Storage)?;
     let link = format!("{}/auth/verify-email?token={}", auth.oauth.redirect_base_url, token);
     let _ = auth.mailer.send(Email {
@@ -82,19 +83,6 @@ pub async fn register(
     Ok((axum::http::StatusCode::CREATED, Json(UserResponse::from(&user))))
 }
 
-fn generate_email_token() -> String {
-    use rand::RngCore;
-    let mut buf = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut buf);
-    use base64::Engine;
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf)
-}
-
-fn sha256_hex(s: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let h = Sha256::digest(s.as_bytes());
-    hex::encode(h)
-}
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
@@ -163,4 +151,66 @@ pub async fn logout(session: Session) -> Result<axum::http::StatusCode, AuthErro
 
 pub async fn me(AuthUser(user): AuthUser) -> Json<UserResponse> {
     Json(UserResponse::from(&user))
+}
+
+#[derive(Deserialize)]
+pub struct VerifyEmailQuery {
+    pub token: String,
+}
+
+pub async fn verify_email(
+    State(auth): State<AuthState>,
+    Query(q): Query<VerifyEmailQuery>,
+) -> Result<Redirect, AuthError> {
+    let hash = hash_token(&q.token);
+    let consumed = auth.store.consume_auth_token(&hash, PURPOSE_VERIFY_EMAIL)
+        .map_err(|e| if e == "token_invalid" { AuthError::TokenInvalid } else { AuthError::Storage(e) })?;
+    auth.store.set_user_email_verified(consumed.user_id).map_err(AuthError::Storage)?;
+    Ok(Redirect::to("/"))
+}
+
+#[derive(Deserialize)]
+pub struct PasswordResetRequestBody {
+    pub email: String,
+}
+
+pub async fn password_reset_request(
+    State(auth): State<AuthState>,
+    Json(req): Json<PasswordResetRequestBody>,
+) -> Result<axum::http::StatusCode, AuthError> {
+    if let Some(user) = auth.store.find_user_by_email(&req.email).map_err(AuthError::Storage)? {
+        let token = generate_token();
+        let hash = hash_token(&token);
+        auth.store.insert_auth_token(&hash, user.id, PURPOSE_PASSWORD_RESET, 3600)
+            .map_err(AuthError::Storage)?;
+        let link = format!("{}/auth/password-reset?token={}", auth.oauth.redirect_base_url, token);
+        let _ = auth.mailer.send(Email {
+            to: user.email,
+            subject: "Reset your Spades password".into(),
+            body: format!("Reset link: {link}\n\nExpires in 1 hour."),
+        }).await;
+    }
+    Ok(axum::http::StatusCode::ACCEPTED)
+}
+
+#[derive(Deserialize)]
+pub struct PasswordResetConfirmBody {
+    pub token: String,
+    pub new_password: String,
+}
+
+pub async fn password_reset_confirm(
+    State(auth): State<AuthState>,
+    session: Session,
+    Json(req): Json<PasswordResetConfirmBody>,
+) -> Result<axum::http::StatusCode, AuthError> {
+    validate_password(&req.new_password)?;
+    let hash = hash_token(&req.token);
+    let consumed = auth.store.consume_auth_token(&hash, PURPOSE_PASSWORD_RESET)
+        .map_err(|e| if e == "token_invalid" { AuthError::TokenInvalid } else { AuthError::Storage(e) })?;
+    let new_hash = hash_password(&req.new_password)?;
+    let new_version = auth.store.update_user_password(consumed.user_id, &new_hash)
+        .map_err(AuthError::Storage)?;
+    session_ext::set_claimed(&session, consumed.user_id, new_version).await?;
+    Ok(axum::http::StatusCode::OK)
 }
