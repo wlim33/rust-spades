@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex, RwLock};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -33,30 +33,111 @@ pub enum GameEvent {
     },
 }
 
-/// Per-game fan-out channel paired with the seq cursor. The cursor is the
-/// seq value that will be assigned to the NEXT event; reading it without
-/// incrementing gives subscribers a "you are here" marker for the snapshot
-/// they receive on connect.
+/// Per-game fan-out channel paired with the seq cursor and a ring buffer of
+/// recent events for reconnection catch-up. The cursor is the seq value that
+/// will be assigned to the NEXT event; the buffer retains the most recent
+/// `RECENT_CAP` events so a briefly-disconnected subscriber can replay what
+/// they missed instead of pulling a fresh snapshot.
 pub struct GameBroadcaster {
     pub sender: broadcast::Sender<GameEvent>,
     pub next_seq: AtomicU64,
+    pub recent: Mutex<VecDeque<GameEvent>>,
 }
+
+/// Number of most-recent events retained per game for `?since=N` catch-up.
+/// Sized at 2× the broadcast::channel buffer so a subscriber that triggers
+/// `Lagged` still has hope of catching up via the ring buffer instead of
+/// being forced to re-snapshot.
+pub const RECENT_CAP: usize = 128;
 
 impl GameBroadcaster {
     pub fn new(capacity: usize) -> Self {
         let (sender, _) = broadcast::channel(capacity);
-        Self { sender, next_seq: AtomicU64::new(0) }
-    }
-
-    /// Allocate the next seq value (and advance the cursor).
-    pub fn allocate_seq(&self) -> u64 {
-        self.next_seq.fetch_add(1, Ordering::Relaxed)
+        Self {
+            sender,
+            next_seq: AtomicU64::new(0),
+            recent: Mutex::new(VecDeque::with_capacity(RECENT_CAP)),
+        }
     }
 
     /// Read the current cursor without advancing — used for snapshot stamping.
     pub fn current_seq(&self) -> u64 {
         self.next_seq.load(Ordering::Relaxed)
     }
+
+    /// Allocate a seq, build the event, retain it in the ring buffer, and
+    /// publish to subscribers. Returns the seq value assigned.
+    pub fn broadcast<F>(&self, build: F) -> u64
+    where
+        F: FnOnce(u64) -> GameEvent,
+    {
+        let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        let event = build(seq);
+        {
+            let mut recent = self.recent.lock_or_recover();
+            recent.push_back(event.clone());
+            while recent.len() > RECENT_CAP {
+                recent.pop_front();
+            }
+        }
+        let _ = self.sender.send(event);
+        seq
+    }
+
+    /// Return events with seq >= `since` from the ring buffer, in seq order.
+    /// `None` means the buffer no longer holds anything that old, or the
+    /// caller's cursor is past `current_seq` (suggesting state from a prior
+    /// server lifetime) — caller should fall back to a fresh snapshot.
+    /// `Some(empty)` means the caller is exactly up to date.
+    pub fn catch_up_since(&self, since: u64, current_seq: u64) -> Option<Vec<GameEvent>> {
+        if since == current_seq {
+            return Some(Vec::new());
+        }
+        if since > current_seq {
+            return None;
+        }
+        let recent = self.recent.lock_or_recover();
+        let front_seq = recent.front().map(event_seq)?;
+        if front_seq > since {
+            return None;
+        }
+        Some(
+            recent
+                .iter()
+                .filter(|e| {
+                    let seq = event_seq(e);
+                    seq >= since && seq < current_seq
+                })
+                .cloned()
+                .collect(),
+        )
+    }
+}
+
+/// Extract the seq from a `GameEvent` regardless of variant.
+pub fn event_seq(event: &GameEvent) -> u64 {
+    match event {
+        GameEvent::StateChanged { seq, .. } => *seq,
+        GameEvent::GameAborted { seq, .. } => *seq,
+    }
+}
+
+/// Outcome of subscribing to a game's event stream. Captures the receiver,
+/// the seq cursor, a snapshot of the current state, and either a fresh
+/// snapshot path or a catch-up event list depending on whether the caller
+/// passed `?since=N` and whether the ring buffer still holds the requested
+/// events.
+pub struct Subscription {
+    pub rx: broadcast::Receiver<GameEvent>,
+    pub current_seq: u64,
+    pub initial_state: GameStateResponse,
+    /// `Some(events)` when the caller passed `since` and the ring buffer
+    /// holds the events from there forward; the WS handler should replay
+    /// those instead of sending `initial_state`. `None` means the WS
+    /// handler should send `initial_state` as a fresh snapshot — either
+    /// no `since` was given, the cursor was beyond `current_seq`, or the
+    /// ring buffer was pruned past it.
+    pub catch_up: Option<Vec<GameEvent>>,
 }
 
 /// Runtime-only timer state for an active turn (not serialized)
@@ -580,8 +661,7 @@ impl GameManager {
         // so concurrent transitions see seq values in transition order.
         if let Ok(broadcasters) = self.broadcasters.read()
             && let Some(b) = broadcasters.get(&game_id) {
-                let seq = b.allocate_seq();
-                let _ = b.sender.send(GameEvent::StateChanged { seq, state: state_response });
+                b.broadcast(|seq| GameEvent::StateChanged { seq, state: state_response });
             }
 
         drop(game);
@@ -699,8 +779,7 @@ impl GameManager {
                 // Broadcast under the write lock so seq matches state order.
                 if let Ok(broadcasters) = self.broadcasters.read()
                     && let Some(b) = broadcasters.get(&game_id) {
-                        let seq = b.allocate_seq();
-                        let _ = b.sender.send(GameEvent::GameAborted { seq, game_id, reason });
+                        b.broadcast(|seq| GameEvent::GameAborted { seq, game_id, reason });
                     }
             }
     }
@@ -721,8 +800,7 @@ impl GameManager {
         // Broadcast under the write lock so seq matches state order.
         if let Ok(broadcasters) = self.broadcasters.read()
             && let Some(b) = broadcasters.get(&game_id) {
-                let seq = b.allocate_seq();
-                let _ = b.sender.send(GameEvent::StateChanged { seq, state: state_response });
+                b.broadcast(|seq| GameEvent::StateChanged { seq, state: state_response });
             }
 
         drop(game);
@@ -764,17 +842,41 @@ impl GameManager {
         Ok(())
     }
 
-    /// Subscribe to game state change events. Returns the receiver paired with
-    /// the current seq cursor — i.e. the seq that will be assigned to the next
-    /// broadcast event. A subscriber receives the snapshot stamped with this
-    /// cursor, then expects subsequent events to carry seq >= cursor.
+    /// Subscribe to a game's event stream. Holds the game read lock through
+    /// receiver subscription, seq capture, and snapshot construction so the
+    /// returned `(rx, current_seq, initial_state)` triple is atomic — the
+    /// receiver delivers exactly the events with seq >= current_seq, and the
+    /// snapshot reflects state after all events with seq < current_seq.
+    ///
+    /// `since`:
+    /// * `None` — `catch_up` is `None`; caller sends `initial_state` as a
+    ///   fresh snapshot.
+    /// * `Some(n)` — caller is reconnecting from seq `n`. If the ring buffer
+    ///   still holds events from `n` forward, `catch_up = Some(events)`; the
+    ///   caller replays those instead of sending a snapshot. Otherwise the
+    ///   gap is too large and `catch_up = None` forces a fresh snapshot.
     pub fn subscribe(
         &self,
         game_id: Uuid,
-    ) -> Result<(broadcast::Receiver<GameEvent>, u64), GameManagerError> {
+        since: Option<u64>,
+    ) -> Result<Subscription, GameManagerError> {
+        let games = self.games.read().map_err(|_| GameManagerError::LockError)?;
+        let game_lock = games.get(&game_id).ok_or(GameManagerError::GameNotFound)?;
+        let game = game_lock.read().map_err(|_| GameManagerError::LockError)?;
+
         let broadcasters = self.broadcasters.read().map_err(|_| GameManagerError::LockError)?;
         let b = broadcasters.get(&game_id).ok_or(GameManagerError::GameNotFound)?;
-        Ok((b.sender.subscribe(), b.current_seq()))
+
+        let current_seq = b.current_seq();
+        let rx = b.sender.subscribe();
+        let initial_state = self.build_state_response_with_timer(game_id, &game);
+
+        let catch_up = match since {
+            None => None,
+            Some(n) => b.catch_up_since(n, current_seq),
+        };
+
+        Ok(Subscription { rx, current_seq, initial_state, catch_up })
     }
 }
 
@@ -969,14 +1071,14 @@ mod tests {
         let manager = GameManager::new();
         let response = manager.create_game(500, None).unwrap();
 
-        let rx = manager.subscribe(response.game_id);
-        assert!(rx.is_ok());
+        let sub = manager.subscribe(response.game_id, None);
+        assert!(sub.is_ok());
     }
 
     #[test]
     fn test_subscribe_game_not_found() {
         let manager = GameManager::new();
-        let result = manager.subscribe(Uuid::new_v4());
+        let result = manager.subscribe(Uuid::new_v4(), None);
         assert!(matches!(result, Err(GameManagerError::GameNotFound)));
     }
 
@@ -984,12 +1086,13 @@ mod tests {
     fn test_subscribe_receives_state_changed() {
         let manager = GameManager::new();
         let response = manager.create_game(500, None).unwrap();
-        let (mut rx, initial_seq) = manager.subscribe(response.game_id).unwrap();
-        assert_eq!(initial_seq, 0, "fresh game starts at seq 0");
+        let mut sub = manager.subscribe(response.game_id, None).unwrap();
+        assert_eq!(sub.current_seq, 0, "fresh game starts at seq 0");
+        assert!(sub.catch_up.is_none(), "no since → no catch-up");
 
         manager.make_transition(response.game_id, GameTransition::Start).unwrap();
 
-        let event = rx.try_recv().unwrap();
+        let event = sub.rx.try_recv().unwrap();
         match event {
             GameEvent::StateChanged { seq, state } => {
                 assert_eq!(seq, 0, "first broadcast event has seq 0");
@@ -1003,8 +1106,8 @@ mod tests {
     fn subscribe_seq_advances_with_each_broadcast() {
         let manager = GameManager::new();
         let response = manager.create_game(500, None).unwrap();
-        let (mut rx, initial_seq) = manager.subscribe(response.game_id).unwrap();
-        assert_eq!(initial_seq, 0);
+        let mut sub = manager.subscribe(response.game_id, None).unwrap();
+        assert_eq!(sub.current_seq, 0);
 
         // Start transition + a few bets — each is a broadcast event.
         manager.make_transition(response.game_id, GameTransition::Start).unwrap();
@@ -1012,7 +1115,7 @@ mod tests {
         manager.make_transition(response.game_id, GameTransition::Bet(3)).unwrap();
 
         let mut seqs = Vec::new();
-        while let Ok(event) = rx.try_recv() {
+        while let Ok(event) = sub.rx.try_recv() {
             if let GameEvent::StateChanged { seq, .. } = event {
                 seqs.push(seq);
             }
@@ -1020,8 +1123,79 @@ mod tests {
         assert_eq!(seqs, vec![0, 1, 2], "seq is monotonic from 0");
 
         // Subscribing again returns the cursor at the post-broadcast value.
-        let (_rx2, next_cursor) = manager.subscribe(response.game_id).unwrap();
-        assert_eq!(next_cursor, 3, "cursor matches count of broadcasts so far");
+        let sub2 = manager.subscribe(response.game_id, None).unwrap();
+        assert_eq!(sub2.current_seq, 3, "cursor matches count of broadcasts so far");
+    }
+
+    #[test]
+    fn subscribe_catch_up_none_when_no_since() {
+        let manager = GameManager::new();
+        let response = manager.create_game(500, None).unwrap();
+        manager.make_transition(response.game_id, GameTransition::Start).unwrap();
+        let sub = manager.subscribe(response.game_id, None).unwrap();
+        assert!(sub.catch_up.is_none());
+        assert_eq!(sub.current_seq, 1);
+    }
+
+    #[test]
+    fn subscribe_catch_up_empty_when_caller_up_to_date() {
+        let manager = GameManager::new();
+        let response = manager.create_game(500, None).unwrap();
+        // No broadcasts yet — current_seq is 0.
+        let sub = manager.subscribe(response.game_id, Some(0)).unwrap();
+        assert_eq!(sub.current_seq, 0);
+        assert!(matches!(sub.catch_up, Some(ref v) if v.is_empty()),
+                "since == current_seq → empty replay");
+
+        manager.make_transition(response.game_id, GameTransition::Start).unwrap();
+        manager.make_transition(response.game_id, GameTransition::Bet(2)).unwrap();
+        let sub = manager.subscribe(response.game_id, Some(2)).unwrap();
+        assert_eq!(sub.current_seq, 2);
+        assert!(matches!(sub.catch_up, Some(ref v) if v.is_empty()),
+                "caught up at seq 2");
+    }
+
+    #[test]
+    fn subscribe_catch_up_replays_recent_events() {
+        let manager = GameManager::new();
+        let response = manager.create_game(500, None).unwrap();
+        manager.make_transition(response.game_id, GameTransition::Start).unwrap();
+        manager.make_transition(response.game_id, GameTransition::Bet(2)).unwrap();
+        manager.make_transition(response.game_id, GameTransition::Bet(2)).unwrap();
+
+        // Client missed seq 1 and 2; current is 3.
+        let sub = manager.subscribe(response.game_id, Some(1)).unwrap();
+        assert_eq!(sub.current_seq, 3);
+        let replay = sub.catch_up.expect("buffer holds events from seq 1");
+        assert_eq!(replay.len(), 2, "events 1 and 2 replayed");
+        assert_eq!(event_seq(&replay[0]), 1);
+        assert_eq!(event_seq(&replay[1]), 2);
+    }
+
+    #[test]
+    fn subscribe_catch_up_returns_none_when_buffer_pruned() {
+        let manager = GameManager::new();
+        let response = manager.create_game(500, None).unwrap();
+        // Drive more broadcasts than RECENT_CAP so the buffer prunes the
+        // oldest events. set_player_name is the cheapest broadcast path.
+        for i in 0..(RECENT_CAP + 50) {
+            manager
+                .set_player_name(response.game_id, response.player_ids[0], Some(format!("p{i}")))
+                .unwrap();
+        }
+        // Asking from seq 0 — buffer's front is well past that.
+        let sub = manager.subscribe(response.game_id, Some(0)).unwrap();
+        assert!(sub.catch_up.is_none(), "buffer pruned past seq 0 → snapshot");
+    }
+
+    #[test]
+    fn subscribe_catch_up_returns_none_when_since_from_future() {
+        let manager = GameManager::new();
+        let response = manager.create_game(500, None).unwrap();
+        manager.make_transition(response.game_id, GameTransition::Start).unwrap();
+        // current_seq is 1; client claims they have up to seq 99.
+        let sub = manager.subscribe(response.game_id, Some(100)).unwrap();
+        assert!(sub.catch_up.is_none(), "since > current_seq → re-snapshot");
     }
 
     #[test]

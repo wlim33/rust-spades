@@ -94,6 +94,10 @@ pub struct CancelChallengeRequest {
 #[derive(Debug, Deserialize)]
 pub struct WsQuery {
     pub player_id: Option<String>,
+    /// Reconnection cursor: the next seq the client wants. If the server
+    /// still holds events from this seq in its ring buffer, it replays them
+    /// instead of sending a fresh snapshot.
+    pub since: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, OaSchema)]

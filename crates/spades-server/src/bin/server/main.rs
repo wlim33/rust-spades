@@ -524,7 +524,7 @@ mod tests {
 
         let manager = GameManager::new();
         let response = manager.create_game(500, None).unwrap();
-        let (mut rx, _) = manager.subscribe(response.game_id).unwrap();
+        let mut sub = manager.subscribe(response.game_id, None).unwrap();
 
         manager.make_transition(response.game_id, GameTransition::Start).unwrap();
         for i in 0..80 {
@@ -535,7 +535,7 @@ mod tests {
 
         let mut saw_lagged = false;
         for _ in 0..200 {
-            match rx.try_recv() {
+            match sub.rx.try_recv() {
                 Ok(GameEvent::StateChanged { .. }) | Ok(GameEvent::GameAborted { .. }) => continue,
                 Err(broadcast::error::TryRecvError::Lagged(_)) => { saw_lagged = true; break; }
                 Err(_) => break,
