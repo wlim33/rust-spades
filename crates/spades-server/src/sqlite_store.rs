@@ -376,6 +376,90 @@ impl SqliteStore {
         ).map_err(|e| e.to_string())?;
         Ok(n)
     }
+
+    pub fn insert_game_seat(&self, game_id: uuid::Uuid, seat_index: i32, player_id: uuid::Uuid, owner: crate::auth::game_seats::SeatOwner) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT OR REPLACE INTO game_seats (game_id, seat_index, player_id, user_id, anon_user_id, is_bot) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                game_id.to_string(),
+                seat_index,
+                player_id.to_string(),
+                owner.user_id.map(|u| u.to_string()),
+                owner.anon_user_id.map(|u| u.to_string()),
+                owner.is_bot as i32,
+            ],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn update_game_seat_owner(&self, game_id: uuid::Uuid, seat_index: i32, owner: crate::auth::game_seats::SeatOwner) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE game_seats SET user_id = ?3, anon_user_id = ?4, is_bot = ?5 \
+             WHERE game_id = ?1 AND seat_index = ?2",
+            rusqlite::params![
+                game_id.to_string(),
+                seat_index,
+                owner.user_id.map(|u| u.to_string()),
+                owner.anon_user_id.map(|u| u.to_string()),
+                owner.is_bot as i32,
+            ],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn game_seat(&self, game_id: uuid::Uuid, seat_index: i32) -> Result<Option<crate::auth::game_seats::SeatRow>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT game_id, seat_index, player_id, user_id, anon_user_id, is_bot \
+             FROM game_seats WHERE game_id = ?1 AND seat_index = ?2",
+            rusqlite::params![game_id.to_string(), seat_index],
+            seat_row,
+        ).map(Some).or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other.to_string()),
+        })
+    }
+
+    pub fn game_seats_for_user(&self, user_id: uuid::Uuid, limit: i64, offset: i64) -> Result<Vec<crate::auth::game_seats::SeatRow>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare(
+            "SELECT game_id, seat_index, player_id, user_id, anon_user_id, is_bot \
+             FROM game_seats WHERE user_id = ?1 \
+             ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(
+            rusqlite::params![user_id.to_string(), limit, offset],
+            seat_row,
+        ).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn count_game_seats_for_user(&self, user_id: uuid::Uuid) -> Result<i64, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT COUNT(*) FROM game_seats WHERE user_id = ?1",
+            rusqlite::params![user_id.to_string()],
+            |r| r.get(0),
+        ).map_err(|e| e.to_string())
+    }
+}
+
+fn seat_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<crate::auth::game_seats::SeatRow> {
+    let game_id_s: String = r.get(0)?;
+    let player_id_s: String = r.get(2)?;
+    let user_id_s: Option<String> = r.get(3)?;
+    let anon_id_s: Option<String> = r.get(4)?;
+    Ok(crate::auth::game_seats::SeatRow {
+        game_id: uuid::Uuid::parse_str(&game_id_s).unwrap(),
+        seat_index: r.get(1)?,
+        player_id: uuid::Uuid::parse_str(&player_id_s).unwrap(),
+        user_id: user_id_s.map(|s| uuid::Uuid::parse_str(&s).unwrap()),
+        anon_user_id: anon_id_s.map(|s| uuid::Uuid::parse_str(&s).unwrap()),
+        is_bot: r.get::<_, i32>(5)? != 0,
+    })
 }
 
 fn row_to_user(r: &rusqlite::Row<'_>) -> rusqlite::Result<crate::auth::users::User> {
