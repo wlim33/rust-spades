@@ -45,13 +45,13 @@ pub enum TransitionType {
     Card { card: Card },
 }
 
-#[derive(Debug, Serialize, OaSchema)]
+#[derive(Debug, Clone, Serialize, OaSchema)]
 pub struct TransitionResponse {
     pub success: bool,
     pub result: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, OaSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, OaSchema)]
 pub struct ErrorResponse {
     pub error: String,
 }

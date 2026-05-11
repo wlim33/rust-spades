@@ -7,6 +7,7 @@
 
 mod dto;
 mod handlers;
+mod idempotency;
 mod presence;
 mod ws;
 
@@ -50,6 +51,7 @@ pub struct AppState {
     pub challenge_manager: ChallengeManager,
     pub auth: spades_server::auth::AuthState,
     presence: PresenceTracker,
+    pub idempotency: std::sync::Arc<idempotency::IdempotencyCache>,
 }
 
 impl axum::extract::FromRef<AppState> for spades_server::auth::AuthState {
@@ -272,12 +274,30 @@ async fn main() {
         });
     }
 
+    let idempotency_cache = std::sync::Arc::new(idempotency::IdempotencyCache::new());
+
+    {
+        // Sweep stale idempotency entries every TTL window so a flood of
+        // unique keys can't grow the cache without bound.
+        let cache = idempotency_cache.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(idempotency::TTL).await;
+                let removed = cache.sweep_expired();
+                if removed > 0 {
+                    tracing::debug!(removed, "swept expired idempotency entries");
+                }
+            }
+        });
+    }
+
     let app_state = AppState {
         game_manager,
         matchmaker,
         challenge_manager,
         auth: auth_state,
         presence: PresenceTracker::new(),
+        idempotency: idempotency_cache,
     };
 
     // Session store setup
@@ -422,6 +442,7 @@ mod tests {
             challenge_manager,
             auth: auth_state,
             presence: PresenceTracker::new(),
+            idempotency: std::sync::Arc::new(idempotency::IdempotencyCache::new()),
         };
 
         let session_store = MemoryStore::default();
@@ -623,6 +644,58 @@ mod tests {
             }
         }
         assert!(saw_lagged, "expected Lagged after overflowing the broadcast buffer");
+    }
+
+    #[tokio::test]
+    async fn idempotency_key_replays_same_transition_outcome() {
+        // First POST starts the game successfully. A second POST with the
+        // same Idempotency-Key must replay that 200 rather than re-running
+        // the transition (which would fail with "AlreadyStarted"). A third
+        // POST without the key proves the second call's success came from
+        // the cache, not from lenient game state.
+        let server = test_app();
+        let create = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await;
+        create.assert_status_ok();
+        let game: CreateGameResponse = create.json();
+
+        let first = server
+            .post(&format!("/games/{}/transition", game.game_id))
+            .add_header("idempotency-key", "retry-1")
+            .json(&serde_json::json!({"type": "start"}))
+            .await;
+        first.assert_status_ok();
+        let first_body: serde_json::Value = first.json();
+        assert_eq!(first_body["success"], true);
+        let first_result = first_body["result"].as_str().unwrap().to_string();
+
+        let second = server
+            .post(&format!("/games/{}/transition", game.game_id))
+            .add_header("idempotency-key", "retry-1")
+            .json(&serde_json::json!({"type": "start"}))
+            .await;
+        second.assert_status_ok();
+        let second_body: serde_json::Value = second.json();
+        assert_eq!(second_body["success"], true);
+        assert_eq!(
+            second_body["result"].as_str().unwrap(),
+            first_result,
+            "replay returns the identical cached response",
+        );
+
+        let fresh = server
+            .post(&format!("/games/{}/transition", game.game_id))
+            .json(&serde_json::json!({"type": "start"}))
+            .await;
+        assert!(
+            !fresh.status_code().is_success(),
+            "without the idempotency key, the retry should reach the engine \
+             and fail with 'AlreadyStarted' — got {} which would mean the \
+             game allows double-start",
+            fresh.status_code(),
+        );
     }
 
     #[tokio::test]

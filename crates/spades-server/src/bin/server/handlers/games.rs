@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, State as AxumState},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::Json,
 };
 use oasgen::oasgen;
@@ -15,6 +15,7 @@ use super::super::dto::{
     CreateGameRequest, ErrorResponse, PlayerUrlResponse, PresenceSnapshot,
     SetNameRequest, TransitionRequest, TransitionResponse, TransitionType,
 };
+use super::super::idempotency::CachedOutcome;
 use super::super::{parse_uuid_or_short_id, AppState};
 
 pub async fn root() -> Json<serde_json::Value> {
@@ -244,10 +245,29 @@ pub async fn make_transition(
     AxumState(state): AxumState<AppState>,
     Path(game_id): Path<Uuid>,
     identity: spades_server::auth::Identity,
+    headers: HeaderMap,
     Json(request): Json<TransitionRequest>,
 ) -> Result<Json<TransitionResponse>, (StatusCode, Json<ErrorResponse>)> {
     spades_server::auth::rate_limit::check_user(&state.auth.rate.transition, identity.anon_id())
         .map_err(super::super::dto::auth_err_response)?;
+
+    let user_id = identity.anon_id();
+    let idempotency_key = headers
+        .get("idempotency-key")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    // Replay a cached outcome rather than re-running the transition. Without
+    // this, a network blip that prompts the client to retry a Card play
+    // would either error ("already played") on the second attempt or — if
+    // the trick advanced in the meantime — silently apply the wrong card.
+    if let Some(key) = &idempotency_key
+        && let Some(cached) = state.idempotency.get(game_id, user_id, key) {
+            return match cached {
+                CachedOutcome::Ok(resp) => Ok(Json(resp)),
+                CachedOutcome::Err(status, err) => Err((status, Json(err))),
+            };
+        }
 
     let transition = match request.transition {
         TransitionType::Start => GameTransition::Start,
@@ -255,28 +275,35 @@ pub async fn make_transition(
         TransitionType::Card { card } => GameTransition::Card(card),
     };
 
-    let result = state
+    let outcome: Result<TransitionResponse, (StatusCode, ErrorResponse)> = state
         .game_manager
         .make_transition(game_id, transition)
+        .map(|result| TransitionResponse {
+            success: true,
+            result: format!("{:?}", result),
+        })
         .map_err(|e| {
             let status = match e {
                 GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
                 _ => StatusCode::BAD_REQUEST,
             };
-            (
-                status,
-                Json(ErrorResponse {
-                    error: format!("{}", e),
-                }),
-            )
-        })?;
+            (status, ErrorResponse { error: format!("{}", e) })
+        });
 
     let _ = state.game_manager.play_ai_turns(game_id);
 
-    Ok(Json(TransitionResponse {
-        success: true,
-        result: format!("{:?}", result),
-    }))
+    // Persist for retries — store both success and error outcomes so a retry
+    // after a 4xx gets the same 4xx, not a fresh attempt that might succeed
+    // against drifted state.
+    if let Some(key) = idempotency_key {
+        let cache_outcome = match &outcome {
+            Ok(resp) => CachedOutcome::Ok(resp.clone()),
+            Err((status, err)) => CachedOutcome::Err(*status, err.clone()),
+        };
+        state.idempotency.put(game_id, user_id, key, cache_outcome);
+    }
+
+    outcome.map(Json).map_err(|(s, e)| (s, Json(e)))
 }
 
 #[oasgen]
