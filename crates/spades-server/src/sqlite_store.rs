@@ -264,6 +264,51 @@ impl SqliteStore {
         ).map_err(|e| e.to_string())?;
         Ok(())
     }
+
+    pub fn get_lockout(&self, user_id: uuid::Uuid) -> Result<Option<String>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT locked_until FROM login_failures WHERE user_id = ?1",
+            rusqlite::params![user_id.to_string()],
+            |r| r.get::<_, Option<String>>(0),
+        ).or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other.to_string()),
+        })
+    }
+
+    pub fn bump_login_failure(&self, user_id: uuid::Uuid) -> Result<i32, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO login_failures (user_id, failure_count) VALUES (?1, 1) \
+             ON CONFLICT(user_id) DO UPDATE SET failure_count = failure_count + 1",
+            rusqlite::params![user_id.to_string()],
+        ).map_err(|e| e.to_string())?;
+        let n: i32 = conn.query_row(
+            "SELECT failure_count FROM login_failures WHERE user_id = ?1",
+            rusqlite::params![user_id.to_string()],
+            |r| r.get(0),
+        ).map_err(|e| e.to_string())?;
+        Ok(n)
+    }
+
+    pub fn set_lockout(&self, user_id: uuid::Uuid, secs: i64) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE login_failures SET locked_until = datetime('now', ?2) WHERE user_id = ?1",
+            rusqlite::params![user_id.to_string(), format!("+{secs} seconds")],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn clear_login_failures(&self, user_id: uuid::Uuid) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM login_failures WHERE user_id = ?1",
+            rusqlite::params![user_id.to_string()],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
 }
 
 fn row_to_user(r: &rusqlite::Row<'_>) -> rusqlite::Result<crate::auth::users::User> {

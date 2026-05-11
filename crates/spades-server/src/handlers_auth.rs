@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::auth::{
     AuthError, AuthState,
     mailer::Email,
-    password::{hash_password, validate_password},
+    password::{hash_password, validate_password, verify_password, verify_against_dummy},
     session_ext,
     users::{validate_email, validate_username, NewUser, User},
 };
@@ -94,4 +94,64 @@ fn sha256_hex(s: &str) -> String {
     use sha2::{Digest, Sha256};
     let h = Sha256::digest(s.as_bytes());
     hex::encode(h)
+}
+
+#[derive(Deserialize)]
+pub struct LoginRequest {
+    pub login: String,
+    pub password: String,
+}
+
+pub async fn login(
+    State(auth): State<AuthState>,
+    session: Session,
+    Json(req): Json<LoginRequest>,
+) -> Result<Json<UserResponse>, AuthError> {
+    let user_opt = if req.login.contains('@') {
+        auth.store.find_user_by_email(&req.login).map_err(AuthError::Storage)?
+    } else {
+        auth.store.find_user_by_username(&req.login).map_err(AuthError::Storage)?
+    };
+
+    let Some(user) = user_opt else {
+        verify_against_dummy();
+        return Err(AuthError::InvalidCredentials);
+    };
+
+    if let Some(locked_until) = auth.store.get_lockout(user.id).map_err(AuthError::Storage)? {
+        let now = chrono::Utc::now().naive_utc();
+        if let Ok(when) = chrono::NaiveDateTime::parse_from_str(&locked_until, "%Y-%m-%d %H:%M:%S") {
+            if when > now {
+                let secs = (when - now).num_seconds().max(1) as u64;
+                return Err(AuthError::Locked { retry_after_secs: secs });
+            }
+        }
+    }
+
+    let Some(hash) = user.password_hash.as_deref() else {
+        verify_against_dummy();
+        return Err(AuthError::InvalidCredentials);
+    };
+
+    if !verify_password(&req.password, hash)? {
+        let new_count = auth.store.bump_login_failure(user.id).map_err(AuthError::Storage)?;
+        let lock_secs = match new_count {
+            n if n >= 10 => Some(60 * 60),
+            n if n >= 5  => Some(15 * 60),
+            _ => None,
+        };
+        if let Some(secs) = lock_secs {
+            auth.store.set_lockout(user.id, secs).map_err(AuthError::Storage)?;
+            return Err(AuthError::Locked { retry_after_secs: secs as u64 });
+        }
+        return Err(AuthError::InvalidCredentials);
+    }
+
+    auth.store.clear_login_failures(user.id).map_err(AuthError::Storage)?;
+    auth.store.touch_user_login(user.id).map_err(AuthError::Storage)?;
+    let s = session_ext::load_or_init(&session).await?;
+    auth.store.claim_anon_game_seats(s.user_id, user.id).map_err(AuthError::Storage)?;
+    session_ext::set_claimed(&session, user.id, user.token_version).await?;
+
+    Ok(Json(UserResponse::from(&user)))
 }

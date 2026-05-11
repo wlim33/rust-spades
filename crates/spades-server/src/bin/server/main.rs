@@ -108,6 +108,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/games/{game_id}/ws", get(game_ws))
         // Auth endpoints
         .route("/auth/register", post(handlers::auth::register))
+        .route("/auth/login", post(handlers::auth::login))
         .with_state(state)
 }
 
