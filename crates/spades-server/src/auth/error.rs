@@ -27,6 +27,8 @@ pub enum AuthError {
     OauthFailed(String),
     #[error("validation: {0}")]
     Validation(String),
+    #[error("not_found")]
+    NotFound,
     #[error("mailer_failed")]
     MailerFailed,
     #[error("storage: {0}")]
@@ -50,6 +52,7 @@ impl AuthError {
             AuthError::Unauthenticated | AuthError::InvalidCredentials => StatusCode::UNAUTHORIZED,
             AuthError::Forbidden => StatusCode::FORBIDDEN,
             AuthError::UsernameTaken | AuthError::EmailTaken => StatusCode::CONFLICT,
+            AuthError::NotFound => StatusCode::NOT_FOUND,
             AuthError::Locked { .. } => StatusCode::LOCKED,
             AuthError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
             AuthError::TokenInvalid => StatusCode::GONE,
@@ -86,6 +89,7 @@ fn error_code(e: &AuthError) -> &'static str {
         AuthError::InvalidCredentials => "invalid_credentials",
         AuthError::Locked { .. } => "locked",
         AuthError::RateLimited { .. } => "rate_limited",
+        AuthError::NotFound => "not_found",
         AuthError::TokenInvalid => "token_invalid",
         AuthError::OauthFailed(_) => "oauth_failed",
         AuthError::Validation(_) => "validation",

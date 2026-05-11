@@ -1,6 +1,6 @@
 //! Shared test scaffolding for auth integration tests.
 
-use axum::{extract::connect_info::MockConnectInfo, routing::{get, post}, Router};
+use axum::{extract::connect_info::MockConnectInfo, routing::{get, patch, post}, Router};
 #[allow(unused_imports)]
 use axum::routing::put;
 use axum_test::{TestServer, TestServerConfig};
@@ -35,6 +35,10 @@ pub fn test_server() -> TestServer {
         .route("/auth/oauth/google/callback", get(handlers_auth::oauth_google_callback))
         .route("/auth/oauth/github/callback", get(handlers_auth::oauth_github_callback))
         .route("/auth/oauth/complete", post(handlers_auth::oauth_complete))
+        // User profile endpoints (literal /users/me must come before the wildcard)
+        .route("/users/me", patch(spades_server::handlers_users::patch_me))
+        .route("/users/{username}", get(spades_server::handlers_users::get_profile))
+        .route("/users/{username}/games", get(spades_server::handlers_users::get_profile_games))
         .with_state(auth);
 
     let session_store = MemoryStore::default();

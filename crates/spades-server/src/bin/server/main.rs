@@ -119,6 +119,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/oauth/google/callback", get(handlers::auth::oauth_google_callback))
         .route("/auth/oauth/github/callback", get(handlers::auth::oauth_github_callback))
         .route("/auth/oauth/complete", post(handlers::auth::oauth_complete))
+        // User profile endpoints (literal /users/me must come before the wildcard)
+        .route("/users/me", axum::routing::patch(spades_server::handlers_users::patch_me))
+        .route("/users/{username}", get(spades_server::handlers_users::get_profile))
+        .route("/users/{username}/games", get(spades_server::handlers_users::get_profile_games))
         .with_state(state)
 }
 

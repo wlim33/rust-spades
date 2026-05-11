@@ -7,6 +7,7 @@
 
 pub mod auth;
 pub mod handlers_auth;
+pub mod handlers_users;
 pub mod challenges;
 pub mod game_manager;
 pub mod matchmaking;
