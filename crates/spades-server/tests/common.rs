@@ -5,7 +5,7 @@
 //! binary doesn't reference are correctly flagged as dead code. Allow it.
 #![allow(dead_code)]
 
-use axum::{extract::connect_info::MockConnectInfo, routing::{get, patch, post}, Router};
+use axum::{extract::connect_info::MockConnectInfo, routing::{delete, get, patch, post}, Router};
 #[allow(unused_imports)]
 use axum::routing::put;
 use axum_test::{TestServer, TestServerConfig};
@@ -49,6 +49,10 @@ pub fn test_env() -> TestEnv {
         .route("/auth/oauth/google/callback", get(handlers_auth::oauth_google_callback))
         .route("/auth/oauth/github/callback", get(handlers_auth::oauth_github_callback))
         .route("/auth/oauth/complete", post(handlers_auth::oauth_complete))
+        // API token management (bot accounts)
+        .route("/auth/tokens", post(handlers_auth::create_token))
+        .route("/auth/tokens", get(handlers_auth::list_tokens))
+        .route("/auth/tokens/{token_id}", delete(handlers_auth::revoke_token))
         // User profile endpoints (literal /users/me must come before the wildcard)
         .route("/users/me", patch(spades_server::handlers_users::patch_me))
         .route("/users/{username}", get(spades_server::handlers_users::get_profile))
