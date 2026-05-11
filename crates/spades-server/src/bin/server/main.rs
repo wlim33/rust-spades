@@ -212,7 +212,7 @@ async fn main() {
             .expect("Failed to open auth SqliteStore"),
     );
 
-    let mailer: std::sync::Arc<dyn spades_server::auth::mailer::Mailer> =
+    let backing_mailer: std::sync::Arc<dyn spades_server::auth::mailer::Mailer> =
         match spades_server::auth::mailer::SmtpConfig::from_env() {
             Some(cfg) => match spades_server::auth::mailer::SmtpMailer::new(cfg) {
                 Ok(m) => {
@@ -229,6 +229,13 @@ async fn main() {
                 std::sync::Arc::new(spades_server::auth::mailer::LogMailer::new())
             }
         };
+
+    // Wrap with a queue so handlers don't await SMTP latency. The background
+    // drain task lives for the runtime's lifetime; on shutdown, any
+    // not-yet-delivered emails are lost — both verify-email and password-
+    // reset flows are recoverable by re-requesting.
+    let mailer: std::sync::Arc<dyn spades_server::auth::mailer::Mailer> =
+        std::sync::Arc::new(spades_server::auth::mailer::MailerQueue::new(backing_mailer));
 
     let oauth = std::sync::Arc::new(spades_server::auth::oauth::OauthState::from_env());
     if oauth.google.is_some() { info!("OAuth: Google enabled"); }

@@ -42,6 +42,46 @@ impl Mailer for LogMailer {
     }
 }
 
+/// Wraps a backing `Mailer` with an unbounded mpsc queue. `send` enqueues
+/// and returns `Ok` immediately so the HTTP handler doesn't await SMTP
+/// latency; a background task drains the queue and forwards each `Email`
+/// to the backing mailer, logging failures.
+///
+/// This is "best-effort" delivery — if the backing mailer fails or the
+/// process crashes, in-flight emails are lost. Both verify-email and
+/// password-reset flows are recoverable by re-requesting on the user side.
+pub struct MailerQueue {
+    sender: tokio::sync::mpsc::UnboundedSender<Email>,
+}
+
+impl MailerQueue {
+    /// Wrap `backing` with a queue. Spawns a tokio task on the current
+    /// runtime that runs until the last `MailerQueue` clone is dropped.
+    pub fn new(backing: Arc<dyn Mailer>) -> Self {
+        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<Email>();
+        tokio::spawn(async move {
+            while let Some(email) = receiver.recv().await {
+                let to = email.to.clone();
+                let subject = email.subject.clone();
+                if let Err(e) = backing.send(email).await {
+                    error!(to = %to, subject = %subject, error = %e, "mailer queue: send failed");
+                }
+            }
+        });
+        Self { sender }
+    }
+}
+
+#[async_trait::async_trait]
+impl Mailer for MailerQueue {
+    async fn send(&self, email: Email) -> Result<(), AuthError> {
+        self.sender.send(email).map_err(|_| {
+            AuthError::Internal("mailer queue closed".into())
+        })?;
+        Ok(())
+    }
+}
+
 use lettre::{
     message::{header::ContentType, Mailbox},
     transport::smtp::authentication::Credentials,
@@ -158,5 +198,68 @@ mod tests {
             }
         }
         assert!(SmtpConfig::from_env().is_none());
+    }
+
+    #[tokio::test]
+    async fn mailer_queue_forwards_enqueued_emails_to_backing() {
+        // LogMailer wraps an Arc<Mutex<Vec<Email>>>; clones share state, so
+        // we can hold one handle to check what the queue forwarded.
+        let backing = Arc::new(LogMailer::new());
+        let queue = MailerQueue::new(backing.clone() as Arc<dyn Mailer>);
+
+        for i in 0..3 {
+            queue
+                .send(Email {
+                    to: format!("u{i}@example.com"),
+                    subject: "subj".into(),
+                    body: "body".into(),
+                })
+                .await
+                .expect("enqueue succeeds");
+        }
+
+        // The drain runs on a background task; poll briefly for it to catch
+        // up rather than picking an arbitrary sleep.
+        for _ in 0..100 {
+            if backing.sent().len() >= 3 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+        }
+
+        let sent = backing.sent();
+        assert_eq!(sent.len(), 3, "all enqueued emails reach the backing mailer");
+        assert_eq!(sent[0].to, "u0@example.com");
+        assert_eq!(sent[2].to, "u2@example.com");
+    }
+
+    #[tokio::test]
+    async fn mailer_queue_send_returns_ok_without_awaiting_backing() {
+        // Build a queue whose backing mailer would deadlock if awaited
+        // synchronously — the queue must return Ok immediately rather than
+        // await the underlying send.
+        struct SlowMailer;
+        #[async_trait::async_trait]
+        impl Mailer for SlowMailer {
+            async fn send(&self, _email: Email) -> Result<(), AuthError> {
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                Ok(())
+            }
+        }
+        let queue = MailerQueue::new(Arc::new(SlowMailer) as Arc<dyn Mailer>);
+        let start = std::time::Instant::now();
+        queue
+            .send(Email {
+                to: "slow@example.com".into(),
+                subject: "s".into(),
+                body: "b".into(),
+            })
+            .await
+            .expect("enqueue succeeds");
+        assert!(
+            start.elapsed() < std::time::Duration::from_millis(100),
+            "send must not await the backing mailer (took {:?})",
+            start.elapsed(),
+        );
     }
 }
