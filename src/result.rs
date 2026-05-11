@@ -46,7 +46,8 @@ pub enum TransitionError {
     BetInTrickStage,
     CompletedGame,
     CardNotInHand,
-    CardIncorrectSuit
+    CardIncorrectSuit,
+    SpadesNotBroken,
 }
 
 impl fmt::Display for TransitionError {
@@ -66,6 +67,8 @@ impl fmt::Display for TransitionError {
                 write!(f, "Error: Attempted to play a card not in hand.")},
             TransitionError::CardIncorrectSuit => {
                 write!(f, "Error: Attempted to play a card of the wrong suit.")},
+            TransitionError::SpadesNotBroken => {
+                write!(f, "Error: Cannot lead a spade until spades have been broken.")},
         }
     }
 }
@@ -103,6 +106,7 @@ mod tests {
     #[test_case("CompletedGame")]
     #[test_case("CardNotInHand")]
     #[test_case("CardIncorrectSuit")]
+    #[test_case("SpadesNotBroken")]
     fn transition_error_display_contains_error(variant_name: &str) {
         let err = match variant_name {
             "AlreadyStarted" => TransitionError::AlreadyStarted,
@@ -112,6 +116,7 @@ mod tests {
             "CompletedGame" => TransitionError::CompletedGame,
             "CardNotInHand" => TransitionError::CardNotInHand,
             "CardIncorrectSuit" => TransitionError::CardIncorrectSuit,
+            "SpadesNotBroken" => TransitionError::SpadesNotBroken,
             _ => unreachable!(),
         };
         let msg = format!("{}", err);

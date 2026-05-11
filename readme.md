@@ -21,24 +21,20 @@ use rand::thread_rng;
 
 let mut g = Game::new(
     uuid::Uuid::new_v4(),
-    [uuid::Uuid::new_v4(),
-     uuid::Uuid::new_v4(),
-     uuid::Uuid::new_v4(),
-     uuid::Uuid::new_v4()],
+    [uuid::Uuid::new_v4(); 4],
     500,
     None, // optional TimerConfig
 );
+g.play(GameTransition::Start).unwrap();
 
-g.play(GameTransition::Start);
-
+let mut rng = thread_rng();
 while *g.get_state() != State::Completed {
-    let mut rng = thread_rng();
     if let State::Trick(_) = *g.get_state() {
-        let hand = g.get_current_hand().unwrap().clone();
-        let card = hand.as_slice().choose(&mut rng).unwrap();
-        g.play(GameTransition::Card(card.clone()));
+        let legal = g.get_legal_cards().unwrap();
+        let card = *legal.choose(&mut rng).unwrap();
+        g.play(GameTransition::Card(card)).unwrap();
     } else {
-        g.play(GameTransition::Bet(3));
+        g.play(GameTransition::Bet(3)).unwrap();
     }
 }
 ```

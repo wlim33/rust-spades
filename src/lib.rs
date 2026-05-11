@@ -1,34 +1,25 @@
 //! This crate provides an implementation of the four person card game, [spades](https://www.pagat.com/auctionwhist/spades.html). 
 //! ## Example usage
 //! ```
-//! use std::{io};
 //! use spades::{Game, GameTransition, State};
 //! use rand::seq::SliceRandom;
 //! use rand::thread_rng;
-//! 
-//! let mut g = Game::new(uuid::Uuid::new_v4(),
-//!    [uuid::Uuid::new_v4(),
+//!
+//! let mut g = Game::new(
 //!     uuid::Uuid::new_v4(),
-//!     uuid::Uuid::new_v4(),
-//!     uuid::Uuid::new_v4()],
-//!     500, None);
-//! 
-//! 
-//! g.play(GameTransition::Start);
-//! 
+//!     [uuid::Uuid::new_v4(); 4],
+//!     100,
+//!     None,
+//! );
+//! g.play(GameTransition::Start).unwrap();
+//! let mut rng = thread_rng();
 //! while *g.get_state() != State::Completed {
-//!     let mut stdin = io::stdin();
-//!     let input = &mut String::new();
-//!     let mut rng = thread_rng();
-//!     if let State::Trick(_playerindex) = *g.get_state() {
-//!         assert!(g.get_current_hand().is_ok());
-//!         let hand = g.get_current_hand().ok().unwrap().clone();
-//! 
-//!         let random_card = hand.as_slice().choose(&mut rng).unwrap();
-//!         
-//!         g.play(GameTransition::Card(random_card.clone()));
+//!     if let State::Trick(_) = *g.get_state() {
+//!         let legal = g.get_legal_cards().unwrap();
+//!         let card = *legal.choose(&mut rng).unwrap();
+//!         g.play(GameTransition::Card(card)).unwrap();
 //!     } else {
-//!         g.play(GameTransition::Bet(3));
+//!         g.play(GameTransition::Bet(3)).unwrap();
 //!     }
 //! }
 //! assert_eq!(*g.get_state(), State::Completed);
@@ -184,6 +175,8 @@ pub struct Game {
     last_trick_winner: Option<usize>,
     #[serde(default)]
     last_completed_trick: Option<[cards::Card; 4]>,
+    #[serde(default)]
+    spades_broken: bool,
 }
 
 impl Game {
@@ -208,6 +201,7 @@ impl Game {
             turn_started_at_epoch_ms: None,
             last_trick_winner: None,
             last_completed_trick: None,
+            spades_broken: false,
         }
     }
 
@@ -399,6 +393,13 @@ impl Game {
                             if !player_hand.contains(&card) {
                                 return Err(TransitionError::CardNotInHand);
                             }
+                            if rotation_status == 0
+                                && card.suit == Suit::Spade
+                                && !self.spades_broken
+                                && player_hand.iter().any(|c| c.suit != Suit::Spade)
+                            {
+                                return Err(TransitionError::SpadesNotBroken);
+                            }
                             let leading_suit = self.leading_suit;
                             if rotation_status == 0 {
                                 self.leading_suit = card.suit;
@@ -410,7 +411,10 @@ impl Game {
                             let card_index = player_hand.iter().position(|x| x == &card).unwrap();
                             self.deck.push(player_hand.remove(card_index));
                         }
-                        
+
+                        if card.suit == Suit::Spade {
+                            self.spades_broken = true;
+                        }
                         self.hands_played.last_mut().unwrap()[self.current_player_index] = card;
                         
                         if rotation_status == 3 {
@@ -425,6 +429,7 @@ impl Game {
                                 self.last_trick_winner = None;
                                 self.current_player_index = 0;
                                 self.state = State::Betting((rotation_status + 1) % 4);
+                                self.spades_broken = false;
                                 self.deal_cards();
                             } else {
                                 self.current_player_index = winner;
@@ -543,13 +548,18 @@ impl Game {
             State::Trick(rotation_status) => {
                 let hand = self.get_current_hand()?;
                 if *rotation_status == 0 {
-                    // First card in trick: any card is legal
+                    if !self.spades_broken {
+                        let non_spades: Vec<Card> =
+                            hand.iter().filter(|c| c.suit != Suit::Spade).copied().collect();
+                        if !non_spades.is_empty() {
+                            return Ok(non_spades);
+                        }
+                    }
                     Ok(hand.clone())
                 } else {
-                    // Must follow leading suit if possible
                     let has_leading_suit = hand.iter().any(|c| c.suit == self.leading_suit);
                     if has_leading_suit {
-                        Ok(hand.iter().filter(|c| c.suit == self.leading_suit).cloned().collect())
+                        Ok(hand.iter().filter(|c| c.suit == self.leading_suit).copied().collect())
                     } else {
                         Ok(hand.clone())
                     }

@@ -170,11 +170,18 @@ fn test_get_legal_cards_not_in_trick() {
 }
 
 #[test]
-fn test_get_legal_cards_first_card_all_legal() {
+fn test_get_legal_cards_first_card_excludes_spades_unless_only_spades() {
     let (g, _) = make_game_in_trick_state();
     let legal = g.get_legal_cards().unwrap();
     let hand = g.get_current_hand().unwrap();
-    assert_eq!(legal.len(), hand.len());
+    let non_spades = hand.iter().filter(|c| c.suit != Suit::Spade).count();
+    if non_spades > 0 {
+        // Spades not broken on first trick — only non-spades legal.
+        assert_eq!(legal.len(), non_spades);
+        assert!(legal.iter().all(|c| c.suit != Suit::Spade));
+    } else {
+        assert_eq!(legal.len(), hand.len());
+    }
 }
 
 #[test]

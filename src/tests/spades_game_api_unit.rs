@@ -3,6 +3,118 @@ use super::super::result::{TransitionSuccess, TransitionError, GetError};
 use super::super::{Game, GameTransition};
 use super::super::game_state::State;
 
+fn betting_done(g: &mut Game) {
+    for _ in 0..4 {
+        g.play(GameTransition::Bet(3)).unwrap();
+    }
+}
+
+#[test]
+fn cannot_lead_spade_before_broken_when_non_spades_available() {
+    let mut g = Game::new(
+        uuid::Uuid::new_v4(),
+        [uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4()],
+        500,
+        None,
+    );
+    g.play(GameTransition::Start).unwrap();
+    g.player_a.hand = vec![
+        Card { suit: Suit::Club, rank: Rank::Five },
+        Card { suit: Suit::Spade, rank: Rank::Ace },
+    ];
+    g.player_b.hand = vec![Card { suit: Suit::Club, rank: Rank::Two }];
+    g.player_c.hand = vec![Card { suit: Suit::Club, rank: Rank::Three }];
+    g.player_d.hand = vec![Card { suit: Suit::Club, rank: Rank::Four }];
+    betting_done(&mut g);
+    assert!(matches!(g.get_state(), State::Trick(0)));
+    assert_eq!(
+        g.play(GameTransition::Card(Card { suit: Suit::Spade, rank: Rank::Ace })),
+        Err(TransitionError::SpadesNotBroken)
+    );
+}
+
+#[test]
+fn can_lead_spade_when_hand_is_only_spades() {
+    let mut g = Game::new(
+        uuid::Uuid::new_v4(),
+        [uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4()],
+        500,
+        None,
+    );
+    g.play(GameTransition::Start).unwrap();
+    g.player_a.hand = vec![Card { suit: Suit::Spade, rank: Rank::Ace }];
+    g.player_b.hand = vec![Card { suit: Suit::Club, rank: Rank::Two }];
+    g.player_c.hand = vec![Card { suit: Suit::Club, rank: Rank::Three }];
+    g.player_d.hand = vec![Card { suit: Suit::Club, rank: Rank::Four }];
+    betting_done(&mut g);
+    assert_eq!(
+        g.play(GameTransition::Card(Card { suit: Suit::Spade, rank: Rank::Ace })),
+        Ok(TransitionSuccess::PlayCard)
+    );
+}
+
+#[test]
+fn lead_spade_allowed_after_spades_broken() {
+    let mut g = Game::new(
+        uuid::Uuid::new_v4(),
+        [uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4()],
+        500,
+        None,
+    );
+    g.play(GameTransition::Start).unwrap();
+    // Player B has no clubs and will trump with a spade, breaking spades.
+    g.player_a.hand = vec![
+        Card { suit: Suit::Club, rank: Rank::Five },
+        Card { suit: Suit::Club, rank: Rank::Six },
+    ];
+    g.player_b.hand = vec![
+        Card { suit: Suit::Spade, rank: Rank::Two },
+        Card { suit: Suit::Spade, rank: Rank::Three },
+    ];
+    g.player_c.hand = vec![
+        Card { suit: Suit::Club, rank: Rank::Three },
+        Card { suit: Suit::Heart, rank: Rank::Two },
+    ];
+    g.player_d.hand = vec![
+        Card { suit: Suit::Club, rank: Rank::Four },
+        Card { suit: Suit::Heart, rank: Rank::Three },
+    ];
+    betting_done(&mut g);
+    g.play(GameTransition::Card(Card { suit: Suit::Club, rank: Rank::Five })).unwrap();
+    g.play(GameTransition::Card(Card { suit: Suit::Spade, rank: Rank::Two })).unwrap();
+    g.play(GameTransition::Card(Card { suit: Suit::Club, rank: Rank::Three })).unwrap();
+    g.play(GameTransition::Card(Card { suit: Suit::Club, rank: Rank::Four })).unwrap();
+    // Player B (only spade played) wins and leads the next trick.
+    assert!(matches!(g.get_state(), State::Trick(0)));
+    assert_eq!(g.get_current_player_id().unwrap(), &g.player_b.id);
+    // Spades broken — leading with spade now allowed.
+    assert_eq!(
+        g.play(GameTransition::Card(Card { suit: Suit::Spade, rank: Rank::Three })),
+        Ok(TransitionSuccess::PlayCard)
+    );
+}
+
+#[test]
+fn get_legal_cards_excludes_spades_on_lead_before_broken() {
+    let mut g = Game::new(
+        uuid::Uuid::new_v4(),
+        [uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4()],
+        500,
+        None,
+    );
+    g.play(GameTransition::Start).unwrap();
+    g.player_a.hand = vec![
+        Card { suit: Suit::Club, rank: Rank::Five },
+        Card { suit: Suit::Spade, rank: Rank::Ace },
+    ];
+    g.player_b.hand = vec![Card { suit: Suit::Club, rank: Rank::Two }];
+    g.player_c.hand = vec![Card { suit: Suit::Club, rank: Rank::Three }];
+    g.player_d.hand = vec![Card { suit: Suit::Club, rank: Rank::Four }];
+    betting_done(&mut g);
+    let legal = g.get_legal_cards().unwrap();
+    assert_eq!(legal, vec![Card { suit: Suit::Club, rank: Rank::Five }]);
+}
+
 #[test]
 fn get_current_trick_cards_in_betting_returns_unknown_not_completed() {
     let mut g = Game::new(
