@@ -27,7 +27,5 @@ USER spades
 WORKDIR /data
 EXPOSE 3000
 
-ENV DATABASE_URL=/data/games.sqlite
-
 ENTRYPOINT ["/usr/local/bin/spades-server"]
 CMD ["--port", "3000", "--db", "/data/games.sqlite"]
