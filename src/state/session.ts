@@ -22,7 +22,7 @@ async function refresh(): Promise<void> {
 async function loginWithPassword(email: string, password: string): Promise<void> {
   const user = await request<User>('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ login: email, password }),
   });
   currentUser.value = user;
 }
