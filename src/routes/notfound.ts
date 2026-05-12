@@ -13,6 +13,8 @@ export const notFound: RouteModule = {
       `),
       root,
     );
-    return () => render(html``, root);
+    return () => {
+      root.innerHTML = '';
+    };
   },
 };

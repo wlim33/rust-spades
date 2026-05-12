@@ -74,6 +74,7 @@ main#root {
   gap: var(--space-3);
 }
 
+/* Wrapper inserted by appShell() — display:contents keeps header + .page as flex children of main#root. */
 .app-shell {
   display: contents;
 }
