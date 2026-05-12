@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ARCHIVED — the live deploy path is .github/workflows/deploy.yml.
+# This script is kept for reference and as an emergency-only manual deploy.
+# To use it: cd web && bash scripts/deploy-cf-pages.sh (requires wrangler login or CLOUDFLARE_API_TOKEN).
+
 # Env vars expected:
 #   DEPLOY_HOST   — ssh destination (e.g. wlim@spades.wlim.dev)
 #   DEPLOY_PATH   — absolute path on the host where dist/ lands (e.g. /srv/spades-ts/public)
