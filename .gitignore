@@ -9,4 +9,3 @@ playwright-report/
 test-results/
 bin/
 .deploy.env
-.wrangler/

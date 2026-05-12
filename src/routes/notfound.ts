@@ -1,4 +1,4 @@
-import { html, render } from 'lit-html';
+import { html, nothing, render } from 'lit-html';
 import { appShell } from '../ui/templates';
 import type { RouteModule } from '../router';
 
@@ -13,8 +13,6 @@ export const notFound: RouteModule = {
       `),
       root,
     );
-    return () => {
-      root.innerHTML = '';
-    };
+    return () => render(nothing, root);
   },
 };

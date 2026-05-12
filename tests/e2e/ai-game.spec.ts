@@ -1,6 +1,6 @@
 import { test, expect } from './setup';
 
-test('anonymous AI game — bet and play a card', async ({ page }) => {
+test('anonymous AI game — bet + reload preserves hand', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Play with Computers' }).click();
 
@@ -12,7 +12,7 @@ test('anonymous AI game — bet and play a card', async ({ page }) => {
 
   // BETTING phase should show bet buttons.
   await page.waitForSelector('.spades-bets button', { state: 'visible', timeout: 10_000 });
-  await page.locator('.spades-bets button').nth(3).click(); // bet 3
+  await page.locator('.spades-bets').getByRole('button', { name: '3' }).click();
 
   // Wait for PLAYING phase (cards become clickable).
   await page.waitForSelector('.cm-clickable', { state: 'visible', timeout: 10_000 });

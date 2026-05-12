@@ -1,4 +1,4 @@
-import { html, render, type TemplateResult } from 'lit-html';
+import { html, nothing, render, type TemplateResult } from 'lit-html';
 import { effect, signal } from '@preact/signals-core';
 import { appShell } from '../ui/templates';
 import { button } from '../ui/components/button';
@@ -150,7 +150,7 @@ export const create: RouteModule = {
     return () => {
       sse?.close();
       dispose();
-      root.innerHTML = '';
+      render(nothing, root);
     };
   },
 };
