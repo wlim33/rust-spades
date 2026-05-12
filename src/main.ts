@@ -4,6 +4,7 @@ import { home } from './routes/home';
 import { create } from './routes/create';
 import { play } from './routes/play';
 import { login } from './routes/login';
+import { signup } from './routes/signup';
 import { notFound } from './routes/notfound';
 import { session } from './state/session';
 import { consumeOauthInProgress } from './lib/storage';
@@ -21,6 +22,7 @@ void (async () => {
     '/create': create,
     '/play/:shortId': play,
     '/login': login,
+    '/signup': signup,
     '*': notFound,
   });
 
