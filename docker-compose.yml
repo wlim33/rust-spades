@@ -1,0 +1,17 @@
+services:
+  spades-server:
+    image: ghcr.io/wlim33/spades:${IMAGE_TAG:-latest}
+    container_name: spades-server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/lib/spades:/data
+    env_file:
+      - /opt/spades/.env
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
