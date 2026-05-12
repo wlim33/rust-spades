@@ -5,35 +5,82 @@ set -euo pipefail
 # This script is kept for reference and as an emergency-only manual deploy.
 # To use it: cd web && bash scripts/deploy-cf-pages.sh (requires wrangler login or CLOUDFLARE_API_TOKEN).
 
-# Env vars expected:
-#   DEPLOY_HOST   — ssh destination (e.g. wlim@spades.wlim.dev)
-#   DEPLOY_PATH   — absolute path on the host where dist/ lands (e.g. /srv/spades-ts/public)
+# Build the SPA locally and publish it to Cloudflare Pages.
+# Runs from your laptop only — no git connection in the Pages project, no CI runners.
 #
-# Examples:
-#   DEPLOY_HOST=wlim@spades.wlim.dev DEPLOY_PATH=/srv/spades/public ./scripts/deploy.sh
+# Optional:
+#   CF_PAGES_PROJECT       Cloudflare Pages project name (default: spades)
+#   CF_PAGES_BRANCH        deployment branch label (default: main)
+#   CLOUDFLARE_API_TOKEN   token with Pages:Edit; if unset, prior `wrangler login` is used
+#   DEPLOY_SMOKE_URL       URL to smoke-check after deploy (default: https://app.wlim.dev/)
 #
-# Assumes the host runs rust-spades with --static-dir $DEPLOY_PATH (or a reverse
-# proxy that serves $DEPLOY_PATH as static).
+# Put `export CLOUDFLARE_API_TOKEN=...` in your shell rc, or source a local
+# .deploy.env (gitignored).
 
-if [[ -z "${DEPLOY_HOST:-}" ]] || [[ -z "${DEPLOY_PATH:-}" ]]; then
-  echo "DEPLOY_HOST and DEPLOY_PATH must be set" >&2
-  exit 1
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$REPO_ROOT/web"
+
+if [ -f "$REPO_ROOT/.deploy.env" ]; then
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/.deploy.env"
 fi
 
-echo "Building production bundle…"
+CF_PAGES_PROJECT="${CF_PAGES_PROJECT:-spades}"
+CF_PAGES_BRANCH="${CF_PAGES_BRANCH:-main}"
+DEPLOY_SMOKE_URL="${DEPLOY_SMOKE_URL:-https://app.wlim.dev/}"
+
+LOCAL_SHA="$(git rev-parse HEAD)"
+SHORT_SHA="${LOCAL_SHA:0:12}"
+
+echo "==> Deploying spades @ $SHORT_SHA to Cloudflare Pages ($CF_PAGES_PROJECT)"
+
+# Refuse if the working tree is dirty.
+if [ -n "$(git status --porcelain)" ]; then
+    echo "Error: local working tree is dirty. Commit or stash before deploying." >&2
+    git status --short >&2
+    exit 1
+fi
+
+# Verify the SHA is on the remote (matches the backend script's guarantee).
+DEPLOY_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if ! git fetch --quiet origin "$DEPLOY_BRANCH" 2>/dev/null; then
+    echo "Error: cannot fetch origin/$DEPLOY_BRANCH. Push first." >&2
+    exit 1
+fi
+if ! git merge-base --is-ancestor "$LOCAL_SHA" "origin/$DEPLOY_BRANCH"; then
+    echo "Error: HEAD is not on origin/$DEPLOY_BRANCH yet. Push first." >&2
+    exit 1
+fi
+
+echo "==> pnpm install --frozen-lockfile"
 pnpm install --frozen-lockfile
+
+echo "==> pnpm build"
 pnpm build
 
-echo "Shipping to $DEPLOY_HOST:$DEPLOY_PATH"
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-cp -R dist/* "$tmp"/
+if [ ! -f dist/index.html ]; then
+    echo "Error: dist/index.html missing after build" >&2
+    exit 1
+fi
 
-# Stage to a temp dir on the host, then atomically swap.
-ssh "$DEPLOY_HOST" "mkdir -p $DEPLOY_PATH.staging"
-rsync -az --delete "$tmp"/ "$DEPLOY_HOST:$DEPLOY_PATH.staging/"
-ssh "$DEPLOY_HOST" "rm -rf $DEPLOY_PATH.previous && \
-  ( [ -d $DEPLOY_PATH ] && mv $DEPLOY_PATH $DEPLOY_PATH.previous || true ) && \
-  mv $DEPLOY_PATH.staging $DEPLOY_PATH"
+echo "==> wrangler pages deploy dist/"
+pnpm exec wrangler pages deploy dist \
+    --project-name="$CF_PAGES_PROJECT" \
+    --branch="$CF_PAGES_BRANCH" \
+    --commit-hash="$LOCAL_SHA"
 
-echo "Deployed."
+echo "==> smoke check $DEPLOY_SMOKE_URL"
+# Pages propagation is usually instant but give it a few tries.
+for i in 1 2 3 4 5; do
+    if curl -fsS --max-time 5 "$DEPLOY_SMOKE_URL" | grep -q '<title'; then
+        echo "==> smoke OK"
+        echo "==> Deploy complete: $SHORT_SHA"
+        exit 0
+    fi
+    sleep 2
+done
+
+echo "Warning: smoke check did not find a <title> at $DEPLOY_SMOKE_URL" >&2
+echo "         The deploy succeeded but the URL may not be live yet (DNS/CDN propagation)." >&2
+exit 1
