@@ -23,6 +23,7 @@ TARGET_SHA="${1:-}"
 
 if [ -z "$TARGET_SHA" ]; then
     echo "==> Available binaries on $DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/bin/"
+    # shellcheck disable=SC2029  # $DEPLOY_PATH is intentionally expanded client-side
     ssh "$DEPLOY_USER@$DEPLOY_HOST" \
         "cd '$DEPLOY_PATH' && \
          live=\$(readlink bin/spades-server-current) && \
@@ -51,9 +52,20 @@ if [ ! -x "bin/$TARGET_NAME" ]; then
     exit 1
 fi
 
+# Atomic symlink swap that works on both Linux (mv -T) and macOS (rm + ln).
+# Mirrors deploy/remote-swap.sh's swap_symlink so the two scripts stay in sync.
+swap_symlink() {
+    local target=$1
+    ln -sfn "$target" bin/spades-server-current.new
+    if mv -Tf bin/spades-server-current.new bin/spades-server-current 2>/dev/null; then
+        return 0
+    fi
+    rm -f bin/spades-server-current
+    mv bin/spades-server-current.new bin/spades-server-current
+}
+
 echo "==> swapping symlink -> $TARGET_NAME"
-ln -sfn "$TARGET_NAME" bin/spades-server-current.new
-mv -Tf bin/spades-server-current.new bin/spades-server-current
+swap_symlink "$TARGET_NAME"
 
 echo "==> systemctl restart spades-server"
 sudo /bin/systemctl restart spades-server
