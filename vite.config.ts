@@ -19,6 +19,9 @@ export default defineConfig({
       '/games': { target: 'http://localhost:3000', changeOrigin: true, ws: true },
       '/matchmaking': { target: 'http://localhost:3000', changeOrigin: true },
       '/challenges': { target: 'http://localhost:3000', changeOrigin: true },
+      '/auth': { target: 'http://localhost:3000', changeOrigin: true },
+      '/users': { target: 'http://localhost:3000', changeOrigin: true },
+      '/player': { target: 'http://localhost:3000', changeOrigin: true },
     },
   },
   define: {
