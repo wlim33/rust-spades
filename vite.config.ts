@@ -12,7 +12,15 @@ const buildVersion = (() => {
 export default defineConfig({
   base: '/',
   build: { outDir: 'dist', sourcemap: true },
-  server: { port: 5173, strictPort: true },
+  server: {
+    port: 5173,
+    strictPort: true,
+    proxy: {
+      '/games': { target: 'http://localhost:3000', changeOrigin: true, ws: true },
+      '/matchmaking': { target: 'http://localhost:3000', changeOrigin: true },
+      '/challenges': { target: 'http://localhost:3000', changeOrigin: true },
+    },
+  },
   define: {
     __BUILD_VERSION__: JSON.stringify(buildVersion),
   },

@@ -17,7 +17,12 @@ export type WsOptions = {
  * without dropping subsequent messages.
  */
 export function openGameWs(gameId: string, playerId: string | null, opts: WsOptions): WsHandle {
-  const wsUrl = `${API_URL.replace(/^https/, 'wss').replace(/^http/, 'ws')}/games/${encodeURIComponent(
+  const wsBase =
+    API_URL ||
+    (typeof location !== 'undefined'
+      ? `${location.protocol.replace('http', 'ws')}//${location.host}`
+      : '');
+  const wsUrl = `${wsBase.replace(/^https/, 'wss').replace(/^http/, 'ws')}/games/${encodeURIComponent(
     gameId,
   )}/ws${playerId ? `?player_id=${encodeURIComponent(playerId)}` : ''}`;
 

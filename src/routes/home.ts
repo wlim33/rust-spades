@@ -1,4 +1,4 @@
-import { html, render } from 'lit-html';
+import { html, render, nothing } from 'lit-html';
 import { signal, effect } from '@preact/signals-core';
 import { appShell } from '../ui/templates';
 import { button } from '../ui/components/button';
@@ -109,7 +109,7 @@ export const home: RouteModule = {
     return () => {
       if (quickplay.value) quickplay.value.cancel();
       dispose();
-      root.innerHTML = '';
+      render(nothing, root);
     };
   },
 };
