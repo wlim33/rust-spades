@@ -5,6 +5,7 @@ import { create } from './routes/create';
 import { play } from './routes/play';
 import { login } from './routes/login';
 import { signup } from './routes/signup';
+import { oauthComplete } from './routes/oauth-complete';
 import { notFound } from './routes/notfound';
 import { session } from './state/session';
 import { consumeOauthInProgress } from './lib/storage';
@@ -23,6 +24,7 @@ void (async () => {
     '/play/:shortId': play,
     '/login': login,
     '/signup': signup,
+    '/auth/oauth/complete': oauthComplete,
     '*': notFound,
   });
 
