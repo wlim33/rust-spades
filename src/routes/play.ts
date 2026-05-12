@@ -25,6 +25,7 @@ import { appShell } from '../ui/templates';
 import { button } from '../ui/components/button';
 import { scores } from '../ui/components/scores';
 import { gameTable, makeRefs, type GameTableRefs } from '../ui/components/game-table';
+import { session } from '../state/session';
 import type { RouteModule } from '../router';
 
 const POLL_INTERVAL = 2000;
@@ -144,7 +145,13 @@ function renderInGame(args: {
   const { store, refs, root } = args;
 
   const myIdx = (): number => store.playerIds.value.indexOf(store.playerId.value);
-  const seatName = (idx: number): string => store.playerNames.value[idx] ?? `Seat ${idx + 1}`;
+  const seatName = (idx: number): string => {
+    const fromState = store.playerNames.value[idx];
+    if (idx === myIdx() && session.currentUser.value?.display_name) {
+      return session.currentUser.value.display_name;
+    }
+    return fromState ?? `Seat ${idx + 1}`;
+  };
 
   const template = (): TemplateResult => {
     const i = myIdx();
