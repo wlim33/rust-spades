@@ -7,9 +7,7 @@ const mockUser: User = {
   id: 'u1',
   username: 'alice',
   email: 'a@x',
-  display_name: 'Alice',
   email_verified: true,
-  created_at: '2026',
 };
 
 describe('settings route', () => {
@@ -27,27 +25,34 @@ describe('settings route', () => {
     cleanup();
   });
 
-  it('renders display name field with current value', () => {
+  it('renders email, current_password, and new_password fields', () => {
     const cleanup = settings.render({}, { path: '/me', search: new URLSearchParams() });
-    const input = document.querySelector<HTMLInputElement>('#display_name')!;
-    expect(input.value).toBe('Alice');
+    const emailInput = document.querySelector<HTMLInputElement>('#email')!;
+    expect(emailInput).not.toBeNull();
+    expect(emailInput.value).toBe('a@x');
+    expect(document.querySelector('#current_password')).not.toBeNull();
+    expect(document.querySelector('#new_password')).not.toBeNull();
     cleanup();
   });
 
-  it('saving display name calls session.updateDisplayName', async () => {
-    const upd = vi.spyOn(session, 'updateDisplayName').mockImplementation(async (n) => {
-      if (n != null) {
-        session.currentUser.value = { ...session.currentUser.value!, display_name: n };
-      }
+  it('save calls updateEmail when email changed', async () => {
+    const upd = vi.spyOn(session, 'updateEmail').mockImplementation(async (newEmail) => {
+      session.currentUser.value = { ...session.currentUser.value!, email: newEmail };
     });
     const cleanup = settings.render({}, { path: '/me', search: new URLSearchParams() });
-    const input = document.querySelector<HTMLInputElement>('#display_name')!;
-    input.value = 'AliceP';
-    input.dispatchEvent(new Event('input'));
+
+    const emailInput = document.querySelector<HTMLInputElement>('#email')!;
+    emailInput.value = 'newalice@x';
+    emailInput.dispatchEvent(new Event('input'));
+
+    const pwInput = document.querySelector<HTMLInputElement>('#current_password')!;
+    pwInput.value = 'hunter2';
+    pwInput.dispatchEvent(new Event('input'));
+
     document.querySelector<HTMLButtonElement>('[data-testid=save]')!.click();
     await Promise.resolve();
     await Promise.resolve();
-    expect(upd).toHaveBeenCalledWith('AliceP');
+    expect(upd).toHaveBeenCalledWith('newalice@x', 'hunter2');
     cleanup();
   });
 });

@@ -8,7 +8,6 @@ const mockUser: User = {
   username: 'alice',
   email: 'a@x',
   email_verified: true,
-  created_at: '2026',
 };
 
 describe('login route', () => {

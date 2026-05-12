@@ -79,7 +79,6 @@ describe('session store', () => {
       username: 'alice',
       email: 'a@x',
       email_verified: true,
-      created_at: '2026-01-01',
     };
     vi.stubGlobal(
       'fetch',

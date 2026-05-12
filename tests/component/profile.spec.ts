@@ -16,26 +16,26 @@ describe('profile route', () => {
           return new Response(
             JSON.stringify({
               username: 'alice',
-              display_name: 'Alice',
-              created_at: '2026',
+              created_at: '2026-01-01',
               games_played: 7,
-              games_won: 4,
+              last_seen_at: null,
+              rating: 1500,
+              rd: 100,
             }),
             { status: 200, headers: { 'content-type': 'application/json' } },
           );
         }
         if (url.endsWith('/users/alice/games')) {
           return new Response(
-            JSON.stringify([
-              {
-                game_id: 'g1',
-                started_at: '2026-05-01',
-                ended_at: '2026-05-01',
-                team: 'A',
-                won: true,
-                score: 510,
-              },
-            ]),
+            JSON.stringify({
+              username: 'alice',
+              limit: 20,
+              offset: 0,
+              total: 1,
+              games: [
+                { game_id: 'g1abcdef-0000-0000-0000-000000000000', seat_index: 0, player_id: 'p1' },
+              ],
+            }),
             { status: 200, headers: { 'content-type': 'application/json' } },
           );
         }
@@ -49,7 +49,7 @@ describe('profile route', () => {
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
     expect(document.body.textContent).toContain('alice');
-    expect(document.body.textContent).toContain('g1');
+    expect(document.body.textContent).toContain('g1abcdef');
     cleanup();
   });
 

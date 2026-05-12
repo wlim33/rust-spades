@@ -5,24 +5,28 @@ export type User = {
   id: string;
   username: string;
   email: string;
-  display_name?: string | null;
   email_verified: boolean;
-  created_at: string;
 };
 
-export type ProfileResponse = {
+export type PublicProfile = {
   username: string;
-  display_name?: string | null;
   created_at: string;
   games_played: number;
-  games_won: number;
+  last_seen_at: string | null;
+  rating: number;
+  rd: number;
 };
 
-export type GameHistoryItem = {
+export type ProfileGameEntry = {
   game_id: string;
-  started_at: string;
-  ended_at: string | null;
-  team: 'A' | 'B';
-  won: boolean;
-  score: number;
+  seat_index: number;
+  player_id: string;
+};
+
+export type ProfileGames = {
+  username: string;
+  limit: number;
+  offset: number;
+  total: number;
+  games: ProfileGameEntry[];
 };

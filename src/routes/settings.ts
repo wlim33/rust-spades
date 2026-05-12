@@ -18,7 +18,9 @@ export const settings: RouteModule = {
       return () => {};
     }
 
-    const displayName = signal(session.currentUser.value.display_name ?? '');
+    const email = signal(session.currentUser.value.email);
+    const currentPassword = signal('');
+    const newPassword = signal('');
     const saving = signal(false);
     const error = signal<string | null>(null);
     const saved = signal(false);
@@ -29,7 +31,25 @@ export const settings: RouteModule = {
       error.value = null;
       saved.value = false;
       try {
-        await session.updateDisplayName(displayName.value.trim() || null);
+        const u = session.currentUser.value!;
+        const wantsEmailChange = email.value !== u.email;
+        const wantsPasswordChange = newPassword.value.length > 0;
+        if (!wantsEmailChange && !wantsPasswordChange) {
+          error.value = 'No changes to save.';
+          return;
+        }
+        if (!currentPassword.value) {
+          error.value = 'Current password is required for any change.';
+          return;
+        }
+        if (wantsEmailChange) {
+          await session.updateEmail(email.value, currentPassword.value);
+        }
+        if (wantsPasswordChange) {
+          await session.updatePassword(currentPassword.value, newPassword.value);
+        }
+        currentPassword.value = '';
+        newPassword.value = '';
         saved.value = true;
       } catch (e) {
         error.value = e instanceof Error ? e.message : 'Could not save.';
@@ -50,14 +70,34 @@ export const settings: RouteModule = {
             : nothing}
           ${saved.value ? html`<p style="color: var(--color-accent)">Saved.</p>` : nothing}
           ${formField({
-            id: 'display_name',
-            label: 'Display name (shown in games)',
-            value: displayName.value,
-            maxLength: 20,
-            placeholder: u.username,
+            id: 'email',
+            label: 'Email',
+            type: 'email',
+            value: email.value,
+            autocomplete: 'email',
             onInput: (e) => {
-              displayName.value = (e.target as HTMLInputElement).value;
+              email.value = (e.target as HTMLInputElement).value;
               saved.value = false;
+            },
+          })}
+          ${formField({
+            id: 'current_password',
+            label: 'Current password',
+            type: 'password',
+            value: currentPassword.value,
+            autocomplete: 'current-password',
+            onInput: (e) => {
+              currentPassword.value = (e.target as HTMLInputElement).value;
+            },
+          })}
+          ${formField({
+            id: 'new_password',
+            label: 'New password (leave blank to keep current)',
+            type: 'password',
+            value: newPassword.value,
+            autocomplete: 'new-password',
+            onInput: (e) => {
+              newPassword.value = (e.target as HTMLInputElement).value;
             },
           })}
           <div class="form-actions">

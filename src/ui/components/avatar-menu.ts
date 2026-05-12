@@ -5,7 +5,7 @@ import type { User } from '../../state/user-types';
 
 export function avatarMenu(user: User): TemplateResult {
   return html`<details class="avatar-menu" data-testid="avatar-menu">
-    <summary class="avatar-menu__btn">${user.display_name || user.username}</summary>
+    <summary class="avatar-menu__btn">${user.username}</summary>
     <ul class="avatar-menu__list">
       <li><a href=${`/u/${user.username}`} data-link>My profile</a></li>
       <li><a href="/me" data-link>Settings</a></li>

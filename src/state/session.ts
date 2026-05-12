@@ -57,10 +57,18 @@ async function completeOauth(username: string): Promise<void> {
   currentUser.value = user;
 }
 
-async function updateDisplayName(displayName: string | null): Promise<void> {
+async function updateEmail(email: string, currentPassword: string): Promise<void> {
   const user = await request<User>('/users/me', {
     method: 'PATCH',
-    body: JSON.stringify({ display_name: displayName }),
+    body: JSON.stringify({ email, current_password: currentPassword }),
+  });
+  currentUser.value = user;
+}
+
+async function updatePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const user = await request<User>('/users/me', {
+    method: 'PATCH',
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
   });
   currentUser.value = user;
 }
@@ -73,5 +81,6 @@ export const session = {
   logout,
   startOauth,
   completeOauth,
-  updateDisplayName,
+  updateEmail,
+  updatePassword,
 };

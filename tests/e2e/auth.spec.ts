@@ -18,7 +18,7 @@ test('signup, view /me, logout, login again', async ({ page }) => {
 
   // Visit /me
   await page.goto('/me');
-  await expect(page.locator('#display_name')).toBeVisible();
+  await expect(page.locator('#email')).toBeVisible();
   await expect(page.locator('body')).toContainText(email);
 
   // Sign out

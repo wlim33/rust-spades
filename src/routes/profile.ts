@@ -2,7 +2,7 @@ import { html, render, nothing } from 'lit-html';
 import { effect, signal } from '@preact/signals-core';
 import { appShell } from '../ui/templates';
 import { request, ApiError } from '../api/client';
-import type { ProfileResponse, GameHistoryItem } from '../state/user-types';
+import type { PublicProfile, ProfileGames, ProfileGameEntry } from '../state/user-types';
 import type { RouteModule } from '../router';
 
 export const profile: RouteModule = {
@@ -11,8 +11,8 @@ export const profile: RouteModule = {
     if (!root) return () => {};
     const username = params['username'] ?? '';
 
-    const prof = signal<ProfileResponse | null>(null);
-    const games = signal<GameHistoryItem[]>([]);
+    const prof = signal<PublicProfile | null>(null);
+    const games = signal<ProfileGameEntry[]>([]);
     const loading = signal(true);
     const notFound = signal(false);
     const error = signal<string | null>(null);
@@ -28,6 +28,9 @@ export const profile: RouteModule = {
       const p = prof.value;
       const g = games.value;
 
+      const showEmpty = !l && !nf && !err && p !== null && g.length === 0;
+      const showList = !l && !nf && !err && p !== null && g.length > 0;
+
       render(
         appShell(html`
           <section class="profile-page">
@@ -37,31 +40,30 @@ export const profile: RouteModule = {
                   <p>No player named <code>${username}</code>.</p>`
               : nothing}
             ${!l && !nf && err ? html`<p class="field-error">${err}</p>` : nothing}
-            ${!l && !nf && !err && p
+            ${p && !l && !nf
               ? html`
-                  <h2>${p.display_name || p.username}</h2>
-                  <p class="profile-username">@${p.username}</p>
-                  <p>${p.games_played} games played</p>
+                  <h2>${p.username}</h2>
+                  <p>${p.games_played} games played · Rating ${p.rating}</p>
                   <h3>Recent games</h3>
                 `
               : nothing}
-            ${!l && !nf && !err && p
-              ? g.length === 0
-                ? html`<div class="empty-state">
-                    <p>
-                      <strong>${p.display_name || p.username}</strong> hasn't finished any games
-                      yet.
-                    </p>
-                  </div>`
-                : html`<ul class="profile-games">
-                    ${g.map(
-                      (item) =>
-                        html`<li>
-                          <a href=${`/play/${item.game_id}`} data-link>${item.game_id}</a>
-                          <span> — ${item.won ? 'Won' : 'Lost'} (Team ${item.team})</span>
-                        </li>`,
-                    )}
-                  </ul>`
+            ${showEmpty
+              ? html`<div class="empty-state">
+                  <p><strong>${p!.username}</strong> hasn't finished any games yet.</p>
+                </div>`
+              : nothing}
+            ${showList
+              ? html`<ul class="profile-games">
+                  ${g.map(
+                    (entry) =>
+                      html`<li>
+                        <span
+                          >Game <code>${entry.game_id.slice(0, 8)}</code> — seat
+                          ${entry.seat_index}</span
+                        >
+                      </li>`,
+                  )}
+                </ul>`
               : nothing}
           </section>
         `),
@@ -71,14 +73,14 @@ export const profile: RouteModule = {
 
     void (async () => {
       try {
-        const [profData, gamesData] = await Promise.all([
-          request<ProfileResponse>(`/users/${encodeURIComponent(username)}`, { method: 'GET' }),
-          request<GameHistoryItem[]>(`/users/${encodeURIComponent(username)}/games`, {
-            method: 'GET',
-          }),
-        ]);
-        prof.value = profData;
-        games.value = gamesData;
+        prof.value = await request<PublicProfile>(`/users/${encodeURIComponent(username)}`, {
+          method: 'GET',
+        });
+        const wrapped = await request<ProfileGames>(
+          `/users/${encodeURIComponent(username)}/games`,
+          { method: 'GET' },
+        );
+        games.value = wrapped.games;
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) {
           notFound.value = true;
