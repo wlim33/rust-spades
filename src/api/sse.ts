@@ -8,11 +8,7 @@ export type SseOptions = {
   onError?: (err: unknown) => void;
 };
 
-export function openSse<Body>(
-  path: string,
-  body: Body | undefined,
-  opts: SseOptions,
-): SseHandle {
+export function openSse<Body>(path: string, body: Body | undefined, opts: SseOptions): SseHandle {
   const controller = new AbortController();
   let closed = false;
 

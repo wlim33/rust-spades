@@ -19,10 +19,15 @@ describe('openSse', () => {
   beforeEach(() => vi.unstubAllGlobals());
 
   it('parses event + data pairs across chunk boundaries', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => makeStreamingResponse([
-      'event: queue_status\ndata: {"waiti',
-      'ng":2}\n\nevent: game_start\ndata: {"game_id":"abc"}\n\n',
-    ])));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        makeStreamingResponse([
+          'event: queue_status\ndata: {"waiti',
+          'ng":2}\n\nevent: game_start\ndata: {"game_id":"abc"}\n\n',
+        ]),
+      ),
+    );
 
     const events: Array<{ type: string; data: string }> = [];
     await new Promise<void>((resolve) => {
@@ -43,15 +48,23 @@ describe('openSse', () => {
   });
 
   it('close() is idempotent and suppresses AbortError', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
-      const signal = (init as RequestInit).signal as AbortSignal;
-      const stream = new ReadableStream<Uint8Array>({
-        start(controller) {
-          signal.addEventListener('abort', () => controller.error(new DOMException('aborted', 'AbortError')));
-        },
-      });
-      return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url, init) => {
+        const signal = (init as RequestInit).signal as AbortSignal;
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            signal.addEventListener('abort', () =>
+              controller.error(new DOMException('aborted', 'AbortError')),
+            );
+          },
+        });
+        return new Response(stream, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        });
+      }),
+    );
 
     const errors: unknown[] = [];
     const sse = openSse('/x', undefined, {
