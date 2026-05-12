@@ -3,8 +3,8 @@ services:
     image: ghcr.io/wlim33/spades:${IMAGE_TAG:-latest}
     container_name: spades-server
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     volumes:
       - /var/lib/spades:/data
     env_file:
@@ -15,3 +15,27 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: spades-caddy
+    restart: unless-stopped
+    depends_on:
+      spades-server:
+        condition: service_healthy
+    ports:
+      - "443:443"
+    volumes:
+      - /opt/spades/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/spades/certs:/etc/caddy/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  caddy_data:
+  caddy_config:
