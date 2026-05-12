@@ -17,16 +17,20 @@ export type Router = {
 };
 
 export function createRouter(routes: Routes): Router {
-  // Track the current full path (including query string) for each handle() call.
+  // Node-test fallback for the full path; in the browser we read `location`.
   let pendingPath = '/';
+  const currentFullPath = (): string => {
+    if (typeof location !== 'undefined' && typeof location.pathname === 'string') {
+      return location.pathname + location.search;
+    }
+    return pendingPath;
+  };
 
   const r = navaid('/', (uri) => {
-    // navaid's wildcard handler — we get the unmatched pathname (no query string).
-    // navaid formats it with a leading slash (e.g. "/nope"); strip it for the params.
     const mod = routes['*'];
     if (!mod) return;
     const wild = (uri ?? '').replace(/^\//, '');
-    runRoute(mod, { wild }, pendingPath);
+    runRoute(mod, { wild }, currentFullPath());
   });
 
   let currentCleanup: (() => void) | null = null;
@@ -42,7 +46,7 @@ export function createRouter(routes: Routes): Router {
   for (const [pattern, mod] of Object.entries(routes)) {
     if (pattern === '*') continue;
     r.on(pattern, (params) => {
-      runRoute(mod, (params ?? {}) as Record<string, string>, pendingPath);
+      runRoute(mod, (params ?? {}) as Record<string, string>, currentFullPath());
     });
   }
 
