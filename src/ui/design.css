@@ -376,3 +376,46 @@ button.seat-open {
   color: var(--color-muted);
   margin: var(--space-3) 0;
 }
+
+.avatar-menu {
+  position: relative;
+}
+.avatar-menu__btn {
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.06);
+}
+.avatar-menu__list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-md);
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2);
+  min-width: 160px;
+  z-index: 5;
+}
+.avatar-menu__list li {
+  margin: 0;
+}
+.avatar-menu__list a,
+.avatar-menu__list button {
+  display: block;
+  width: 100%;
+  padding: var(--space-2);
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-decoration: none;
+}
+.avatar-menu__list a:hover,
+.avatar-menu__list button:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
