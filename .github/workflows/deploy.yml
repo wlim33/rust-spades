@@ -1,0 +1,148 @@
+name: deploy
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RUST_TARGET: x86_64-unknown-linux-gnu
+
+jobs:
+  ci:
+    name: test + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.RUST_TARGET }}
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo test
+        run: cargo test --workspace --locked
+
+      - name: cargo build --release
+        run: cargo build --release --locked -p spades-server --target ${{ env.RUST_TARGET }}
+
+      - name: Stage backend artifact
+        run: |
+          mkdir -p artifact/backend
+          cp target/${{ env.RUST_TARGET }}/release/spades-server \
+             artifact/backend/spades-server.${{ steps.sha.outputs.short }}
+
+      - name: pnpm setup
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Node setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+        working-directory: web
+
+      - name: pnpm test
+        run: pnpm test
+        working-directory: web
+
+      - name: pnpm build
+        run: pnpm build
+        working-directory: web
+
+      - name: Upload backend binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: spades-server-${{ steps.sha.outputs.short }}
+          path: artifact/backend/spades-server.${{ steps.sha.outputs.short }}
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Upload frontend bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: spades-web-${{ steps.sha.outputs.short }}
+          path: web/dist
+          retention-days: 90
+          if-no-files-found: error
+
+  deploy:
+    name: ship
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Download backend binary
+        uses: actions/download-artifact@v4
+        with:
+          name: spades-server-${{ steps.sha.outputs.short }}
+          path: artifact/backend
+
+      - name: Download frontend bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: spades-web-${{ steps.sha.outputs.short }}
+          path: web/dist
+
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Pin host key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: scp binary to VPS
+        run: |
+          chmod 0755 artifact/backend/spades-server.${{ steps.sha.outputs.short }}
+          scp artifact/backend/spades-server.${{ steps.sha.outputs.short }} \
+            deploy@${{ secrets.DEPLOY_HOST }}:/opt/spades-server/bin/
+
+      - name: Remote swap + health check
+        run: |
+          ssh deploy@${{ secrets.DEPLOY_HOST }} \
+            DEPLOY_PATH=/opt/spades-server \
+            SHORT_SHA=${{ steps.sha.outputs.short }} \
+            bash -s < deploy/remote-swap.sh
+
+      - name: Deploy frontend to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy web/dist --project-name=spades --branch=main --commit-dirty=true
+
+      - name: Smoke check
+        run: |
+          curl -fsS --max-time 10 https://app.wlim.dev/ >/dev/null
+          curl -fsS --max-time 10 https://spades.wlim.dev/health >/dev/null
