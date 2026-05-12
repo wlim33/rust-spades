@@ -47,6 +47,7 @@ jobs:
     needs: static
     env:
       RUST_SPADES_REPO: wlim/rust-spades
+      # TODO: pin to a specific rust-spades SHA. Floating `main` is a CI flake source.
       RUST_SPADES_REF: main
       VITE_API_URL: http://localhost:3000
     steps:

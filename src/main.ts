@@ -11,6 +11,7 @@ import { profile } from './routes/profile';
 import { notFound } from './routes/notfound';
 import { session } from './state/session';
 import { consumeOauthInProgress } from './lib/storage';
+import { toast } from './state/toast';
 
 void (async () => {
   // Best-effort: hydrate the session before mounting the first route.
@@ -64,6 +65,16 @@ void (async () => {
     }
     history.replaceState(null, '', '/auth/oauth/complete');
   }
+
+  window.addEventListener('unhandledrejection', (e) => {
+    console.error('Unhandled rejection', e.reason);
+    toast.error('Something went wrong.');
+  });
+
+  window.addEventListener('error', (e) => {
+    console.error('Uncaught error', e.error ?? e.message);
+    toast.error('Something went wrong.');
+  });
 
   router.listen();
 })();

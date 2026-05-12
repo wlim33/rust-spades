@@ -663,6 +663,42 @@ button.seat-open {
   outline-offset: 3px;
 }
 
+.spades-seat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+.spades-seat-label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+.spades-seat-info {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
+.spades-seat.active .spades-seat-label {
+  color: var(--color-accent);
+}
+.spades-seat.active {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-md);
+}
+.spades-trick-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.opp-container {
+  gap: 2px;
+  flex-wrap: wrap;
+}
+.spades-clock {
+  font-family: ui-monospace, monospace;
+  font-size: var(--font-size-sm);
+}
+
 /* Tap target minimum on touch */
 @media (pointer: coarse) {
   .btn {
