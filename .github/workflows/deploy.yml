@@ -102,8 +102,10 @@ jobs:
           echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-      - name: Copy compose file to VPS
-        run: scp docker-compose.yml deploy@${{ secrets.DEPLOY_HOST }}:/opt/spades/docker-compose.yml
+      - name: Copy compose file + Caddyfile to VPS
+        run: |
+          scp docker-compose.yml deploy@${{ secrets.DEPLOY_HOST }}:/opt/spades/docker-compose.yml
+          scp deploy/Caddyfile    deploy@${{ secrets.DEPLOY_HOST }}:/opt/spades/Caddyfile
 
       - name: Pull + restart on VPS
         env:
