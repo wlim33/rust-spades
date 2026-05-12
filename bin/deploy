@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# Manual deploy: SSH into the server, pull the current branch, rebuild,
+# atomically swap the binary symlink, restart, health-check, prune.
+#
+# Runs from your laptop only — no runners or webhooks involved.
+#
+# Required:
+#   DEPLOY_HOST       hostname or IP of the server
+# Optional (with defaults):
+#   DEPLOY_USER       SSH user (default: deploy)
+#   DEPLOY_PATH       checkout path on server (default: /opt/spades-server)
+#   DEPLOY_BRANCH     branch to deploy (default: current local branch)
+#   DEPLOY_KEEP       how many old release binaries to keep (default: 5)
+#   DEPLOY_HEALTH_URL health check URL on server (default: http://127.0.0.1:3000/health)
+#
+# Put `export DEPLOY_HOST=...` in your shell rc, or source a local .deploy.env
+# (which is gitignored).
+set -euo pipefail
+
+# Pick up local overrides if present.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ -f "$REPO_ROOT/.deploy.env" ]; then
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/.deploy.env"
+fi
+
+: "${DEPLOY_HOST:?DEPLOY_HOST not set — export it or add it to .deploy.env}"
+DEPLOY_USER="${DEPLOY_USER:-deploy}"
+DEPLOY_PATH="${DEPLOY_PATH:-/opt/spades-server}"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)}"
+DEPLOY_KEEP="${DEPLOY_KEEP:-5}"
+DEPLOY_HEALTH_URL="${DEPLOY_HEALTH_URL:-http://127.0.0.1:3000/health}"
+
+LOCAL_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+SHORT_SHA="${LOCAL_SHA:0:12}"
+
+echo "==> Deploying $DEPLOY_BRANCH @ $SHORT_SHA to $DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH"
+
+# Refuse if the working tree is dirty.
+if [ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]; then
+    echo "Error: local working tree is dirty. Commit or stash before deploying." >&2
+    git -C "$REPO_ROOT" status --short >&2
+    exit 1
+fi
+
+# Verify the SHA is on the remote.
+if ! git -C "$REPO_ROOT" fetch --quiet origin "$DEPLOY_BRANCH" 2>/dev/null; then
+    echo "Error: cannot fetch origin/$DEPLOY_BRANCH. Push first." >&2
+    exit 1
+fi
+if ! git -C "$REPO_ROOT" merge-base --is-ancestor "$LOCAL_SHA" "origin/$DEPLOY_BRANCH"; then
+    echo "Error: HEAD is not on origin/$DEPLOY_BRANCH yet. Push first." >&2
+    exit 1
+fi
+
+ssh "$DEPLOY_USER@$DEPLOY_HOST" \
+    DEPLOY_PATH="$DEPLOY_PATH" \
+    DEPLOY_BRANCH="$DEPLOY_BRANCH" \
+    LOCAL_SHA="$LOCAL_SHA" \
+    SHORT_SHA="$SHORT_SHA" \
+    DEPLOY_KEEP="$DEPLOY_KEEP" \
+    DEPLOY_HEALTH_URL="$DEPLOY_HEALTH_URL" \
+    bash <<'REMOTE'
+set -euo pipefail
+export PATH="$HOME/.cargo/bin:$PATH"
+
+cd "$DEPLOY_PATH"
+
+echo "==> git fetch + reset to origin/$DEPLOY_BRANCH"
+git fetch --quiet origin "$DEPLOY_BRANCH"
+git reset --hard "origin/$DEPLOY_BRANCH"
+SERVER_SHA="$(git rev-parse HEAD)"
+if [ "$SERVER_SHA" != "$LOCAL_SHA" ]; then
+    echo "Warning: server SHA does not match local HEAD ($SERVER_SHA vs $LOCAL_SHA)" >&2
+fi
+
+mkdir -p bin
+TARGET_NAME="spades-server.$SHORT_SHA"
+TARGET_PATH="bin/$TARGET_NAME"
+
+if [ ! -x "$TARGET_PATH" ]; then
+    echo "==> cargo build --release -p spades-server"
+    cargo build --release -p spades-server
+    install -m 0755 target/release/spades-server "$TARGET_PATH"
+else
+    echo "==> $TARGET_PATH already built, skipping cargo"
+fi
+
+echo "==> swapping symlink -> $TARGET_NAME"
+# ln -sfn does an atomic rename(2) over the existing symlink.
+ln -sfn "$TARGET_NAME" bin/spades-server-current.new
+mv -Tf bin/spades-server-current.new bin/spades-server-current
+
+echo "==> systemctl restart spades-server"
+sudo /bin/systemctl restart spades-server
+sleep 1
+sudo /bin/systemctl is-active spades-server
+
+echo "==> health check $DEPLOY_HEALTH_URL"
+for i in 1 2 3 4 5; do
+    if curl -fsS --max-time 5 "$DEPLOY_HEALTH_URL" >/dev/null; then
+        echo "==> health OK"
+        break
+    fi
+    if [ "$i" = 5 ]; then
+        echo "Error: health check failed after 5 attempts" >&2
+        exit 1
+    fi
+    sleep 1
+done
+
+echo "==> pruning old binaries, keeping last $DEPLOY_KEEP"
+LIVE_TARGET="$(readlink bin/spades-server-current)"
+# Newest first, drop the LIVE_TARGET, then keep top N-1 (live counts as one), delete the rest.
+# Wrapped in a subshell with `|| true` so prune never fails the deploy.
+(
+    set +o pipefail
+    ls -1t bin/spades-server.* 2>/dev/null \
+        | grep -Fxv "bin/$LIVE_TARGET" \
+        | tail -n +"$DEPLOY_KEEP" \
+        | xargs -r rm -f --
+) || true
+
+REMOTE
+
+echo "==> Deploy complete: $SHORT_SHA"

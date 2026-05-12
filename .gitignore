@@ -1,8 +1,6 @@
 /target
 **/*.rs.bk
 
-# Deploy plumbing — never check this into the repo.
-/bin/deploy
-/deploy/
+# Deploy secrets — never check this into the repo.
 /.deploy.env
 *.deploy.env

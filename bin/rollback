@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Roll the backend symlink back to a previously-deployed SHA.
+# Frontend rollbacks happen in the Cloudflare Pages dashboard.
+#
+# Usage:
+#   bin/rollback              # list available SHAs on the server
+#   bin/rollback <sha>        # repoint spades-server-current and restart
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ -f "$REPO_ROOT/.deploy.env" ]; then
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/.deploy.env"
+fi
+
+: "${DEPLOY_HOST:?DEPLOY_HOST not set — export it or add it to .deploy.env}"
+DEPLOY_USER="${DEPLOY_USER:-deploy}"
+DEPLOY_PATH="${DEPLOY_PATH:-/opt/spades-server}"
+DEPLOY_HEALTH_URL="${DEPLOY_HEALTH_URL:-http://127.0.0.1:3000/health}"
+
+TARGET_SHA="${1:-}"
+
+if [ -z "$TARGET_SHA" ]; then
+    echo "==> Available binaries on $DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/bin/"
+    ssh "$DEPLOY_USER@$DEPLOY_HOST" \
+        "cd '$DEPLOY_PATH' && \
+         live=\$(readlink bin/spades-server-current) && \
+         ls -1t bin/spades-server.* | sed -e 's|bin/spades-server\.||' \
+            | awk -v live=\"\${live#spades-server.}\" '{ printf \"  %s%s\\n\", \$0, (\$0==live?\"  <-- live\":\"\") }'"
+    echo
+    echo "Usage: bin/rollback <sha>"
+    exit 0
+fi
+
+echo "==> Rolling back to $TARGET_SHA on $DEPLOY_USER@$DEPLOY_HOST"
+
+ssh "$DEPLOY_USER@$DEPLOY_HOST" \
+    DEPLOY_PATH="$DEPLOY_PATH" \
+    TARGET_SHA="$TARGET_SHA" \
+    DEPLOY_HEALTH_URL="$DEPLOY_HEALTH_URL" \
+    bash <<'REMOTE'
+set -euo pipefail
+cd "$DEPLOY_PATH"
+
+TARGET_NAME="spades-server.$TARGET_SHA"
+if [ ! -x "bin/$TARGET_NAME" ]; then
+    echo "Error: bin/$TARGET_NAME not found on server" >&2
+    echo "Available:" >&2
+    ls -1 bin/spades-server.* >&2 || true
+    exit 1
+fi
+
+echo "==> swapping symlink -> $TARGET_NAME"
+ln -sfn "$TARGET_NAME" bin/spades-server-current.new
+mv -Tf bin/spades-server-current.new bin/spades-server-current
+
+echo "==> systemctl restart spades-server"
+sudo /bin/systemctl restart spades-server
+sleep 1
+sudo /bin/systemctl is-active spades-server
+
+echo "==> health check $DEPLOY_HEALTH_URL"
+for i in 1 2 3 4 5; do
+    if curl -fsS --max-time 5 "$DEPLOY_HEALTH_URL" >/dev/null; then
+        echo "==> health OK"
+        exit 0
+    fi
+    sleep 1
+done
+echo "Error: health check failed after 5 attempts" >&2
+exit 1
+REMOTE
+
+echo "==> Rollback complete: $TARGET_SHA"
