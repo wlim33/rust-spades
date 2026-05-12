@@ -624,13 +624,32 @@ export const play: RouteModule = {
       // Open WS; on close, fall back to polling
       resources.ws = openGameWs(gameId, playerId, {
         onEvent: (data) => {
-          const wsData = data as never;
+          const obj = data as {
+            event?: string;
+            reason?: string;
+            players?: { player_id: string; connected: boolean }[];
+          } & Record<string, unknown>;
+
+          if (obj.event === 'presence_changed' && obj.players) {
+            store.applyPresence(obj.players);
+            return;
+          }
+
+          if (obj.event === 'game_aborted') {
+            console.warn('game aborted:', obj.reason);
+            resources.orchestrator?.clearAll();
+            clearSession(shortId);
+            navigateTo('/');
+            return;
+          }
+
+          // Otherwise: state snapshot. Fetch hand and apply.
           void (async () => {
             try {
               const hand = await request<never>(`/games/${gameId}/players/${playerId}/hand`, {
                 method: 'GET',
               });
-              store.applyState(wsData, hand);
+              store.applyState(data as never, hand);
             } catch {
               // ignore
             }
