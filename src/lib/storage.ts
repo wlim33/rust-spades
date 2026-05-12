@@ -53,3 +53,28 @@ export function clearChallengeCreator(shortId: string): void {
     // ignore
   }
 }
+
+const OAUTH_IN_PROGRESS_KEY = 'spades_oauth_in_progress';
+const OAUTH_NEXT_KEY = 'spades_oauth_next';
+
+export function markOauthInProgress(provider: 'google' | 'github', next: string): void {
+  try {
+    localStorage.setItem(OAUTH_IN_PROGRESS_KEY, provider);
+    localStorage.setItem(OAUTH_NEXT_KEY, next);
+  } catch {
+    // ignore
+  }
+}
+
+export function consumeOauthInProgress(): { provider: string; next: string } | null {
+  try {
+    const provider = localStorage.getItem(OAUTH_IN_PROGRESS_KEY);
+    const next = localStorage.getItem(OAUTH_NEXT_KEY);
+    localStorage.removeItem(OAUTH_IN_PROGRESS_KEY);
+    localStorage.removeItem(OAUTH_NEXT_KEY);
+    if (!provider) return null;
+    return { provider, next: next ?? '/' };
+  } catch {
+    return null;
+  }
+}
