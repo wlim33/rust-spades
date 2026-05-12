@@ -7,6 +7,7 @@ import { login } from './routes/login';
 import { signup } from './routes/signup';
 import { oauthComplete } from './routes/oauth-complete';
 import { settings } from './routes/settings';
+import { profile } from './routes/profile';
 import { notFound } from './routes/notfound';
 import { session } from './state/session';
 import { consumeOauthInProgress } from './lib/storage';
@@ -27,6 +28,7 @@ void (async () => {
     '/signup': signup,
     '/auth/oauth/complete': oauthComplete,
     '/me': settings,
+    '/u/:username': profile,
     '*': notFound,
   });
 

@@ -419,3 +419,16 @@ button.seat-open {
 .avatar-menu__list button:hover {
   background: rgba(0, 0, 0, 0.06);
 }
+
+.profile-page {
+  width: 100%;
+  max-width: 480px;
+}
+.profile-games {
+  list-style: none;
+  padding: 0;
+}
+.profile-games li {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
