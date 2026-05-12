@@ -1,0 +1,13 @@
+{
+    auto_https off
+}
+
+spades.wlim.dev:443 {
+    tls /etc/caddy/certs/spades.wlim.dev.pem /etc/caddy/certs/spades.wlim.dev.key
+    encode gzip
+    reverse_proxy spades-server:3000 {
+        header_up X-Real-IP {http.request.remote.host}
+        header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+        header_up X-Forwarded-Proto https
+    }
+}
