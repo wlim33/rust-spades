@@ -12,7 +12,7 @@ test('anonymous AI game — bet + reload preserves hand', async ({ page }) => {
 
   // BETTING phase should show bet buttons.
   await page.waitForSelector('.spades-bets button', { state: 'visible', timeout: 10_000 });
-  await page.locator('.spades-bets').getByRole('button', { name: '3' }).click();
+  await page.locator('.spades-bets').getByRole('button', { name: '3', exact: true }).click();
 
   // Wait for PLAYING phase (cards become clickable).
   await page.waitForSelector('.cm-clickable', { state: 'visible', timeout: 10_000 });
