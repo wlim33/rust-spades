@@ -62,8 +62,7 @@ function onSeek(timer: TimerCfg): void {
 }
 
 function onFriends(): void {
-  // Plan 2 navigates to a challenge-create view.
-  console.log('play with friends');
+  navigateTo('/create');
 }
 
 function onComputers(): void {

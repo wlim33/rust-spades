@@ -1,11 +1,13 @@
 import './ui/design.css';
 import { createRouter } from './router';
 import { home } from './routes/home';
+import { create } from './routes/create';
 import { play } from './routes/play';
 import { notFound } from './routes/notfound';
 
 const router = createRouter({
   '/': home,
+  '/create': create,
   '/play/:shortId': play,
   '*': notFound,
 });
