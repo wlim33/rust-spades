@@ -74,6 +74,10 @@ main#root {
   gap: var(--space-3);
 }
 
+.app-shell {
+  display: contents;
+}
+
 .page {
   width: 100%;
   max-width: 720px;
