@@ -390,6 +390,7 @@ function renderLobby(args: LobbyArgs): void {
 
   const onJoinSubmit = (): void => {
     if (!joiningSeat.value) return;
+    cleanupSse(); // close any prior join SSE
     const seat = joiningSeat.value;
     const body = joinName.value.trim() ? { name: joinName.value.trim() } : {};
 
@@ -469,8 +470,8 @@ function renderLobby(args: LobbyArgs): void {
         <h2>Waiting for players</h2>
         ${errorMsg.value ? html`<p class="field-error">${errorMsg.value}</p>` : null}
         <div class="seat-grid">
-          ${(['A', 'B', 'C', 'D'] as const).map((s, i) => {
-            const occupant = seats.value[i] ?? null;
+          ${(['A', 'B', 'C', 'D'] as const).map((s) => {
+            const occupant = seats.value.find((seat) => seat !== null && seat.seat === s) ?? null;
             if (occupant) {
               return html`<div
                 class="seat-taken ${occupant.player_id === myPlayerId.value ? 'mine' : ''}"
