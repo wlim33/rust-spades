@@ -4,8 +4,21 @@ import { request } from '../api/client';
 import { openSse, type SseHandle } from '../api/sse';
 import { openGameWs, type WsHandle } from '../api/ws';
 import { createGameStore, type GameStore } from '../state/game';
-import { sortCards, isCardValid, oppCardCount, type Card } from '../state/helpers';
-import { saveSession, loadSession, clearSession } from '../lib/storage';
+import {
+  sortCards,
+  isCardValid,
+  oppCardCount,
+  seatRel,
+  type Card,
+  type RelativeSeat,
+} from '../state/helpers';
+import {
+  saveSession,
+  loadSession,
+  clearSession,
+  isChallengeCreator,
+  clearChallengeCreator,
+} from '../lib/storage';
 import { navigateTo } from '../lib/util';
 import { CardOrchestrator } from '../cards/orchestrator';
 import { appShell } from '../ui/templates';
@@ -271,6 +284,9 @@ function renderInGame(args: {
   const orchestrator = new CardOrchestrator({ containers });
   args.resources.orchestrator = orchestrator;
 
+  // Track previous tableCards to diff opponent card plays and trick collection.
+  let lastTableCards: readonly (Card | null)[] = [null, null, null, null];
+
   // Side-effect effect: keep orchestrator in sync
   const disposeCards = effect(() => {
     const phase = store.phase.value;
@@ -299,6 +315,8 @@ function renderInGame(args: {
             ? store.playerIds.value.indexOf(currentPlayerId ?? '')
             : 0,
       });
+      // Snapshot current table after init to avoid replaying pre-existing cards.
+      lastTableCards = [...tableCards];
     }
 
     if (orchestrator.isInitialized()) {
@@ -315,6 +333,39 @@ function renderInGame(args: {
         'east',
         oppCardCount(phase, store.gameState.value, tableCards, (i + 1) % 4),
       );
+
+      // Trick-animation diff: detect opponent card plays and trick completion.
+      const isBlankOrEmpty = (tc: Card | null | undefined): boolean =>
+        !tc || (tc as { suit?: string }).suit === 'Blank';
+
+      const allEmptyNow = tableCards.every(isBlankOrEmpty);
+      const allFilledBefore = lastTableCards.every((tc) => !isBlankOrEmpty(tc));
+
+      if (allFilledBefore && allEmptyNow) {
+        // Trick just completed — collect cards toward the winner.
+        const winnerId = store.lastTrickWinnerId.value;
+        let winnerSeat: RelativeSeat = 'south';
+        if (winnerId) {
+          const winnerAbs = store.playerIds.value.indexOf(winnerId);
+          if (winnerAbs >= 0) winnerSeat = seatRel(winnerAbs, i);
+        }
+        void orchestrator.collectTrick(winnerSeat);
+      } else {
+        // Look for newly-added opponent cards.
+        for (let slot = 0; slot < 4; slot++) {
+          if (slot === i) continue; // south plays via playCardToCenter; skip
+          const before = lastTableCards[slot];
+          const now = tableCards[slot];
+          if (isBlankOrEmpty(before) && !isBlankOrEmpty(now)) {
+            const seat = seatRel(slot, i);
+            if (seat !== 'south' && now) {
+              orchestrator.playOpponentCardToCenter(now, seat);
+            }
+          }
+        }
+      }
+
+      lastTableCards = [...tableCards];
     }
 
     const isMyTurn = currentPlayerId === store.playerId.value;
@@ -410,6 +461,7 @@ function renderLobby(args: LobbyArgs): void {
               (parsed.player_id as string | undefined) ??
               '';
             saveSession(args.shortId, parsed.game_id as string, playerId);
+            clearChallengeCreator(args.shortId);
             cleanupSse();
             navigateTo(`/play/${args.shortId}`);
           } else if (eventType === 'cancelled') {
@@ -437,6 +489,7 @@ function renderLobby(args: LobbyArgs): void {
       });
       cleanupSse();
       clearSession(args.shortId);
+      clearChallengeCreator(args.shortId);
       navigateTo('/');
     } catch {
       errorMsg.value = 'Failed to cancel.';
@@ -452,10 +505,7 @@ function renderLobby(args: LobbyArgs): void {
     }
   };
 
-  const isCreator = (): boolean => {
-    if (!myPlayerId.value) return false;
-    return seats.value.some((s) => s !== null && s.player_id === myPlayerId.value);
-  };
+  const isCreator = (): boolean => isChallengeCreator(args.shortId);
 
   const SEAT_TEAMS: Record<'A' | 'B' | 'C' | 'D', '1' | '2'> = {
     A: '1',

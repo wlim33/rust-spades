@@ -4,7 +4,7 @@ import { appShell } from '../ui/templates';
 import { button } from '../ui/components/button';
 import { openSse, type SseHandle } from '../api/sse';
 import { navigateTo } from '../lib/util';
-import { saveSession } from '../lib/storage';
+import { saveSession, markChallengeCreator } from '../lib/storage';
 import type { RouteModule } from '../router';
 
 type TimerCfg = { initial_time_secs: number; increment_secs: number } | null;
@@ -54,6 +54,7 @@ export const create: RouteModule = {
               if (eventType === 'challenge_created') {
                 if (parsed.creator_player_id) {
                   saveSession(parsed.short_id, parsed.challenge_id, parsed.creator_player_id);
+                  markChallengeCreator(parsed.short_id);
                 }
                 sse?.close();
                 sse = null;

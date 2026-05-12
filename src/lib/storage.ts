@@ -27,3 +27,29 @@ export function clearSession(shortId: string): void {
     // ignore
   }
 }
+
+const creatorKey = (shortId: string): string => `spades_creator_${shortId}`;
+
+export function markChallengeCreator(shortId: string): void {
+  try {
+    sessionStorage.setItem(creatorKey(shortId), '1');
+  } catch {
+    // ignore
+  }
+}
+
+export function isChallengeCreator(shortId: string): boolean {
+  try {
+    return sessionStorage.getItem(creatorKey(shortId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function clearChallengeCreator(shortId: string): void {
+  try {
+    sessionStorage.removeItem(creatorKey(shortId));
+  } catch {
+    // ignore
+  }
+}
