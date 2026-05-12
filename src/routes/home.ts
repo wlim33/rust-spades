@@ -1,6 +1,7 @@
 import { html, render } from 'lit-html';
 import { appShell } from '../ui/templates';
 import { button } from '../ui/components/button';
+import { navigateTo } from '../lib/util';
 import type { RouteModule } from '../router';
 
 type TimerCfg = { initial_time_secs: number; increment_secs: number } | null;
@@ -22,8 +23,7 @@ function onFriends(): void {
 }
 
 function onComputers(): void {
-  // Plan 2 wires this to POST /games with num_humans=1.
-  console.log('play with computers');
+  navigateTo('/play/new-ai');
 }
 
 function template() {

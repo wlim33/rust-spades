@@ -131,3 +131,124 @@ main#root {
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-2);
 }
+
+.card {
+  width: 46px;
+  height: 64px;
+  border-radius: var(--radius-sm);
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
+  user-select: none;
+  position: relative;
+}
+.card-red {
+  color: var(--color-card-red);
+}
+.card-black {
+  color: var(--color-card-black);
+}
+.card-back {
+  background: repeating-linear-gradient(45deg, #2a9d8f, #2a9d8f 4px, #1f7e74 4px, #1f7e74 8px);
+}
+.trick-placeholder {
+  background: transparent;
+  border: 1px dashed rgba(0, 0, 0, 0.15);
+}
+.card.dragging {
+  position: fixed;
+  z-index: 999;
+}
+.card-will-play {
+  box-shadow: 0 -4px 12px rgba(42, 157, 143, 0.4);
+}
+.cm-clickable {
+  cursor: pointer;
+}
+.card-placeholder {
+  opacity: 0;
+}
+
+.spades-table {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas: 'north north north' 'west center east' 'south south south';
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 720px;
+  min-height: 480px;
+}
+.seat-north {
+  grid-area: north;
+  justify-self: center;
+}
+.seat-south {
+  grid-area: south;
+  justify-self: center;
+}
+.seat-west {
+  grid-area: west;
+  align-self: center;
+}
+.seat-east {
+  grid-area: east;
+  align-self: center;
+  justify-self: end;
+}
+.spades-table-center {
+  grid-area: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-container {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.hand-container {
+  gap: 4px;
+}
+.trick-container {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+  min-width: 240px;
+}
+
+.spades-scores {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: 720px;
+  padding: var(--space-3) 0;
+  font-size: var(--font-size-sm);
+}
+.spades-score-team {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.spades-scores-center {
+  color: var(--color-muted);
+}
+
+.spades-bets {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  width: 100%;
+  max-width: 480px;
+}
+.spades-bet {
+  padding: var(--space-2);
+}
