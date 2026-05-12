@@ -346,3 +346,33 @@ button.seat-open {
 .field-error {
   color: var(--color-danger);
 }
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  width: 100%;
+}
+.form-field label {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
+.form-field input {
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  font: inherit;
+}
+.form-actions {
+  display: flex;
+  gap: var(--space-2);
+  width: 100%;
+}
+.form-actions .btn {
+  flex: 1;
+}
+.oauth-divider {
+  text-align: center;
+  color: var(--color-muted);
+  margin: var(--space-3) 0;
+}
