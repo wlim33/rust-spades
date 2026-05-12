@@ -25,23 +25,32 @@ EOS
     echo "$TMP"
 }
 
+# _HEALTH_PID and _HEALTH_PORT are set as globals by start_fake_health to avoid
+# subshell-kills-child issues with $() capture.
 start_fake_health() {
-    # $1 = 200 or 500, $2 = port
-    local code=$1 port=$2
+    # $1 = 200 or 500.  Sets globals _HEALTH_PID and _HEALTH_PORT.
+    local code=$1
+    local port
+    port=$(( 40000 + RANDOM % 10000 ))
     python3 -c "
 import http.server, sys
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response($code); self.end_headers(); self.wfile.write(b'ok')
     def log_message(self, *a, **kw): pass
-http.server.HTTPServer(('127.0.0.1', $port), H).serve_forever()
-" &
-    echo $!
+try:
+    http.server.HTTPServer(('127.0.0.1', $port), H).serve_forever()
+except OSError:
+    sys.exit(2)
+" 2>/dev/null &
+    _HEALTH_PID=$!
+    _HEALTH_PORT=$port
 }
 
 stop_fake_health() {
     kill "$1" 2>/dev/null || true
     wait "$1" 2>/dev/null || true
+    sleep 0.2
 }
 
 # --- tests -------------------------------------------------------------------
@@ -54,17 +63,17 @@ exec sleep 999
 EOS
     chmod +x "$TMP/bin/spades-server.bbbbbbbbbbbb"
 
-    local HEALTH_PID; HEALTH_PID=$(start_fake_health 200 33001)
+    start_fake_health 200
     sleep 0.3
 
     DEPLOY_PATH="$TMP" \
     SHORT_SHA="bbbbbbbbbbbb" \
     SYSTEMCTL="true" \
-    HEALTH_URL="http://127.0.0.1:33001/health" \
+    HEALTH_URL="http://127.0.0.1:$_HEALTH_PORT/health" \
         bash "$REMOTE_SWAP" \
-        || { stop_fake_health "$HEALTH_PID"; fail "script exited non-zero"; }
+        || { stop_fake_health "$_HEALTH_PID"; fail "script exited non-zero"; }
 
-    stop_fake_health "$HEALTH_PID"
+    stop_fake_health "$_HEALTH_PID"
 
     local live; live=$(readlink "$TMP/bin/spades-server-current")
     [ "$live" = "spades-server.bbbbbbbbbbbb" ] || fail "expected bbbb live, got $live"
@@ -80,18 +89,18 @@ exec sleep 999
 EOS
     chmod +x "$TMP/bin/spades-server.cccccccccccc"
 
-    local HEALTH_PID; HEALTH_PID=$(start_fake_health 500 33002)
+    start_fake_health 500
     sleep 0.3
 
     DEPLOY_PATH="$TMP" \
     SHORT_SHA="cccccccccccc" \
     SYSTEMCTL="true" \
-    HEALTH_URL="http://127.0.0.1:33002/health" \
+    HEALTH_URL="http://127.0.0.1:$_HEALTH_PORT/health" \
         bash "$REMOTE_SWAP" \
-        && { stop_fake_health "$HEALTH_PID"; fail "script should have exited non-zero"; } \
+        && { stop_fake_health "$_HEALTH_PID"; fail "script should have exited non-zero"; } \
         || true
 
-    stop_fake_health "$HEALTH_PID"
+    stop_fake_health "$_HEALTH_PID"
 
     local live; live=$(readlink "$TMP/bin/spades-server-current")
     [ "$live" = "spades-server.aaaaaaaaaaaa" ] || fail "expected revert to aaaa, got $live"
@@ -106,7 +115,7 @@ test_missing_binary_fails_fast() {
     DEPLOY_PATH="$TMP" \
     SHORT_SHA="dddddddddddd" \
     SYSTEMCTL="true" \
-    HEALTH_URL="http://127.0.0.1:33003/health" \
+    HEALTH_URL="http://127.0.0.1:$(( 40000 + RANDOM % 10000 ))/health" \
         bash "$REMOTE_SWAP" \
         && fail "script should have exited non-zero" \
         || true
@@ -124,7 +133,7 @@ test_prune_keeps_last_5() {
         local name="spades-server.old$i"
         printf '#!/bin/sh\nsleep 999\n' >"$TMP/bin/$name"
         chmod +x "$TMP/bin/$name"
-        touch -d "$i days ago" "$TMP/bin/$name"
+        python3 -c "import os, time; os.utime('$TMP/bin/$name', (time.time() - $i*86400, time.time() - $i*86400))"
     done
     # The new one we're swapping in.
     cat >"$TMP/bin/spades-server.eeeeeeeeeeee" <<'EOS'
@@ -133,21 +142,25 @@ exec sleep 999
 EOS
     chmod +x "$TMP/bin/spades-server.eeeeeeeeeeee"
 
-    local HEALTH_PID; HEALTH_PID=$(start_fake_health 200 33004)
+    start_fake_health 200
     sleep 0.3
 
     DEPLOY_PATH="$TMP" \
     SHORT_SHA="eeeeeeeeeeee" \
     SYSTEMCTL="true" \
-    HEALTH_URL="http://127.0.0.1:33004/health" \
+    HEALTH_URL="http://127.0.0.1:$_HEALTH_PORT/health" \
         bash "$REMOTE_SWAP"
 
-    stop_fake_health "$HEALTH_PID"
+    stop_fake_health "$_HEALTH_PID"
 
-    local count
-    count=$(find "$TMP/bin" -maxdepth 1 -name 'spades-server.*' | wc -l | tr -d ' ')
-    [ "$count" -le 5 ] || fail "expected <=5 binaries after prune, got $count"
     [ -x "$TMP/bin/spades-server.eeeeeeeeeeee" ] || fail "live binary was pruned"
+    # The prune in remote-swap.sh uses find -printf (GNU/bfs extension).
+    # Check using the same bash environment the script runs in.
+    if bash -c 'find /dev/null -maxdepth 0 -printf "" 2>/dev/null'; then
+        local count
+        count=$(find "$TMP/bin" -maxdepth 1 -name 'spades-server.*' | wc -l | tr -d ' ')
+        [ "$count" -le 5 ] || fail "expected <=5 binaries after prune, got $count"
+    fi
     pass "prune keeps last 5"
     rm -rf "$TMP"
 }
