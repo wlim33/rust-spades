@@ -538,6 +538,21 @@ button.seat-open {
   display: flex;
   gap: 4px;
 }
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: #fff7e6;
+  border: 1px solid #f6cf7a;
+  border-radius: var(--radius-md);
+  width: 100%;
+  max-width: 480px;
+  margin-bottom: var(--space-4);
+}
+.banner .btn {
+  padding: var(--space-2) var(--space-3);
+}
 .skeleton-game {
   display: grid;
   grid-template-columns: 1fr 2fr 1fr;

@@ -57,6 +57,11 @@ void (async () => {
   // If we have an oauth marker and we're NOT signed in, the server is awaiting
   // a username pick. Detour to /auth/oauth/complete (route added in Plan 3 Task 7).
   if (oauthMarker && session.currentUser.value === null) {
+    try {
+      sessionStorage.setItem('spades_oauth_lingering', '1');
+    } catch {
+      // ignore
+    }
     history.replaceState(null, '', '/auth/oauth/complete');
   }
 

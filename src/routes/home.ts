@@ -16,6 +16,8 @@ type QuickplayState = { waiting: number; cancel: () => void } | null;
 
 export const quickplay = signal<QuickplayState>(null);
 
+const oauthBanner = signal<boolean>(false);
+
 const QUICKPLAY_TIMERS: { label: string; value: TimerCfg }[] = [
   { label: '5+3', value: { initial_time_secs: 300, increment_secs: 3 } },
   { label: '10+5', value: { initial_time_secs: 600, increment_secs: 5 } },
@@ -74,6 +76,15 @@ function onComputers(): void {
   navigateTo('/play/new-ai');
 }
 
+function dismissOauthBanner(): void {
+  try {
+    sessionStorage.removeItem('spades_oauth_lingering');
+  } catch {
+    // ignore
+  }
+  oauthBanner.value = false;
+}
+
 function template(): TemplateResult {
   if (quickplay.value) {
     const q = quickplay.value;
@@ -87,6 +98,11 @@ function template(): TemplateResult {
   }
   return appShell(html`
     <h1>Spades</h1>
+    <div class="banner" ?hidden=${!oauthBanner.value}>
+      <span>Finish signing in to keep your account.</span>
+      <a class="btn btn--primary" href="/auth/oauth/complete" data-link>Continue</a>
+      <button class="btn btn--secondary" type="button" @click=${dismissOauthBanner}>Dismiss</button>
+    </div>
     <div class="menu" data-testid="home-menu">
       <p class="menu__label">Quick Play</p>
       <div class="menu__quickplay">
@@ -112,6 +128,11 @@ export const home: RouteModule = {
   render: () => {
     const root = document.getElementById('root');
     if (!root) return () => {};
+    try {
+      oauthBanner.value = sessionStorage.getItem('spades_oauth_lingering') === '1';
+    } catch {
+      oauthBanner.value = false;
+    }
     startQueuePoll();
     const dispose = effect(() => {
       void queueSizes.value;
