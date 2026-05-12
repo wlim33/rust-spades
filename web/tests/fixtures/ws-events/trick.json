@@ -1,0 +1,27 @@
+{
+  "game_id": "00000000-0000-0000-0000-000000000001",
+  "state": { "Trick": 1 },
+  "team_a_score": 0,
+  "team_b_score": 0,
+  "team_a_bags": 0,
+  "team_b_bags": 0,
+  "current_player_id": "p2",
+  "player_names": [
+    { "player_id": "p0", "name": "Alice" },
+    { "player_id": "p1", "name": "Bob" },
+    { "player_id": "p2", "name": "Carol" },
+    { "player_id": "p3", "name": "Dan" }
+  ],
+  "table_cards": [
+    { "suit": "Heart", "rank": "Ace" },
+    { "suit": "Heart", "rank": "Five" },
+    null,
+    null
+  ],
+  "player_bets": [3, 4, 2, 3],
+  "player_tricks_won": [1, 0, 0, 0],
+  "last_trick_winner_id": "p0",
+  "timer_config": null,
+  "player_clocks_ms": null,
+  "active_player_clock_ms": null
+}
