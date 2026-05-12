@@ -379,10 +379,12 @@ The live deploy path is `.github/workflows/deploy.yml`. Push to `master` and the
 ```
 /opt/spades/docker-compose.yml   # the service definition
 /opt/spades/.env                 # runtime envs (SMTP, OAuth, CORS); never deployed
+/opt/spades/Caddyfile            # reverse-proxy config; shipped by the workflow
+/opt/spades/certs/               # Cloudflare Origin CA cert + key; installed by hand
 /var/lib/spades/games.sqlite     # bind-mounted into the container at /data
 ```
 
-Nothing compiles on the VPS; nothing is symlinked. `docker compose` handles restarts and healthchecks.
+Two compose services: `spades-server` (the app, internal-only on the compose network) and `caddy` (TLS-terminating reverse proxy on `:443` using the Origin CA cert). Nothing compiles on the VPS; nothing is symlinked. `docker compose` handles restarts and healthchecks.
 
 **Rollback** in order of preference:
 - `git revert <bad-sha> && git push` — workflow redeploys the prior state.
@@ -390,7 +392,7 @@ Nothing compiles on the VPS; nothing is symlinked. `docker compose` handles rest
 - `ssh deploy@$VPS 'cd /opt/spades && IMAGE_TAG=<short-sha> docker compose up -d --pull always'` — instant pin to any previously-pushed image SHA.
 - Frontend-only: `wrangler pages deployment list` + `... activate <id>`, or the CF dashboard.
 
-**One-time VPS setup:** `bash deploy/install-docker.sh` (installs Docker + compose plugin, creates `/opt/spades` with compose.yml + `.env` from `deploy/env.template`, cleans up any legacy systemd unit).
+**One-time VPS setup:** `bash deploy/install-docker.sh` (installs Docker + compose plugin, creates `/opt/spades` with compose.yml, Caddyfile, an empty `certs/` dir, and `.env` from `deploy/env.template`, cleans up any legacy systemd unit). Then mint a Cloudflare Origin CA cert and install it into `/opt/spades/certs/` (see `deploy/origin-certs.md`) and set Cloudflare SSL/TLS mode to **Full (strict)**.
 
 **Image tags:** every deploy pushes both `:<short-sha>` (immutable, used for rollback) and `:latest` (mutable; what the VPS pulls by default). Images live forever in ghcr.io.
 
