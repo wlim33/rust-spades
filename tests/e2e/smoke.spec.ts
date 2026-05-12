@@ -7,13 +7,23 @@ test('home renders the menu', async ({ page }) => {
   await expect(page.locator('[data-testid="home-menu"] button')).toHaveCount(5);
 });
 
-test('clicking a quickplay button logs to console', async ({ page }) => {
-  const logs: string[] = [];
-  page.on('console', (msg) => logs.push(msg.text()));
+test('clicking a quickplay button shows the waiting view', async ({ page }) => {
+  // Intercept the matchmaking SSE call and return a never-ending stream so
+  // the UI stays in the "Finding players" waiting state long enough to assert.
+  await page.route('**/matchmaking/seek', async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+      body: '',
+    });
+  });
   await page.goto('/');
   await page.getByRole('button', { name: '5+3' }).click();
-  // Console log fires synchronously after click handler.
-  await expect.poll(() => logs.some((l) => l.includes('seek quickplay'))).toBe(true);
+  // After clicking, the UI transitions to the waiting state.
+  await expect(page.getByText('Finding players')).toBeVisible();
+  // Cancel returns to the menu.
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('[data-testid="home-menu"]')).toBeVisible();
 });
 
 test('unknown route renders 404', async ({ page }) => {

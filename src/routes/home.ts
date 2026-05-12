@@ -1,10 +1,18 @@
 import { html, render } from 'lit-html';
+import { signal, effect } from '@preact/signals-core';
 import { appShell } from '../ui/templates';
 import { button } from '../ui/components/button';
 import { navigateTo } from '../lib/util';
+import { openSse } from '../api/sse';
+import { saveSession } from '../lib/storage';
 import type { RouteModule } from '../router';
+import type { TemplateResult } from 'lit-html';
 
 type TimerCfg = { initial_time_secs: number; increment_secs: number } | null;
+
+type QuickplayState = { waiting: number; cancel: () => void } | null;
+
+export const quickplay = signal<QuickplayState>(null);
 
 const QUICKPLAY_TIMERS: { label: string; value: TimerCfg }[] = [
   { label: '5+3', value: { initial_time_secs: 300, increment_secs: 3 } },
@@ -13,8 +21,44 @@ const QUICKPLAY_TIMERS: { label: string; value: TimerCfg }[] = [
 ];
 
 function onSeek(timer: TimerCfg): void {
-  // Plan 2 wires this to the matchmaking SSE call.
-  console.log('seek quickplay', timer);
+  if (quickplay.value) return;
+  let handle: ReturnType<typeof openSse> | null = null;
+  const cancel = (): void => {
+    handle?.close();
+    quickplay.value = null;
+  };
+  handle = openSse(
+    '/matchmaking/seek',
+    { max_points: 500, timer_config: timer },
+    {
+      onEvent: (eventType, data) => {
+        try {
+          const parsed = JSON.parse(data) as Record<string, unknown>;
+          if (eventType === 'queue_status') {
+            quickplay.value = { waiting: parsed.waiting as number, cancel };
+          } else if (eventType === 'game_start') {
+            const shortId =
+              (parsed.short_id as string | undefined) ??
+              (parsed.player_url as string | undefined) ??
+              (parsed.game_id as string | undefined) ??
+              '';
+            const playerId =
+              (parsed.player_short_id as string | undefined) ??
+              (parsed.player_id as string | undefined) ??
+              '';
+            const gameId = (parsed.game_id as string | undefined) ?? '';
+            saveSession(shortId, gameId, playerId);
+            cancel();
+            navigateTo(`/play/${shortId}`);
+          }
+        } catch {
+          // ignore parse errors
+        }
+      },
+      onError: cancel,
+    },
+  );
+  quickplay.value = { waiting: 0, cancel };
 }
 
 function onFriends(): void {
@@ -26,7 +70,17 @@ function onComputers(): void {
   navigateTo('/play/new-ai');
 }
 
-function template() {
+function template(): TemplateResult {
+  if (quickplay.value) {
+    const q = quickplay.value;
+    return appShell(html`
+      <h1>Spades</h1>
+      <div class="quickplay-wait">
+        <p>Finding players… (${q.waiting}/4)</p>
+        ${button({ label: 'Cancel', onClick: q.cancel, variant: 'secondary' })}
+      </div>
+    `);
+  }
   return appShell(html`
     <h1>Spades</h1>
     <div class="menu" data-testid="home-menu">
@@ -50,9 +104,12 @@ export const home: RouteModule = {
   render: () => {
     const root = document.getElementById('root');
     if (!root) return () => {};
-    render(template(), root);
+    const dispose = effect(() => {
+      render(template(), root);
+    });
     return () => {
-      // No subscriptions to dispose yet — clear the root element.
+      if (quickplay.value) quickplay.value.cancel();
+      dispose();
       root.innerHTML = '';
     };
   },

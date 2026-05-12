@@ -1,16 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { home } from '../../src/routes/home';
+import { home, quickplay } from '../../src/routes/home';
 
 describe('home route', () => {
-  let logSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
     document.body.innerHTML = '<main id="root"></main>';
-    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    quickplay.value = null;
   });
 
   afterEach(() => {
-    logSpy.mockRestore();
+    quickplay.value = null;
   });
 
   it('renders the menu with five action buttons', () => {
@@ -29,15 +27,44 @@ describe('home route', () => {
     cleanup();
   });
 
-  it('logs seek payload for quickplay 10+5', () => {
+  it('clicking a quickplay button shows the waiting view', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        const stream = new ReadableStream<Uint8Array>({ start() {} });
+        return new Response(stream, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        });
+      }),
+    );
+
     const cleanup = home.render({}, { path: '/', search: new URLSearchParams() });
-    const buttons = document.querySelectorAll('[data-testid="home-menu"] button');
-    (buttons[1] as HTMLButtonElement).click();
-    expect(logSpy).toHaveBeenCalledWith('seek quickplay', {
-      initial_time_secs: 600,
-      increment_secs: 5,
-    });
+
+    // Click the first quickplay button (5+3)
+    document.querySelector<HTMLButtonElement>('[data-testid="home-menu"] button')!.click();
+
+    // Allow microtasks for signal/effect to propagate
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.body.textContent).toContain('Finding players');
+
+    const cancelBtn = document.querySelector<HTMLButtonElement>('button');
+    expect(cancelBtn).not.toBeNull();
+    cancelBtn!.click();
+
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.querySelector('[data-testid="home-menu"]')).not.toBeNull();
+
     cleanup();
+    vi.unstubAllGlobals();
   });
 
   it('cleanup empties the root', () => {
