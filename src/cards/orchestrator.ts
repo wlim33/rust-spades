@@ -94,6 +94,9 @@ export class CardOrchestrator {
     this.lastPlayRect = null;
 
     slot.el.style.visibility = 'hidden';
+    // Note: if clearAll() races this 250 ms animation, `removed` lingers in
+    // document.body until animateTo resolves and removed.remove() runs below.
+    // Matches the reference card-manager.js behavior — acceptable trade-off.
     document.body.appendChild(removed);
     removed.style.position = 'fixed';
     removed.style.left = srcRect.left + 'px';
@@ -247,6 +250,7 @@ export class CardOrchestrator {
   disableInteraction(): void {
     for (const fn of this.dragCleanups) fn();
     this.dragCleanups = [];
+    this.lastPlayRect = null;
     for (const entry of this.hand.cards('south')) {
       entry.el.classList.remove('cm-clickable', 'cm-invalid', 'dragging', 'card-will-play');
       entry.el.style.opacity = '';
