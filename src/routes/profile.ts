@@ -45,17 +45,23 @@ export const profile: RouteModule = {
                   <h3>Recent games</h3>
                 `
               : nothing}
-            ${!l && !nf && !err && p && g.length === 0 ? html`<p>No games yet.</p>` : nothing}
-            ${!l && !nf && !err && p && g.length > 0
-              ? html`<ul class="profile-games">
-                  ${g.map(
-                    (item) =>
-                      html`<li>
-                        <a href=${`/play/${item.game_id}`} data-link>${item.game_id}</a>
-                        <span> — ${item.won ? 'Won' : 'Lost'} (Team ${item.team})</span>
-                      </li>`,
-                  )}
-                </ul>`
+            ${!l && !nf && !err && p
+              ? g.length === 0
+                ? html`<div class="empty-state">
+                    <p>
+                      <strong>${p.display_name || p.username}</strong> hasn't finished any games
+                      yet.
+                    </p>
+                  </div>`
+                : html`<ul class="profile-games">
+                    ${g.map(
+                      (item) =>
+                        html`<li>
+                          <a href=${`/play/${item.game_id}`} data-link>${item.game_id}</a>
+                          <span> — ${item.won ? 'Won' : 'Lost'} (Team ${item.team})</span>
+                        </li>`,
+                    )}
+                  </ul>`
               : nothing}
           </section>
         `),

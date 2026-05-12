@@ -6,6 +6,7 @@ import { navigateTo } from '../lib/util';
 import { openSse } from '../api/sse';
 import { saveSession } from '../lib/storage';
 import { toast } from '../state/toast';
+import { queueSizes, startQueuePoll, stopQueuePoll, queueCountFor } from '../state/menu';
 import type { RouteModule } from '../router';
 import type { TemplateResult } from 'lit-html';
 
@@ -89,13 +90,17 @@ function template(): TemplateResult {
     <div class="menu" data-testid="home-menu">
       <p class="menu__label">Quick Play</p>
       <div class="menu__quickplay">
-        ${QUICKPLAY_TIMERS.map((t) =>
-          button({
-            label: t.label,
-            onClick: () => onSeek(t.value),
-            variant: 'primary',
-          }),
-        )}
+        ${QUICKPLAY_TIMERS.map((t) => {
+          const count = t.value ? queueCountFor(t.value) : 0;
+          return html`<div class="quickplay-col">
+            ${button({
+              label: t.label,
+              onClick: () => onSeek(t.value),
+              variant: 'primary',
+            })}
+            <span class="queue-count">${count > 0 ? `${count} waiting` : 'No one waiting'}</span>
+          </div>`;
+        })}
       </div>
       ${button({ label: 'Play with Friends', onClick: onFriends, variant: 'secondary' })}
       ${button({ label: 'Play with Computers', onClick: onComputers, variant: 'secondary' })}
@@ -107,12 +112,15 @@ export const home: RouteModule = {
   render: () => {
     const root = document.getElementById('root');
     if (!root) return () => {};
+    startQueuePoll();
     const dispose = effect(() => {
+      void queueSizes.value;
       render(template(), root);
     });
     return () => {
       if (quickplay.value) quickplay.value.cancel();
       dispose();
+      stopQueuePoll();
       render(nothing, root);
     };
   },

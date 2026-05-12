@@ -420,6 +420,24 @@ button.seat-open {
   background: rgba(0, 0, 0, 0.06);
 }
 
+.empty-state {
+  padding: var(--space-6);
+  border: 1px dashed rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius-md);
+  text-align: center;
+  color: var(--color-muted);
+}
+.quickplay-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: center;
+}
+.queue-count {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
 .profile-page {
   width: 100%;
   max-width: 480px;

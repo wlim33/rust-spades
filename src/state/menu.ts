@@ -13,7 +13,8 @@ let timer: ReturnType<typeof setInterval> | null = null;
 
 export async function refreshQueueSizes(): Promise<void> {
   try {
-    queueSizes.value = await request<QueueSize[]>('/matchmaking/queue-sizes', { method: 'GET' });
+    const data = await request<QueueSize[]>('/matchmaking/queue-sizes', { method: 'GET' });
+    if (Array.isArray(data)) queueSizes.value = data;
   } catch {
     // best-effort; ignore
   }
