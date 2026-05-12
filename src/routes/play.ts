@@ -20,6 +20,7 @@ import {
   clearChallengeCreator,
 } from '../lib/storage';
 import { navigateTo } from '../lib/util';
+import { toast } from '../state/toast';
 import { CardOrchestrator } from '../cards/orchestrator';
 import { appShell } from '../ui/templates';
 import { button } from '../ui/components/button';
@@ -171,6 +172,7 @@ function renderInGame(args: {
           });
         } catch (e) {
           console.error('bet failed', e);
+          toast.error('Bet failed.');
         }
       };
       return html`<div class="spades-bets">
@@ -406,6 +408,7 @@ function renderInGame(args: {
             });
           } catch (e) {
             console.error('play failed', e);
+            toast.error('Play failed.');
           }
         })();
       });
@@ -619,6 +622,7 @@ async function pollOnce(store: GameStore, gameId: string, playerId: string): Pro
     }
   } catch (e) {
     console.error('poll failed', e);
+    toast.error('Failed to fetch game state.');
   }
 }
 
@@ -648,6 +652,7 @@ export const play: RouteModule = {
         } catch (e) {
           render(appShell(html`<p>Failed to start AI game.</p>`), root);
           console.error('startAIGame failed', e);
+          toast.error('Failed to start AI game.');
           return;
         }
       }

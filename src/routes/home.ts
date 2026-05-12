@@ -5,6 +5,7 @@ import { button } from '../ui/components/button';
 import { navigateTo } from '../lib/util';
 import { openSse } from '../api/sse';
 import { saveSession } from '../lib/storage';
+import { toast } from '../state/toast';
 import type { RouteModule } from '../router';
 import type { TemplateResult } from 'lit-html';
 
@@ -55,7 +56,10 @@ function onSeek(timer: TimerCfg): void {
           // ignore parse errors
         }
       },
-      onError: cancel,
+      onError: () => {
+        toast.error('Failed to find match.');
+        cancel();
+      },
     },
   );
   quickplay.value = { waiting: 0, cancel };
