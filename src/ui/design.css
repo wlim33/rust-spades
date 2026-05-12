@@ -569,3 +569,69 @@ button.seat-open {
     background: rgba(0, 0, 0, 0.06);
   }
 }
+
+/* Phones / portrait tablets */
+@media (max-width: 600px) {
+  main#root {
+    padding: var(--space-3) var(--space-2);
+  }
+  .site-header {
+    padding: var(--space-2) var(--space-3);
+  }
+  .page {
+    padding: var(--space-3) var(--space-2);
+  }
+  .spades-table {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto auto;
+    grid-template-areas: 'north north' 'west east' 'center center' 'south south';
+    min-height: 0;
+  }
+  .seat-east {
+    justify-self: end;
+  }
+  .spades-table-center {
+    min-height: 160px;
+  }
+  .spades-bets {
+    grid-template-columns: repeat(5, 1fr);
+  }
+  .toast-stack {
+    left: var(--space-3);
+    right: var(--space-3);
+  }
+  .form-page,
+  .profile-page {
+    padding: 0 var(--space-2);
+  }
+  .menu {
+    gap: var(--space-2);
+  }
+  .menu__quickplay {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .card {
+    width: 40px;
+    height: 56px;
+    font-size: 12px;
+  }
+  .skeleton-card {
+    width: 40px;
+    height: 56px;
+  }
+}
+
+/* Very small phones */
+@media (max-width: 360px) {
+  .card {
+    width: 36px;
+    height: 50px;
+  }
+  .skeleton-card {
+    width: 36px;
+    height: 50px;
+  }
+  .spades-bets {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
