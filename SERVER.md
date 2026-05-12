@@ -363,6 +363,29 @@ let hand = manager.get_hand(game_id, response.player_ids[0]).unwrap();
 - **REST/SSE/WebSocket** — Axum-based HTTP server with CORS support
 - **Drop Guards** — SSE handlers clean up seeks, lobbies, and challenge seats on client disconnect
 
+## Deployment
+
+The live deploy path is `.github/workflows/deploy.yml`. Push to `master` and the workflow runs:
+
+1. `cargo test --workspace` + `pnpm --dir web test`
+2. `cargo build --release --target x86_64-unknown-linux-gnu` + `pnpm --dir web build`
+3. Upload both artifacts (90-day retention) for rollback
+4. `scp` binary to VPS, run `deploy/remote-swap.sh` (atomic symlink swap, restart, `/health` poll, auto-revert on failure)
+5. `wrangler pages deploy web/dist` to Cloudflare Pages
+6. Smoke check `https://app.wlim.dev/` and `https://spades.wlim.dev/health`
+
+**Rollback** in order of preference:
+- `git revert <bad-sha> && git push` — the action redeploys the prior state.
+- `gh workflow run deploy.yml --ref <good-sha>` — re-runs the action against an older SHA; downloads its cached artifact if within 90 days.
+- `bin/rollback <short-sha>` from the laptop — instant symlink flip on the VPS, works for any binary still on disk (last 5 retained).
+- Frontend-only: `wrangler pages deployment list` + `... activate <id>`, or the CF dashboard.
+
+**Break-glass deploy** (CI down): `bin/deploy` from the laptop builds the binary locally (`x86_64-unknown-linux-gnu`) and runs the same `remote-swap.sh` over SSH.
+
+**Server-side runtime config** lives in `/etc/spades/env` (loaded by systemd, never touched by deploys). Template: `deploy/env.template`.
+
+**One-time VPS setup:** `bash deploy/setup.sh` on the box (creates `deploy` user, systemd unit, sudoers entry, env file from template).
+
 ## Dependencies (server feature only)
 
 - `tokio` — async runtime
