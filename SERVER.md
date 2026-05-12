@@ -365,26 +365,34 @@ let hand = manager.get_hand(game_id, response.player_ids[0]).unwrap();
 
 ## Deployment
 
-The live deploy path is `.github/workflows/deploy.yml`. Push to `master` and the workflow runs:
+The live deploy path is `.github/workflows/deploy.yml`. Push to `master` and the workflow:
 
 1. `cargo test --workspace` + `pnpm --dir web test`
-2. `cargo build --release --target x86_64-unknown-linux-gnu` + `pnpm --dir web build`
-3. Upload both artifacts (90-day retention) for rollback
-4. `scp` binary to VPS, run `deploy/remote-swap.sh` (atomic symlink swap, restart, `/health` poll, auto-revert on failure)
+2. `pnpm --dir web build` (uploads `web/dist` as a workflow artifact)
+3. `docker buildx build` → push to `ghcr.io/wlim33/spades:<sha>` and `:latest`
+4. SSH to the VPS: `cd /opt/spades && docker compose pull && docker compose up -d`, then wait for the container's healthcheck to flip to `healthy`
 5. `wrangler pages deploy web/dist` to Cloudflare Pages
 6. Smoke check `https://app.wlim.dev/` and `https://spades.wlim.dev/health`
 
+**On the VPS**, the entire backend is:
+
+```
+/opt/spades/docker-compose.yml   # the service definition
+/opt/spades/.env                 # runtime envs (SMTP, OAuth, CORS); never deployed
+/var/lib/spades/games.sqlite     # bind-mounted into the container at /data
+```
+
+Nothing compiles on the VPS; nothing is symlinked. `docker compose` handles restarts and healthchecks.
+
 **Rollback** in order of preference:
-- `git revert <bad-sha> && git push` — the action redeploys the prior state.
-- `gh workflow run deploy.yml --ref <good-sha>` — re-runs the action against an older SHA; downloads its cached artifact if within 90 days.
-- `bin/rollback <short-sha>` from the laptop — instant symlink flip on the VPS, works for any binary still on disk (last 5 retained).
+- `git revert <bad-sha> && git push` — workflow redeploys the prior state.
+- `gh workflow run deploy.yml --ref <good-sha>` — re-runs with cached image layers.
+- `ssh deploy@$VPS 'cd /opt/spades && IMAGE_TAG=<short-sha> docker compose up -d --pull always'` — instant pin to any previously-pushed image SHA.
 - Frontend-only: `wrangler pages deployment list` + `... activate <id>`, or the CF dashboard.
 
-**Break-glass deploy** (CI down): `bin/deploy` from the laptop builds the binary locally (`x86_64-unknown-linux-gnu`) and runs the same `remote-swap.sh` over SSH.
+**One-time VPS setup:** `bash deploy/install-docker.sh` (installs Docker + compose plugin, creates `/opt/spades` with compose.yml + `.env` from `deploy/env.template`, cleans up any legacy systemd unit).
 
-**Server-side runtime config** lives in `/etc/spades/env` (loaded by systemd, never touched by deploys). Template: `deploy/env.template`.
-
-**One-time VPS setup:** `bash deploy/setup.sh` on the box (creates `deploy` user, systemd unit, sudoers entry, env file from template).
+**Image tags:** every deploy pushes both `:<short-sha>` (immutable, used for rollback) and `:latest` (mutable; what the VPS pulls by default). Images live forever in ghcr.io.
 
 ## Dependencies (server feature only)
 
