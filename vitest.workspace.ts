@@ -9,6 +9,9 @@ export default defineWorkspace([
     },
   },
   {
+    define: {
+      __BUILD_VERSION__: JSON.stringify('test'),
+    },
     test: {
       name: 'component',
       include: ['tests/component/**/*.spec.ts'],
