@@ -109,6 +109,7 @@ function renderInGame(args: {
   root: HTMLElement;
   store: GameStore;
   gameId: string;
+  shortId: string;
   resources: Resources;
   refs: GameTableRefs;
 }): void {
@@ -166,7 +167,7 @@ function renderInGame(args: {
         ? button({
             label: 'Play Again',
             onClick: () => {
-              clearSession(store.playerId.value);
+              clearSession(args.shortId);
               navigateTo('/');
             },
             variant: 'primary',
@@ -408,7 +409,7 @@ export const play: RouteModule = {
       const { store, gameId, playerId } = result;
 
       const refs = makeRefs();
-      renderInGame({ root, store, gameId, resources, refs });
+      renderInGame({ root, store, gameId, shortId, resources, refs });
 
       // Open WS; on close, fall back to polling
       resources.ws = openGameWs(gameId, playerId, {
@@ -427,10 +428,14 @@ export const play: RouteModule = {
         },
         onClose: () => {
           if (store.phase.value !== 'GAME_OVER') {
-            resources.pollTimer = setInterval(
-              () => void pollOnce(store, gameId, playerId),
-              POLL_INTERVAL,
-            );
+            const tick = async (): Promise<void> => {
+              await pollOnce(store, gameId, playerId);
+              if (store.phase.value === 'GAME_OVER' && resources.pollTimer) {
+                clearInterval(resources.pollTimer);
+                resources.pollTimer = null;
+              }
+            };
+            resources.pollTimer = setInterval(() => void tick(), POLL_INTERVAL);
           }
         },
       });
