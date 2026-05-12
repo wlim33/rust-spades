@@ -52,8 +52,8 @@ export const home: RouteModule = {
     if (!root) return () => {};
     render(template(), root);
     return () => {
-      // No subscriptions to dispose yet — render nothing on cleanup.
-      render(html``, root);
+      // No subscriptions to dispose yet — clear the root element.
+      root.innerHTML = '';
     };
   },
 };
