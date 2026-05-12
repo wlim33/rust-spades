@@ -6,6 +6,7 @@ import { play } from './routes/play';
 import { login } from './routes/login';
 import { signup } from './routes/signup';
 import { oauthComplete } from './routes/oauth-complete';
+import { settings } from './routes/settings';
 import { notFound } from './routes/notfound';
 import { session } from './state/session';
 import { consumeOauthInProgress } from './lib/storage';
@@ -25,6 +26,7 @@ void (async () => {
     '/login': login,
     '/signup': signup,
     '/auth/oauth/complete': oauthComplete,
+    '/me': settings,
     '*': notFound,
   });
 
