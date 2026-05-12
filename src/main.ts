@@ -15,12 +15,19 @@ const router = createRouter({
 document.addEventListener('click', (e) => {
   const target = (e.target as HTMLElement).closest('a[data-link]') as HTMLAnchorElement | null;
   if (!target) return;
-  if (target.target === '_blank' || e.metaKey || e.ctrlKey) return;
+  if (
+    target.target === '_blank' ||
+    e.metaKey ||
+    e.ctrlKey ||
+    e.altKey ||
+    e.shiftKey ||
+    e.button !== 0
+  )
+    return;
   const url = new URL(target.href);
   if (url.origin !== location.origin) return;
   e.preventDefault();
   history.pushState(null, '', url.pathname + url.search);
-  router.handle(url.pathname + url.search);
 });
 
 router.listen();
