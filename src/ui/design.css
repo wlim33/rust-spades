@@ -635,3 +635,26 @@ button.seat-open {
     grid-template-columns: repeat(4, 1fr);
   }
 }
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.btn:focus-visible {
+  outline-offset: 3px;
+}
+
+/* Tap target minimum on touch */
+@media (pointer: coarse) {
+  .btn {
+    min-height: 44px;
+  }
+  .avatar-menu__btn {
+    min-height: 44px;
+  }
+  .toast__close {
+    min-width: 32px;
+    min-height: 32px;
+  }
+}

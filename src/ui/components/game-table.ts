@@ -50,7 +50,9 @@ export function gameTable(args: {
       <div class="spades-trick-area">
         <div class="card-container trick-container" ${ref(args.refs.trick)}></div>
       </div>
-      <span class="spades-center-text">${args.centerText}</span>
+      <span class="spades-center-text" aria-live="polite" aria-atomic="true"
+        >${args.centerText}</span
+      >
     </div>
     ${seat('seat-east', args.east, args.refs.east)}
     <div class="spades-seat seat-south${args.south.active ? ' active' : ''}">
