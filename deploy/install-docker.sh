@@ -56,6 +56,18 @@ else
     echo "    -- $SPADES_DIR/.env already exists; leaving it alone."
 fi
 
+echo "==> Installing Caddyfile"
+sudo install -m 0644 -o "$DEPLOY_USER" -g "$DEPLOY_USER" \
+    "$SCRIPT_DIR/Caddyfile" "$SPADES_DIR/Caddyfile"
+
+echo "==> Creating certs directory (if missing)"
+if [ ! -d "$SPADES_DIR/certs" ]; then
+    sudo install -d -m 0700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$SPADES_DIR/certs"
+    echo "    -- created $SPADES_DIR/certs; drop spades.wlim.dev.pem and spades.wlim.dev.key here before the first deploy (see deploy/origin-certs.md)."
+else
+    echo "    -- $SPADES_DIR/certs already exists; leaving it alone."
+fi
+
 echo "==> Cleaning up legacy bash-flow artifacts"
 sudo systemctl disable --now spades-server 2>/dev/null || true
 sudo rm -f /etc/systemd/system/spades-server.service
@@ -70,9 +82,11 @@ cat <<EOF
 Next steps:
   1. Edit $SPADES_DIR/.env with real secrets:
        sudo -u $DEPLOY_USER -e $SPADES_DIR/.env
-  2. Add the GitHub Actions deploy public key to:
+  2. Install the Cloudflare Origin CA cert and key into $SPADES_DIR/certs/.
+     See deploy/origin-certs.md for instructions.
+  3. Add the GitHub Actions deploy public key to:
        /home/$DEPLOY_USER/.ssh/authorized_keys
-  3. The first push to master triggers the workflow. The workflow ssh's
+  4. The first push to master triggers the workflow. The workflow ssh's
      in and runs (from $SPADES_DIR):
        docker compose pull && docker compose up -d
 
