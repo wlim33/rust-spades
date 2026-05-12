@@ -32,3 +32,21 @@ cargo run -p spades-server -- --port 3000 --insecure-cookies \
 | `pnpm test:e2e` | Playwright end-to-end tests             |
 | `pnpm lint`     | ESLint                                  |
 | `pnpm format`   | Prettier write                          |
+
+## Deploy
+
+Production bundle is plain static files; serve from the same origin as `rust-spades` to avoid CORS and cookie-domain issues.
+
+Two ways to host:
+
+1. **rust-spades serves static** (recommended): run rust-spades with `--static-dir /srv/spades/public`. The server falls back to `index.html` for unknown paths that aren't API routes.
+
+2. **Reverse proxy in front** (Caddy / nginx): serve `/srv/spades/public` for `/`, proxy `/games`, `/auth`, `/users`, `/matchmaking`, `/challenges`, `/player`, `/openapi.json` to rust-spades.
+
+Either way, deploy with:
+
+```sh
+DEPLOY_HOST=wlim@spades.wlim.dev DEPLOY_PATH=/srv/spades/public ./scripts/deploy.sh
+```
+
+The script builds locally, ships via rsync, and swaps atomically.
