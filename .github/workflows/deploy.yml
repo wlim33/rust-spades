@@ -106,7 +106,7 @@ jobs:
 
   ship:
     name: ship
-    needs: ci
+    needs: [ci, e2e, coverage]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 20
