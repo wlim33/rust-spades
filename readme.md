@@ -50,6 +50,26 @@ cargo run -p spades-server -- --port 3000 --db games.sqlite
 
 See [SERVER.md](SERVER.md) for the full API reference.
 
+## Local development
+
+Run the full stack (Rust server + web UI) with one command. One-time setup:
+
+```bash
+pnpm -C web install
+pnpm -C web exec playwright install chromium   # for e2e tests
+```
+
+Then, from the repo root:
+
+```bash
+make dev     # backend on :3000 + Vite UI on :5173 (Ctrl-C stops both)
+make test    # cargo + web unit/component tests
+make e2e     # web end-to-end tests (auto-starts the backend)
+make         # list all targets
+```
+
+The dev server writes to a local `dev.sqlite` (git-ignored). `make clean` removes it.
+
 ## Bidding
 
 Nil bids are supported (bet zero for +/-100 point bonus/penalty). Blind bids are not yet supported.

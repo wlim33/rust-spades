@@ -4,3 +4,6 @@
 # Deploy secrets — never check this into the repo.
 /.deploy.env
 *.deploy.env
+
+# Local dev database (created by `make dev`).
+/dev.sqlite*
