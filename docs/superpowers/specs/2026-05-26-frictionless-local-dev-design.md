@@ -62,7 +62,7 @@ SERVER   := cargo run -p spades-server -- --port $(PORT) $(DB_FLAG) \
             --insecure-cookies --cors-allow-origin $(WEB)
 
 help:        ## List targets
-	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) \
+	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN{FS=":.*## "}{printf "  \033[36m%-12s\033[0m %s\n",$$1,$$2}'
 
 dev:         ## Backend + frontend together (Ctrl-C stops both)
