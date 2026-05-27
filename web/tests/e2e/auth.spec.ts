@@ -1,4 +1,4 @@
-import { test, expect } from './setup';
+import { test, expect } from './fixtures';
 
 test('signup, view /me, logout, login again', async ({ page }) => {
   const stamp = Date.now();
