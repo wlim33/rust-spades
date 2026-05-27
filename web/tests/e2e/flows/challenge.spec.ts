@@ -14,9 +14,7 @@ test('friends challenge: create, four players join, reach betting', async ({ bro
     await new HomePage(creator).playWithFriends();
     await creator.waitForURL(/\/create$/);
     await new CreatePage(creator).create();
-    await creator.waitForFunction(() => /\/play\/[^/]+$/.test(location.pathname), {
-      timeout: 15_000,
-    });
+    await waitForGameUrl(creator);
     const shareUrl = creator.url();
 
     // Each player claims the first open seat. Sequential so two players never

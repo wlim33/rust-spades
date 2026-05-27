@@ -12,9 +12,6 @@ export class GamePage {
   clickableCards(): Locator {
     return this.page.locator('.cm-clickable');
   }
-  centerText(): Locator {
-    return this.page.locator('.spades-center-text');
-  }
 
   /** Resolves once the game is in BETTING: either our bet buttons or non-empty center text. */
   async waitForBetting(): Promise<void> {
