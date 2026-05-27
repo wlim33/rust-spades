@@ -47,6 +47,7 @@ hex = "0.4"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive", "env"] }
 
 [dev-dependencies]
 axum-test = { version = "18", features = ["reqwest", "ws"] }

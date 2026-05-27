@@ -187,15 +187,81 @@ fn build_cors_layer(origins: &[String]) -> Option<CorsLayer> {
     }
 }
 
+use clap::Parser;
+
+/// spades-server command-line + environment configuration.
+#[derive(Parser, Debug)]
+#[command(version, about = "Spades game server (HTTP/WebSocket + matchmaking + challenges)")]
+struct Args {
+    /// Port to listen on.
+    #[arg(long, env = "PORT", default_value_t = 3000)]
+    port: u16,
+
+    /// SQLite database path; omit for in-memory (state not persisted).
+    #[arg(long, env = "DATABASE_URL")]
+    db: Option<String>,
+
+    /// Drop the Secure flag on the session cookie (dev only, over http).
+    #[arg(long)]
+    insecure_cookies: bool,
+
+    /// Allowed CORS origin(s); repeatable, or comma-separated via CORS_ALLOW_ORIGIN.
+    #[arg(long = "cors-allow-origin", env = "CORS_ALLOW_ORIGIN", value_delimiter = ',')]
+    cors_allow_origin: Vec<String>,
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::Args;
+    use clap::Parser;
+
+    #[test]
+    fn defaults() {
+        let a = Args::try_parse_from(["spades-server"]).unwrap();
+        assert_eq!(a.port, 3000);
+        assert!(a.db.is_none());
+        assert!(!a.insecure_cookies);
+        assert!(a.cors_allow_origin.is_empty());
+    }
+
+    #[test]
+    fn explicit_flags() {
+        let a = Args::try_parse_from([
+            "spades-server", "--port", "4000", "--db", "x.sqlite",
+            "--insecure-cookies", "--cors-allow-origin", "http://a",
+            "--cors-allow-origin", "http://b",
+        ])
+        .unwrap();
+        assert_eq!(a.port, 4000);
+        assert_eq!(a.db.as_deref(), Some("x.sqlite"));
+        assert!(a.insecure_cookies);
+        assert_eq!(a.cors_allow_origin, ["http://a", "http://b"]);
+    }
+
+    #[test]
+    fn comma_separated_cors() {
+        let a = Args::try_parse_from(["spades-server", "--cors-allow-origin", "http://a,http://b"]).unwrap();
+        assert_eq!(a.cors_allow_origin, ["http://a", "http://b"]);
+    }
+
+    #[test]
+    fn invalid_port_errors() {
+        assert!(Args::try_parse_from(["spades-server", "--port", "notaport"]).is_err());
+    }
+
+    #[test]
+    fn unknown_flag_errors() {
+        assert!(Args::try_parse_from(["spades-server", "--nope"]).is_err());
+    }
+}
+
 #[tokio::main]
 async fn main() {
     init_tracing();
     validate_startup_config();
 
-    let db_path = std::env::args()
-        .skip_while(|a| a != "--db")
-        .nth(1)
-        .or_else(|| std::env::var("DATABASE_URL").ok());
+    let args = Args::parse();
+    let db_path = args.db;
 
     let game_manager = match db_path {
         Some(ref path) => {
@@ -210,7 +276,7 @@ async fn main() {
     let matchmaker = Matchmaker::new(game_manager.clone());
     let challenge_manager = ChallengeManager::new(game_manager.clone());
 
-    let insecure_cookies = std::env::args().any(|a| a == "--insecure-cookies");
+    let insecure_cookies = args.insecure_cookies;
 
     let auth_store_path = db_path.clone().unwrap_or_else(|| ":memory:".to_string());
     let auth_store = std::sync::Arc::new(
@@ -350,23 +416,7 @@ async fn main() {
         .with_same_site(tower_sessions::cookie::SameSite::Lax)
         .with_expiry(Expiry::OnInactivity(time::Duration::days(30)));
 
-    let mut cors_origins: Vec<String> = Vec::new();
-    let args: Vec<String> = std::env::args().collect();
-    for (i, a) in args.iter().enumerate() {
-        if a == "--cors-allow-origin" {
-            if let Some(v) = args.get(i + 1) {
-                cors_origins.push(v.clone());
-            }
-        }
-    }
-    if let Ok(env_origins) = std::env::var("CORS_ALLOW_ORIGIN") {
-        for o in env_origins.split(',') {
-            let o = o.trim();
-            if !o.is_empty() {
-                cors_origins.push(o.to_string());
-            }
-        }
-    }
+    let cors_origins = args.cors_allow_origin;
 
     let mut app = build_router(app_state).layer(session_layer);
     if let Some(cors) = build_cors_layer(&cors_origins) {
@@ -376,12 +426,7 @@ async fn main() {
         info!("CORS layer not configured (set --cors-allow-origin <origin> or CORS_ALLOW_ORIGIN env)");
     }
 
-    let port: u16 = std::env::args()
-        .skip_while(|a| a != "--port")
-        .nth(1)
-        .or_else(|| std::env::var("PORT").ok())
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(3000);
+    let port = args.port;
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     let local_addr = listener.local_addr().unwrap();
