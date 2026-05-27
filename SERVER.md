@@ -370,7 +370,7 @@ The live deploy path is `.github/workflows/deploy.yml`. Push to `master` and the
 1. `cargo test --workspace` + `pnpm --dir web test`
 2. `pnpm --dir web build` (uploads `web/dist` as a workflow artifact)
 3. `docker buildx build` → push to `ghcr.io/wlim33/spades:<sha>` and `:latest`
-4. SSH to the VPS: `cd /opt/spades && docker compose pull && docker compose up -d`, then wait for the container's healthcheck to flip to `healthy`
+4. SSH to the VPS with the pinned tag: `cd /opt/spades && IMAGE_TAG=<sha> docker compose pull && IMAGE_TAG=<sha> docker compose up -d`, then wait for the container's healthcheck to flip to `healthy`
 5. `wrangler pages deploy web/dist` to Cloudflare Pages
 6. Smoke check `https://app.wlim.dev/` and `https://spades.wlim.dev/health`
 
@@ -394,7 +394,7 @@ Two compose services: `spades-server` (the app, internal-only on the compose net
 
 **One-time VPS setup:** `bash deploy/install-docker.sh` (installs Docker + compose plugin, creates `/opt/spades` with compose.yml, Caddyfile, an empty `certs/` dir, and `.env` from `deploy/env.template`, cleans up any legacy systemd unit). Then mint a Cloudflare Origin CA cert and install it into `/opt/spades/certs/` (see `deploy/origin-certs.md`) and set Cloudflare SSL/TLS mode to **Full (strict)**.
 
-**Image tags:** every deploy pushes both `:<short-sha>` (immutable, used for rollback) and `:latest` (mutable; what the VPS pulls by default). Images live forever in ghcr.io.
+**Image tags:** every deploy pushes both `:<short-sha>` (immutable, used for rollback) and `:latest` (mutable). `docker-compose.yml` pins the image to `${IMAGE_TAG:?...}`, so compose **requires** an explicit `IMAGE_TAG` and never silently falls back to `:latest`; the deploy and rollback commands pass the SHA. Because compose interpolates the file on every invocation, ad-hoc commands also need a value — e.g. `IMAGE_TAG=x docker compose logs` (any value works for read-only commands; nothing is pulled). Images live forever in ghcr.io.
 
 ## Dependencies (server feature only)
 

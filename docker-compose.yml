@@ -1,6 +1,6 @@
 services:
   spades-server:
-    image: ghcr.io/wlim33/spades:${IMAGE_TAG:-latest}
+    image: ghcr.io/wlim33/spades:${IMAGE_TAG:?IMAGE_TAG must be set — the deploy passes the commit SHA; refusing to default to :latest}
     container_name: spades-server
     restart: unless-stopped
     expose:
