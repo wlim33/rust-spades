@@ -5,9 +5,9 @@ export const test = base.extend<{ apiUp: void }>({
     // eslint-disable-next-line no-empty-pattern
     async ({}, use) => {
       const url = process.env.VITE_API_URL ?? 'http://localhost:3000';
-      const res = await fetch(`${url}/games`).catch(() => null);
+      const res = await fetch(`${url}/health`).catch(() => null);
       if (!res || !res.ok) {
-        throw new Error(`rust-spades not reachable at ${url}/games`);
+        throw new Error(`rust-spades not reachable at ${url}/health`);
       }
       await use();
     },
