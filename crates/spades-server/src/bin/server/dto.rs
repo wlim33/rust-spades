@@ -107,11 +107,6 @@ pub struct ChatRequest {
     pub content: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, OaSchema)]
-pub struct CancelChallengeRequest {
-    pub creator_id: Uuid,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct WsQuery {
     pub player_id: Option<String>,

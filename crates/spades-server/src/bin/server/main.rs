@@ -17,7 +17,7 @@ use handlers::challenges::{
 };
 use handlers::games::{
     create_game, delete_game, get_game_by_player_url, get_game_by_short_id_handler,
-    get_game_state, get_hand, get_presence, get_replay, list_games, make_transition, post_chat, root, set_player_name,
+    get_game_state, get_hand, get_presence, get_replay, make_transition, post_chat, root, set_player_name,
 };
 use handlers::matchmaking::{list_seeks_handler, queue_sizes_handler, seek};
 use handlers::players::{get_player, set_display_name};
@@ -77,7 +77,6 @@ pub fn build_router(state: AppState) -> Router {
 
     let server = server
         // Game endpoints
-        .get("/games", list_games)
         .get("/games/{game_id}", get_game_state)
         .post("/games/{game_id}/transition", make_transition)
         .get("/games/{game_id}/players/{player_id}/hand", get_hand)
@@ -1167,9 +1166,11 @@ mod tests {
     #[tokio::test]
     async fn create_challenge_emits_initial_event_and_cancel_403_for_stranger() {
         // Drive the create-challenge SSE stream just far enough to extract
-        // the new `challenge_id`, then drop the stream. Issue a DELETE with
-        // a stranger's UUID and assert the handler maps `NotCreator` → 403.
-        let server = test_app();
+        // the new `challenge_id`, then drop the stream. Clear cookies to
+        // simulate a different session and assert the handler maps
+        // `NotCreator` → 403. The positive cancel path is covered by
+        // `create_challenge_creator_can_cancel`.
+        let mut server = test_app();
         let (event_name, value) = sse_first_event(
             &server,
             "/challenges",
@@ -1181,24 +1182,14 @@ mod tests {
         .await;
         assert_eq!(event_name, "challenge_created");
         let challenge_id = value["challenge_id"].as_str().expect("challenge_id");
-        let creator_player_id = value["creator_player_id"]
-            .as_str()
-            .expect("creator_player_id");
 
-        // Stranger DELETE → 403.
+        server.clear_cookies();
         server
             .delete(&format!("/challenges/{}", challenge_id))
-            .json(&serde_json::json!({"creator_id": Uuid::new_v4()}))
             .await
             .assert_status(StatusCode::FORBIDDEN);
-
-        // Sanity: the real creator can cancel.
-        server
-            .delete(&format!("/challenges/{}", challenge_id))
-            .json(&serde_json::json!({"creator_id": creator_player_id}))
-            .await
-            .assert_status(StatusCode::NO_CONTENT);
     }
+
 
     #[tokio::test]
     async fn get_challenge_by_short_id_returns_full_status_on_match() {
@@ -1564,24 +1555,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_list_games_empty() {
+    async fn test_list_games_route_removed() {
+        // GET /games used to enumerate every game's UUID — removed because
+        // the frontend never called it and it leaked an enumeration surface
+        // to unauthenticated callers.
         let server = test_app();
         let response = server.get("/games").await;
-        response.assert_status_ok();
-        let body: Vec<Uuid> = response.json();
-        assert_eq!(body.len(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_list_games_after_create() {
-        let server = test_app();
-        server
-            .post("/games")
-            .json(&serde_json::json!({"max_points": 500}))
-            .await;
-        let response = server.get("/games").await;
-        let body: Vec<Uuid> = response.json();
-        assert_eq!(body.len(), 1);
+        response.assert_status(StatusCode::METHOD_NOT_ALLOWED);
     }
 
     #[tokio::test]
@@ -1618,9 +1598,9 @@ mod tests {
         let response = server.delete(&format!("/games/{}", create_resp.game_id)).await;
         response.assert_status(StatusCode::NO_CONTENT);
 
-        // Verify it's gone
-        let list: Vec<Uuid> = server.get("/games").await.json();
-        assert_eq!(list.len(), 0);
+        // Verify it's gone — subsequent GET returns 404.
+        let after = server.get(&format!("/games/{}", create_resp.game_id)).await;
+        after.assert_status(StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
@@ -1628,6 +1608,25 @@ mod tests {
         let server = test_app();
         let response = server.delete(&format!("/games/{}", Uuid::new_v4())).await;
         response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_delete_game_requires_seat_ownership() {
+        // A different anon session on the same server must not be able to
+        // delete a game it doesn't have a seat in. The positive path is
+        // covered by `test_delete_game`.
+        let mut server = test_app();
+        let create_resp: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+
+        server.clear_cookies();
+        server
+            .delete(&format!("/games/{}", create_resp.game_id))
+            .await
+            .assert_status(StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
@@ -1916,7 +1915,6 @@ mod tests {
         let server = test_app();
         let response = server
             .delete(&format!("/challenges/{}", Uuid::new_v4()))
-            .json(&serde_json::json!({"creator_id": Uuid::new_v4()}))
             .await;
         response.assert_status(StatusCode::NOT_FOUND);
     }

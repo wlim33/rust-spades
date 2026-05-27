@@ -18,7 +18,7 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use super::super::dto::{
-    CancelChallengeRequest, ErrorResponse, JoinChallengeRequest,
+    ErrorResponse, JoinChallengeRequest,
 };
 use super::super::AppState;
 
@@ -76,7 +76,7 @@ pub async fn create_challenge_handler(
     let creator_seat = config.creator_seat;
     let (challenge_id, creator_player_id, mut rx) = state
         .challenge_manager
-        .create_challenge(config)
+        .create_challenge_with_owner(config, Some(anon), identity_user)
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -377,11 +377,15 @@ pub async fn join_challenge_handler(
 pub async fn cancel_challenge_handler(
     AxumState(state): AxumState<AppState>,
     Path(challenge_id): Path<Uuid>,
-    Json(request): Json<CancelChallengeRequest>,
+    identity: spades_server::auth::Identity,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     state
         .challenge_manager
-        .cancel_challenge(challenge_id, request.creator_id)
+        .cancel_challenge_by_identity(
+            challenge_id,
+            identity.anon_id(),
+            identity.user().map(|u| u.id),
+        )
         .map(|_| StatusCode::NO_CONTENT)
         .map_err(|e| {
             let status = match &e {

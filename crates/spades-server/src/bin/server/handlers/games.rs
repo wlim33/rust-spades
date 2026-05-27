@@ -24,7 +24,6 @@ pub async fn root() -> Json<serde_json::Value> {
         "version": env!("CARGO_PKG_VERSION"),
         "endpoints": {
             "create_game": "POST /games",
-            "list_games": "GET /games",
             "get_game_state": "GET /games/:game_id",
             "make_transition": "POST /games/:game_id/transition",
             "get_hand": "GET /games/:game_id/players/:player_id/hand",
@@ -97,6 +96,21 @@ pub async fn create_game(
                 }
             }
 
+            // Name bot seats by relative position (south=0, west=1, north=2,
+            // east=3) so the UI shows "West (CPU)" instead of "Seat 2". Set
+            // before Start so the first state broadcast already has names.
+            for (i, pid) in response.player_ids.iter().enumerate() {
+                if human_seats.contains(&i) {
+                    continue;
+                }
+                if let Some(name) = bot_seat_name(i) {
+                    let _ = state
+                        .game_manager
+                        .set_player_name(game_id, *pid, Some(name.to_string()))
+                        .await;
+                }
+            }
+
             state
                 .game_manager
                 .make_transition(game_id, GameTransition::Start)
@@ -126,20 +140,6 @@ pub async fn create_game(
             }),
         )),
     }
-}
-
-#[oasgen]
-pub async fn list_games(
-    AxumState(state): AxumState<AppState>,
-) -> Result<Json<Vec<Uuid>>, (StatusCode, Json<ErrorResponse>)> {
-    state.game_manager.list_games().map(Json).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("{}", e),
-            }),
-        )
-    })
 }
 
 #[oasgen]
@@ -221,7 +221,35 @@ pub async fn get_game_by_player_url(
 pub async fn delete_game(
     AxumState(state): AxumState<AppState>,
     Path(game_id): Path<Uuid>,
+    identity: spades_server::auth::Identity,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    // Authorize: the caller must own at least one seat in this game.
+    // Without this, any anonymous caller could delete any game by id.
+    let mut owns_seat = false;
+    for seat_idx in 0..4 {
+        if let Ok(Some(seat)) = state.auth.store.game_seat(game_id, seat_idx)
+            && seat_matches_identity(&seat, &identity)
+        {
+            owns_seat = true;
+            break;
+        }
+    }
+    if !owns_seat {
+        // Probe game existence to distinguish "not yours" from "doesn't exist".
+        if state.game_manager.get_game_state(game_id).await.is_err() {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse { error: "Game not found".to_string() }),
+            ));
+        }
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "only seated players may delete this game".to_string(),
+            }),
+        ));
+    }
+
     let result = state
         .game_manager
         .remove_game(game_id)
@@ -379,6 +407,19 @@ pub async fn get_hand(
         })
 }
 
+/// Default display name for a bot at `seat_index`. Seat 0 is the
+/// (human) south seat; the other three are named by their position
+/// relative to it so a 2v2 game also picks the right name for each
+/// remaining bot.
+fn bot_seat_name(seat_index: usize) -> Option<&'static str> {
+    match seat_index {
+        1 => Some("West (CPU)"),
+        2 => Some("North (CPU)"),
+        3 => Some("East (CPU)"),
+        _ => None,
+    }
+}
+
 /// True when `identity` owns `seat` — meaning the requester is the
 /// human player at that seat. A registered user matches by `user_id`;
 /// an anonymous session matches by `anon_user_id`. Bot seats have
@@ -511,6 +552,7 @@ pub async fn get_replay(
 pub async fn set_player_name(
     AxumState(state): AxumState<AppState>,
     Path((game_id, player_id_raw)): Path<(Uuid, String)>,
+    identity: spades_server::auth::Identity,
     Json(request): Json<SetNameRequest>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let player_id = parse_uuid_or_short_id(&player_id_raw).ok_or((
@@ -524,19 +566,48 @@ pub async fn set_player_name(
         None => None,
     };
 
-    let game_state = state.game_manager.get_game_state(game_id).await.map_err(|_| (
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse { error: "Game not found".into() }),
-    ))?;
-    if let Some(idx) = game_state.player_names.iter().position(|pn| pn.player_id == player_id) {
-        if let Ok(Some(seat)) = state.auth.store.game_seat(game_id, idx as i32) {
-            if seat.user_id.is_some() {
-                return Err((
-                    StatusCode::FORBIDDEN,
-                    Json(ErrorResponse { error: "seat owned by registered user; name is canonical".into() }),
-                ));
-            }
+    // Authorize: the caller must own this seat. Registered-user seats are
+    // canonical (name comes from the user); bot seats are server-named.
+    // Anon-owned seats are renamable only by the matching anon session —
+    // previously these were renamable by anyone with the player_id.
+    let seat = state
+        .auth
+        .store
+        .game_seat_by_player_id(game_id, player_id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e })))?;
+    let Some(seat) = seat else {
+        if state.game_manager.get_game_state(game_id).await.is_err() {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse { error: "Game not found".into() }),
+            ));
         }
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "player not seated in this game".into(),
+            }),
+        ));
+    };
+    if seat.is_bot {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse { error: "bot seat name is server-managed".into() }),
+        ));
+    }
+    if seat.user_id.is_some() {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "seat owned by registered user; name is canonical".into(),
+            }),
+        ));
+    }
+    if !seat_matches_identity(&seat, &identity) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse { error: "only the seat owner may rename this player".into() }),
+        ));
     }
 
     state

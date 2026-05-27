@@ -191,6 +191,13 @@ struct SeatOccupant {
 struct Challenge {
     challenge_id: Uuid,
     creator_id: Option<Uuid>,
+    /// Identity that created this challenge. `creator_anon_id` is always
+    /// set for HTTP-created challenges (every session has an anon_id);
+    /// `creator_user_id` is set only if the creator was signed in.
+    /// Both `None` for legacy callers (in-process tests that go through
+    /// `create_challenge` without identity).
+    creator_anon_id: Option<Uuid>,
+    creator_user_id: Option<Uuid>,
     max_points: i32,
     timer_config: Option<TimerConfig>,
     seats: [Option<SeatOccupant>; 4],
@@ -259,6 +266,18 @@ impl ChallengeManager {
         &self,
         config: ChallengeConfig,
     ) -> Result<(Uuid, Option<Uuid>, broadcast::Receiver<ChallengeEvent>), ChallengeError> {
+        self.create_challenge_with_owner(config, None, None)
+    }
+
+    /// Like `create_challenge`, but stamps the creator's identity so that
+    /// `cancel_challenge_by_identity` can authorize cancellation without
+    /// trusting a client-supplied creator_player_id field.
+    pub fn create_challenge_with_owner(
+        &self,
+        config: ChallengeConfig,
+        creator_anon_id: Option<Uuid>,
+        creator_user_id: Option<Uuid>,
+    ) -> Result<(Uuid, Option<Uuid>, broadcast::Receiver<ChallengeEvent>), ChallengeError> {
         let challenge_id = Uuid::new_v4();
         let (broadcast_tx, broadcast_rx) = broadcast::channel(16);
 
@@ -277,6 +296,8 @@ impl ChallengeManager {
         let challenge = Challenge {
             challenge_id,
             creator_id,
+            creator_anon_id,
+            creator_user_id,
             max_points: config.max_points,
             timer_config: config.timer_config,
             seats,
@@ -467,6 +488,44 @@ impl ChallengeManager {
         match challenge.creator_id {
             Some(cid) if cid == requester_id => {}
             _ => return Err(ChallengeError::NotCreator),
+        }
+
+        challenge.status = ChallengeStatusKindInternal::Cancelled;
+        if let Some(handle) = challenge.expiry_handle.take() {
+            handle.abort();
+        }
+
+        let _ = challenge.broadcast_tx.send(ChallengeEvent::Cancelled {
+            challenge_id,
+            reason: "Cancelled by creator".to_string(),
+        });
+
+        Ok(())
+    }
+
+    /// Cancel a challenge using the caller's session identity (anon_id and
+    /// optional user_id) rather than a client-supplied player_id. Match on
+    /// user_id first when both sides have one (a signed-in creator stays
+    /// the owner across browsers); otherwise fall back to the anon_id.
+    pub fn cancel_challenge_by_identity(
+        &self,
+        challenge_id: Uuid,
+        requester_anon_id: Uuid,
+        requester_user_id: Option<Uuid>,
+    ) -> Result<(), ChallengeError> {
+        let mut challenges = self.challenges.write().map_err(|_| ChallengeError::LockError)?;
+        let challenge = challenges.get_mut(&challenge_id).ok_or(ChallengeError::NotFound)?;
+
+        if !matches!(challenge.status, ChallengeStatusKindInternal::Open) {
+            return Err(ChallengeError::NotOpen);
+        }
+
+        let matches = match (challenge.creator_user_id, requester_user_id) {
+            (Some(owner_uid), Some(req_uid)) => owner_uid == req_uid,
+            _ => challenge.creator_anon_id == Some(requester_anon_id),
+        };
+        if !matches {
+            return Err(ChallengeError::NotCreator);
         }
 
         challenge.status = ChallengeStatusKindInternal::Cancelled;
@@ -705,6 +764,63 @@ mod tests {
 
         let result = cm.cancel_challenge(challenge_id, Uuid::new_v4());
         assert!(matches!(result, Err(ChallengeError::NotCreator)));
+    }
+
+    #[tokio::test]
+    async fn test_cancel_by_identity_matches_anon_owner() {
+        let cm = make_manager();
+        let config = ChallengeConfig {
+            max_points: 500,
+            timer_config: None,
+            creator_seat: Some(Seat::A),
+            creator_name: None,
+            expiry_secs: 3600,
+        };
+
+        let anon = Uuid::new_v4();
+        let (challenge_id, _, _rx) = cm
+            .create_challenge_with_owner(config, Some(anon), None)
+            .unwrap();
+
+        // Stranger anon → NotCreator.
+        assert!(matches!(
+            cm.cancel_challenge_by_identity(challenge_id, Uuid::new_v4(), None),
+            Err(ChallengeError::NotCreator)
+        ));
+
+        // Owner anon → success.
+        cm.cancel_challenge_by_identity(challenge_id, anon, None)
+            .unwrap();
+        let status = cm.get_status(challenge_id).unwrap();
+        assert!(matches!(status.status, ChallengeStatusKind::Cancelled));
+    }
+
+    #[tokio::test]
+    async fn test_cancel_by_identity_matches_registered_user() {
+        let cm = make_manager();
+        let config = ChallengeConfig {
+            max_points: 500,
+            timer_config: None,
+            creator_seat: Some(Seat::A),
+            creator_name: None,
+            expiry_secs: 3600,
+        };
+
+        let owner_user = Uuid::new_v4();
+        let owner_anon = Uuid::new_v4();
+        let (challenge_id, _, _rx) = cm
+            .create_challenge_with_owner(config, Some(owner_anon), Some(owner_user))
+            .unwrap();
+
+        // Different user_id → forbidden, even if anon happens to match.
+        assert!(matches!(
+            cm.cancel_challenge_by_identity(challenge_id, owner_anon, Some(Uuid::new_v4())),
+            Err(ChallengeError::NotCreator)
+        ));
+
+        // Same user from a different anon session (e.g. another browser) → ok.
+        cm.cancel_challenge_by_identity(challenge_id, Uuid::new_v4(), Some(owner_user))
+            .unwrap();
     }
 
     #[tokio::test]
