@@ -77,17 +77,20 @@ sudo rm -f /etc/sudoers.d/spades-deploy
 
 cat <<EOF
 
-==> Done.
+==> Bootstrap complete. Before the first deploy, finish these on the VPS:
 
-Next steps:
-  1. Edit $SPADES_DIR/.env with real secrets:
-       sudo -u $DEPLOY_USER -e $SPADES_DIR/.env
-  2. Install the Cloudflare Origin CA cert and key into $SPADES_DIR/certs/.
-     See deploy/origin-certs.md for instructions.
-  3. Add the GitHub Actions deploy public key to:
-       /home/$DEPLOY_USER/.ssh/authorized_keys
-  4. The first push to master triggers the workflow. The workflow ssh's
-     in and runs (from $SPADES_DIR):
-       docker compose pull && docker compose up -d
+  [REQUIRED] 1. Install the Cloudflare Origin CA cert + key into
+                $SPADES_DIR/certs/ as spades.wlim.dev.pem and spades.wlim.dev.key —
+                Caddy won't start (site stays down) without them. See deploy/origin-certs.md.
+  [REQUIRED] 2. Add the GitHub Actions deploy public key to
+                /home/$DEPLOY_USER/.ssh/authorized_keys (the workflow ssh's in as $DEPLOY_USER).
+  [optional] 3. Edit $SPADES_DIR/.env  (sudo -u $DEPLOY_USER -e $SPADES_DIR/.env):
+                CORS_ALLOW_ORIGIN and OAUTH_REDIRECT_BASE_URL are pre-set; fill the
+                GOOGLE_/GITHUB_ OAuth and SMTP_ vars only if you want sign-in / email.
+  [after 1st deploy] 4. Set Cloudflare SSL/TLS mode to Full (strict).
+
+Then push to master — the workflow builds the image, ssh's in, and runs (from $SPADES_DIR):
+    IMAGE_TAG=<sha> docker compose pull && IMAGE_TAG=<sha> docker compose up -d
+(docker-compose.yml requires IMAGE_TAG; the workflow passes the commit SHA.)
 
 EOF

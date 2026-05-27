@@ -392,7 +392,7 @@ Two compose services: `spades-server` (the app, internal-only on the compose net
 - `ssh deploy@$VPS 'cd /opt/spades && IMAGE_TAG=<short-sha> docker compose up -d --pull always'` — instant pin to any previously-pushed image SHA.
 - Frontend-only: `wrangler pages deployment list` + `... activate <id>`, or the CF dashboard.
 
-**One-time VPS setup:** `bash deploy/install-docker.sh` (installs Docker + compose plugin, creates `/opt/spades` with compose.yml, Caddyfile, an empty `certs/` dir, and `.env` from `deploy/env.template`, cleans up any legacy systemd unit). Then mint a Cloudflare Origin CA cert and install it into `/opt/spades/certs/` (see `deploy/origin-certs.md`) and set Cloudflare SSL/TLS mode to **Full (strict)**.
+**One-time VPS setup:** `bash deploy/install-docker.sh` (installs Docker + compose plugin, creates `/opt/spades` with compose.yml, Caddyfile, an empty `certs/` dir, and `.env` from `deploy/env.template`, cleans up any legacy systemd unit). Then mint a Cloudflare Origin CA cert and install it into `/opt/spades/certs/` (see `deploy/origin-certs.md`), add the GitHub Actions deploy public key to `/home/deploy/.ssh/authorized_keys`, and set Cloudflare SSL/TLS mode to **Full (strict)**.
 
 **Image tags:** every deploy pushes both `:<short-sha>` (immutable, used for rollback) and `:latest` (mutable). `docker-compose.yml` pins the image to `${IMAGE_TAG:?...}`, so compose **requires** an explicit `IMAGE_TAG` and never silently falls back to `:latest`; the deploy and rollback commands pass the SHA. Because compose interpolates the file on every invocation, ad-hoc commands also need a value — e.g. `IMAGE_TAG=x docker compose logs` (any value works for read-only commands; nothing is pulled). Images live forever in ghcr.io.
 
