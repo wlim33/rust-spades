@@ -17,6 +17,9 @@ export async function createAiGame(request: APIRequestContext): Promise<AiGame> 
     player_ids: string[];
   };
   const stateRes = await request.get(`/games/${game_id}`);
+  if (!stateRes.ok()) {
+    throw new Error(`fetch game state failed: ${stateRes.status()} ${await stateRes.text()}`);
+  }
   const state = (await stateRes.json()) as { short_id?: string | null };
   const shortId = state.short_id ?? game_id;
   return { gameId: game_id, playerId: player_ids[0]!, shortId };
