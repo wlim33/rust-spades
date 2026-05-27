@@ -5,6 +5,7 @@ import { uniqueUser, type TestUser } from './identity';
  * Registers a user via POST /auth/register. Pass a context-bound request
  * (page.request / context.request) so the session cookie lands in the
  * browser context that will navigate the app.
+ * Precondition: the passed APIRequestContext must have a baseURL set (page.request / context.request inherit it) so the relative '/auth/register' resolves.
  */
 export async function registerUser(
   request: APIRequestContext,

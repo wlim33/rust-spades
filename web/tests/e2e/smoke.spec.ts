@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test('home renders the menu', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle('Spades');
-  await expect(page.getByRole('heading', { name: 'Spades' })).toBeVisible();
+  await expect(page.locator('.site-title')).toBeVisible();
   await expect(page.locator('[data-testid="home-menu"] button')).toHaveCount(5);
 });
 

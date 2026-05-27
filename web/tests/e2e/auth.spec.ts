@@ -35,3 +35,10 @@ test('signup, view /me, logout, login again', async ({ page }) => {
   await page.waitForFunction(() => location.pathname === '/');
   await expect(page.locator('[data-testid=avatar-menu] summary')).toHaveText(username);
 });
+
+test('authedPage fixture is recognized by GET /auth/me', async ({ authedPage }) => {
+  const res = await authedPage.request.get('/auth/me');
+  expect(res.ok()).toBe(true);
+  const me = (await res.json()) as { username: string };
+  expect(me.username).toMatch(/^e2e_/);
+});
