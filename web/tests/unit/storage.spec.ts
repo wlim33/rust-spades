@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { saveSession, loadSession, clearSession } from '../../src/lib/storage';
+import { getThemePref, setThemePref, clearThemePref } from '../../src/lib/storage';
 
 describe('game session storage', () => {
   beforeEach(() => {
@@ -33,5 +34,40 @@ describe('game session storage', () => {
   it('returns null on parse error', () => {
     localStorage.setItem('spades_game_bad', 'not json');
     expect(loadSession('bad')).toBe(null);
+  });
+});
+
+describe('theme preference storage', () => {
+  beforeEach(() => {
+    const store: Record<string, string> = {};
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => (k in store ? store[k]! : null),
+      setItem: (k: string, v: string) => {
+        store[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete store[k];
+      },
+    });
+  });
+
+  it('returns null when unset', () => {
+    expect(getThemePref()).toBe(null);
+  });
+
+  it('round-trips a valid theme', () => {
+    setThemePref('dark');
+    expect(getThemePref()).toBe('dark');
+  });
+
+  it('ignores an invalid stored value', () => {
+    localStorage.setItem('spades_theme', 'banana');
+    expect(getThemePref()).toBe(null);
+  });
+
+  it('clears the preference', () => {
+    setThemePref('light');
+    clearThemePref();
+    expect(getThemePref()).toBe(null);
   });
 });

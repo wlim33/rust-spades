@@ -1,0 +1,121 @@
+/* Canonical design tokens. Light = :root; dark overrides under [data-theme="dark"]. */
+:root {
+  /* surfaces & ink */
+  --bg: #f1e6d4;
+  --surface: #faf4ea;
+  --surface-raised: #fffdf9;
+  --fg: #1b2330;
+  --fg-muted: #5e6a70;
+  --fg-subtle: #948b7c;
+  --border: rgba(27, 35, 48, 0.12);
+  --border-strong: rgba(27, 35, 48, 0.2);
+
+  /* accents */
+  --accent: #1f8f80;
+  --accent-hover: #1a796c;
+  --accent-2: #e0623f;
+  --accent-3: #c08a1e;
+
+  /* semantic */
+  --success: #1c8a51;
+  --success-tint: #e6f4ea;
+  --danger: #c33b2b;
+  --danger-tint: #fbe9e6;
+  --warning: #a9710a;
+  --warning-tint: #faf0d8;
+
+  /* cards & table */
+  --card-face: #fffdf8;
+  --card-red: #c33b2b;
+  --card-ink: #1b2330;
+  --card-edge: rgba(27, 35, 48, 0.16);
+  --felt: #2f6f62;
+  --felt-ink: #eaf3ee;
+
+  /* effects */
+  --focus: #1f8f80;
+  --shadow-color: 27 35 48;
+
+  color-scheme: light;
+
+  /* fonts */
+  --font-display: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
+  --font-text: 'Hanken Grotesk Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* fluid type scale */
+  --text-xs: 0.78rem;
+  --text-sm: 0.875rem;
+  --text-base: clamp(1rem, 0.96rem + 0.18vw, 1.0625rem);
+  --text-lg: clamp(1.125rem, 1.06rem + 0.3vw, 1.25rem);
+  --text-xl: clamp(1.4rem, 1.24rem + 0.7vw, 1.75rem);
+  --text-2xl: clamp(1.85rem, 1.5rem + 1.55vw, 2.6rem);
+  --text-3xl: clamp(2.4rem, 1.8rem + 2.7vw, 3.6rem);
+
+  /* space scale (7/9/11 intentionally unused) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 3rem;
+  --space-12: 4rem;
+  --gutter: clamp(1rem, 4vw, 2.5rem);
+
+  /* radius (tight) */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-card: 4px;
+  --radius-pill: 999px;
+
+  /* elevation (warm-tinted via --shadow-color) */
+  --shadow-1: 0 1px 2px rgb(var(--shadow-color) / 0.06), 0 1px 1px rgb(var(--shadow-color) / 0.04);
+  --shadow-2: 0 2px 6px rgb(var(--shadow-color) / 0.08), 0 6px 16px rgb(var(--shadow-color) / 0.06);
+  --shadow-3:
+    0 10px 30px rgb(var(--shadow-color) / 0.14), 0 3px 8px rgb(var(--shadow-color) / 0.08);
+  --shadow-card:
+    0 1px 1px rgb(var(--shadow-color) / 0.1), 0 6px 14px rgb(var(--shadow-color) / 0.18);
+
+  /* motion & layout */
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --dur: 180ms;
+  --content-max: 60rem;
+}
+
+[data-theme='dark'] {
+  --bg: #16140f;
+  --surface: #201d17;
+  --surface-raised: #2a261e;
+  --fg: #f2ecdd;
+  --fg-muted: #b0a794;
+  --fg-subtle: #7e7567;
+  --border: rgba(242, 236, 221, 0.13);
+  --border-strong: rgba(242, 236, 221, 0.24);
+
+  --accent: #3cc3b0;
+  --accent-hover: #54d0be;
+  --accent-2: #f0835f;
+  --accent-3: #e0aa3e;
+
+  --success: #41c079;
+  --success-tint: #15271c;
+  --danger: #ec6a55;
+  --danger-tint: #2a1613;
+  --warning: #e0aa3e;
+  --warning-tint: #2a2210;
+
+  --card-face: #f6f0e4;
+  --card-red: #c8402f;
+  --card-ink: #1b2330;
+  --card-edge: rgba(0, 0, 0, 0.4);
+  --felt: #143029;
+  --felt-ink: #d9e8e0;
+
+  --focus: #3cc3b0;
+  --shadow-color: 0 0 0;
+
+  color-scheme: dark;
+}

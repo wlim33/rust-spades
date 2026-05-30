@@ -1,3 +1,5 @@
+import './ui/fonts.css';
+import './ui/tokens.css';
 import './ui/design.css';
 import { createRouter } from './router';
 import { home } from './routes/home';
@@ -12,8 +14,10 @@ import { notFound } from './routes/notfound';
 import { session } from './state/session';
 import { consumeOauthInProgress } from './lib/storage';
 import { toast } from './state/toast';
+import { themeState } from './state/theme';
 
 void (async () => {
+  themeState.initTheme();
   // Best-effort: hydrate the session before mounting the first route.
   // If the user just returned from an OAuth provider, detour to the
   // username-picker when the server set the __oauth_pending cookie (signaled

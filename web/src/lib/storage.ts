@@ -78,3 +78,30 @@ export function consumeOauthInProgress(): { provider: string; next: string } | n
     return null;
   }
 }
+
+const THEME_KEY = 'spades_theme';
+
+export function getThemePref(): 'light' | 'dark' | null {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    return v === 'light' || v === 'dark' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setThemePref(theme: 'light' | 'dark'): void {
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // ignore (private mode)
+  }
+}
+
+export function clearThemePref(): void {
+  try {
+    localStorage.removeItem(THEME_KEY);
+  } catch {
+    // ignore
+  }
+}
