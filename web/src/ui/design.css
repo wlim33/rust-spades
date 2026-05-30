@@ -39,7 +39,7 @@ body {
 }
 
 body {
-  font-family: var(--font-family-sans);
+  font-family: var(--font-text);
   font-size: var(--font-size-base);
   background: var(--color-bg);
   color: var(--color-fg);
@@ -897,4 +897,14 @@ button.seat-open {
 .theme-toggle:hover {
   color: var(--accent);
   border-color: var(--accent);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-weight: 560;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
 }

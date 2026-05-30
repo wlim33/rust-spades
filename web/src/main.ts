@@ -1,3 +1,4 @@
+import './ui/fonts.css';
 import './ui/tokens.css';
 import './ui/design.css';
 import { createRouter } from './router';
