@@ -627,9 +627,11 @@ impl GameActor {
             State::Betting(_) => Some(GameTransition::Bet(
                 cfg.strategy.choose_bet(&self.game, player_idx),
             )),
-            State::Trick(_) => Some(GameTransition::Card(
-                cfg.strategy.choose_card(&self.game, player_idx),
-            )),
+            State::Trick(_) => cfg
+                .strategy
+                .choose_card(&self.game, player_idx)
+                .ok()
+                .map(GameTransition::Card),
             _ => None,
         }
     }

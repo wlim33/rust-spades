@@ -1,4 +1,4 @@
-use crate::{Card, Game};
+use crate::{Card, Game, GetError};
 use rand::Rng;
 use rand::seq::SliceRandom;
 
@@ -6,8 +6,9 @@ use rand::seq::SliceRandom;
 pub trait AiStrategy: Send + Sync {
     /// Choose a bet for the given player index. Called during Betting state.
     fn choose_bet(&self, game: &Game, player_index: usize) -> i32;
-    /// Choose a card to play for the given player index. Called during Trick state.
-    fn choose_card(&self, game: &Game, player_index: usize) -> Card;
+    /// Choose a card to play for the given player index. Returns `Err` if the
+    /// game is not in the Trick state (i.e. there are no legal cards to pick).
+    fn choose_card(&self, game: &Game, player_index: usize) -> Result<Card, GetError>;
 }
 
 /// AI strategy that picks random valid moves.
@@ -19,13 +20,12 @@ impl AiStrategy for RandomStrategy {
         rng.gen_range(1..=4)
     }
 
-    fn choose_card(&self, game: &Game, _player_index: usize) -> Card {
+    fn choose_card(&self, game: &Game, _player_index: usize) -> Result<Card, GetError> {
         let mut rng = rand::thread_rng();
-        let legal_cards = game
-            .get_legal_cards()
-            .expect("AI should only be called in Trick state");
-        *legal_cards
+        let legal_cards = game.get_legal_cards()?;
+        legal_cards
             .choose(&mut rng)
-            .expect("hand should not be empty")
+            .copied()
+            .ok_or(GetError::Unknown)
     }
 }

@@ -22,11 +22,20 @@ fn test_random_strategy_card_is_legal() {
     }
     assert!(matches!(game.get_state(), State::Trick(_)));
     let legal_cards = game.get_legal_cards().unwrap();
-    let chosen = strategy.choose_card(&game, 0);
+    let chosen = strategy.choose_card(&game, 0).unwrap();
     assert!(
         legal_cards.contains(&chosen),
         "chosen card not in legal cards"
     );
+}
+
+#[test]
+fn choose_card_errors_outside_trick_state() {
+    let strategy = RandomStrategy;
+    // A freshly-created game is NotStarted, not in the Trick state, so there are
+    // no legal cards — choose_card must surface an error rather than panic.
+    let game = Game::new(Uuid::new_v4(), [Uuid::new_v4(); 4], 500, None);
+    assert!(strategy.choose_card(&game, 0).is_err());
 }
 
 #[test]
