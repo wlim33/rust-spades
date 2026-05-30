@@ -19,7 +19,7 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use rand::seq::SliceRandom;
+use rand::seq::IndexedRandom;
 use spades::{Game, GameTransition, State, TransitionSuccess};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -500,7 +500,7 @@ impl GameActor {
                     if cards.is_empty() {
                         None
                     } else {
-                        let mut rng = rand::thread_rng();
+                        let mut rng = rand::rng();
                         cards.choose(&mut rng).copied().map(GameTransition::Card)
                     }
                 })

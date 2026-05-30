@@ -29,7 +29,7 @@ tower-sessions = "0.14"
 tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }
 oasgen = { version = "0.25", features = ["axum", "uuid", "swagger-ui"] }
 time = "0.3"
-rand = "0.8"
+rand = "0.9"
 uuid.workspace = true
 serde.workspace = true
 serde_json.workspace = true

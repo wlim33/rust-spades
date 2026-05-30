@@ -1,6 +1,6 @@
 use crate::{Card, Game, GetError};
 use rand::Rng;
-use rand::seq::SliceRandom;
+use rand::seq::IndexedRandom;
 
 /// Trait for AI decision-making in Spades. Implement this to create new AI strategies.
 pub trait AiStrategy: Send + Sync {
@@ -16,12 +16,12 @@ pub struct RandomStrategy;
 
 impl AiStrategy for RandomStrategy {
     fn choose_bet(&self, _game: &Game, _player_index: usize) -> i32 {
-        let mut rng = rand::thread_rng();
-        rng.gen_range(1..=4)
+        let mut rng = rand::rng();
+        rng.random_range(1..=4)
     }
 
     fn choose_card(&self, game: &Game, _player_index: usize) -> Result<Card, GetError> {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let legal_cards = game.get_legal_cards()?;
         legal_cards
             .choose(&mut rng)

@@ -1,7 +1,5 @@
 //! Spades Transcript Format (STF) — PGN-inspired serialization of full game history.
 //!
-//! See `docs/superpowers/specs/2026-05-11-spades-transcript-format-design.md`.
-//!
 //! # Known limitations
 //!
 //! - **Aborted-mid-betting is lossy.** When a game is aborted while in the
@@ -190,7 +188,7 @@ mod property_tests {
     use super::*;
     use crate::{Game, GameTransition, State};
     use rand::rngs::StdRng;
-    use rand::seq::SliceRandom;
+    use rand::seq::IndexedRandom;
     use rand::{RngCore, SeedableRng};
     use uuid::Uuid;
 

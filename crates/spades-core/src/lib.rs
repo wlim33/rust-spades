@@ -2,8 +2,7 @@
 //! ## Example usage
 //! ```
 //! use spades::{Game, GameTransition, State};
-//! use rand::seq::SliceRandom;
-//! use rand::thread_rng;
+//! use rand::seq::IndexedRandom;
 //!
 //! let mut g = Game::new(
 //!     uuid::Uuid::new_v4(),
@@ -12,7 +11,7 @@
 //!     None,
 //! );
 //! g.play(GameTransition::Start).unwrap();
-//! let mut rng = thread_rng();
+//! let mut rng = rand::rng();
 //! while *g.get_state() != State::Completed {
 //!     if let State::Trick(_) = *g.get_state() {
 //!         let legal = g.get_legal_cards().unwrap();

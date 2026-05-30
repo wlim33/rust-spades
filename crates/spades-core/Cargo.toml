@@ -15,7 +15,7 @@ name = "spades"
 path = "src/lib.rs"
 
 [dependencies]
-rand = "0.8"
+rand = "0.9"
 uuid.workspace = true
 serde.workspace = true
 serde_json.workspace = true

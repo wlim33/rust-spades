@@ -1,5 +1,4 @@
-use rand::seq::SliceRandom;
-use rand::thread_rng;
+use rand::seq::IndexedRandom;
 use spades::{Game, GameTransition, State};
 
 #[test]
@@ -16,7 +15,7 @@ fn drive_a_game_to_completion_with_random_legal_play() {
         None,
     );
     g.play(GameTransition::Start).unwrap();
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
 
     while *g.get_state() != State::Completed {
         match *g.get_state() {

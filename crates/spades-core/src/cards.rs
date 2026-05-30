@@ -1,5 +1,4 @@
 use rand::seq::SliceRandom;
-use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -135,7 +134,7 @@ pub fn new_deck() -> Vec<Card> {
 
 /// Shuffles a slice of cards in place, see [`rand::seq::SliceRandom::shuffle`].
 pub fn shuffle(cards: &mut [Card]) {
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     cards.shuffle(&mut rng);
 }
 
