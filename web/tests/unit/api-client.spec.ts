@@ -63,4 +63,25 @@ describe('api client', () => {
     const init = (spy.mock.calls[0] as unknown as [string, RequestInit])[1];
     expect(init.credentials).toBe('include');
   });
+
+  it('rejects with a 408 ApiError when the request exceeds the timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      // A fetch that never settles on its own, but rejects once its signal aborts.
+      vi.stubGlobal('fetch', (_url: string, init: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError')),
+          );
+        });
+      });
+      const promise = request('/slow', { method: 'GET' }).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(20_000);
+      const err = await promise;
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 408 });
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 3000);
 });
