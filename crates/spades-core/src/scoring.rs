@@ -6,6 +6,15 @@ pub struct GameConfig {
     pub(crate) max_points: i32,
 }
 
+/// One partner's result for a round: their `bet`, and whether they `took_trick`
+/// (the latter only affects scoring for a nil bid, i.e. `bet == 0`). Pairing the
+/// two keeps a seat's bet and trick flag from drifting apart at call sites.
+#[derive(Debug, Clone, Copy)]
+struct PartnerOutcome {
+    bet: i32,
+    took_trick: bool,
+}
+
 fn deser_tricks_won<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i32, D::Error> {
     use serde::Deserialize;
     #[derive(Deserialize)]
@@ -37,16 +46,9 @@ impl TeamState {
         }
     }
 
-    fn calculate_round_totals(
-        &mut self,
-        first_bet: i32,
-        first_nil: bool,
-        second_bet: i32,
-        second_nil: bool,
-    ) {
-        let team_tricks: i32 = self.current_round_tricks_won;
-
-        let team_bets = first_bet + second_bet;
+    fn calculate_round_totals(&mut self, first: PartnerOutcome, second: PartnerOutcome) {
+        let team_tricks = self.current_round_tricks_won;
+        let team_bets = first.bet + second.bet;
 
         if team_tricks >= team_bets {
             let round_bags = team_tricks - team_bets;
@@ -61,18 +63,10 @@ impl TeamState {
             self.cumulative_points -= 100;
         }
 
-        if first_bet == 0 {
-            if !first_nil {
-                self.cumulative_points += 100;
-            } else {
-                self.cumulative_points -= 100;
-            }
-        }
-        if second_bet == 0 {
-            if !second_nil {
-                self.cumulative_points += 100;
-            } else {
-                self.cumulative_points -= 100;
+        // Nil bid (bet == 0): +100 if the partner took no trick, −100 if they did.
+        for partner in [first, second] {
+            if partner.bet == 0 {
+                self.cumulative_points += if partner.took_trick { -100 } else { 100 };
             }
         }
     }
@@ -88,7 +82,10 @@ pub struct Scoring {
     pub is_over: bool,
     pub round: usize,
     pub trick: usize,
-    pub nil_check: [bool; 4],
+    /// Whether each seat took at least one trick this round; consumed when
+    /// adjudicating nil bids. Serialized as `nil_check` for backward compat.
+    #[serde(rename = "nil_check")]
+    pub won_a_trick: [bool; 4],
     pub player_tricks_won: [i32; 4],
 }
 
@@ -103,7 +100,7 @@ impl Scoring {
             round: 0,
             trick: 0,
             config: GameConfig { max_points },
-            nil_check: [false, false, false, false],
+            won_a_trick: [false, false, false, false],
             player_tricks_won: [0; 4],
         }
     }
@@ -121,7 +118,7 @@ impl Scoring {
 
     pub fn trick(&mut self, starting_player_index: usize, cards: &[Card; 4]) -> usize {
         let winner = get_trick_winner(starting_player_index, cards);
-        self.nil_check[winner] = true;
+        self.won_a_trick[winner] = true;
         self.player_tricks_won[winner] += 1;
 
         if winner.is_multiple_of(2) {
@@ -132,18 +129,26 @@ impl Scoring {
 
         if self.trick == 12 {
             self.team_a.calculate_round_totals(
-                self.bets_placed[self.round][0],
-                self.nil_check[0],
-                self.bets_placed[self.round][2],
-                self.nil_check[2],
+                PartnerOutcome {
+                    bet: self.bets_placed[self.round][0],
+                    took_trick: self.won_a_trick[0],
+                },
+                PartnerOutcome {
+                    bet: self.bets_placed[self.round][2],
+                    took_trick: self.won_a_trick[2],
+                },
             );
             self.team_b.calculate_round_totals(
-                self.bets_placed[self.round][1],
-                self.nil_check[1],
-                self.bets_placed[self.round][3],
-                self.nil_check[3],
+                PartnerOutcome {
+                    bet: self.bets_placed[self.round][1],
+                    took_trick: self.won_a_trick[1],
+                },
+                PartnerOutcome {
+                    bet: self.bets_placed[self.round][3],
+                    took_trick: self.won_a_trick[3],
+                },
             );
-            self.nil_check = [false; 4];
+            self.won_a_trick = [false; 4];
             self.player_tricks_won = [0; 4];
             self.in_betting_stage = true;
             self.team_a.current_round_tricks_won = 0;
@@ -345,7 +350,7 @@ mod tests {
             scoring_trick_with_start(&mut s, 0, &cards);
         }
 
-        // nil_check[0] should be false (player A never won a trick)
+        // won_a_trick[0] should be false (player A never won a trick)
         // So nil bonus +100 for player A
         // Team A bid = 0 + 6 = 6, won 6 tricks => +60 from regular + 100 from nil = 160
         assert_eq!(s.team_a.cumulative_points, 160);
@@ -376,7 +381,7 @@ mod tests {
             scoring_trick_with_start(&mut s, 0, &cards);
         }
 
-        // nil_check[0] = true (player A won a trick) => -100
+        // won_a_trick[0] = true (player A won a trick) => -100
         // Team A bid = 0 + 6 = 6, won 6 tricks => +60 from regular - 100 from nil = -40
         assert_eq!(s.team_a.cumulative_points, -40);
     }
@@ -392,7 +397,7 @@ mod tests {
 
     #[test]
     fn test_nil_check_correct_player_index() {
-        // Verify that nil_check[2] is used for player C (team_a's second player), not nil_check[1]
+        // Verify that won_a_trick[2] is used for player C (team_a's second player), not won_a_trick[1]
         let mut s = Scoring::new(500);
         s.add_bet(0, 3);
         s.add_bet(1, 3);
@@ -406,7 +411,7 @@ mod tests {
             s.trick(0, &cards);
         }
 
-        // Player C (index 2) bid nil and never won -> nil_check[2] should be false
+        // Player C (index 2) bid nil and never won -> won_a_trick[2] should be false
         // This means successful nil -> +100 pts for nil
         // Team A: bet=3+0=3, tricks won=13 (all by player 0) => (13-3) bags + 30 = 40 pts, +100 nil bonus = 140
         // But bags are 10 so -100 penalty: 140 - 100 = 40, bags = 0
@@ -578,7 +583,7 @@ mod tests {
             scoring_trick_with_start(&mut s, 0, &cards);
         }
 
-        // nil_check[2] = true (player C won a trick) => -100 for nil failure
+        // won_a_trick[2] = true (player C won a trick) => -100 for nil failure
         // Team A: bet=6+0=6, won=6 tricks => +60 from regular - 100 from failed nil = -40
         assert_eq!(s.team_a.cumulative_points, -40);
     }
@@ -593,7 +598,16 @@ mod tests {
         // Bid 1+0=1, won 12 -> +10 (bid) + 11 (bags) = +21 points, bags 9+11=20
         // Two bag penalties (-200), plus nil bonus (+100 for second_bet=0, second_nil=false)
         // Net: 21 - 200 + 100 = -79
-        t.calculate_round_totals(1, false, 0, false);
+        t.calculate_round_totals(
+            PartnerOutcome {
+                bet: 1,
+                took_trick: false,
+            },
+            PartnerOutcome {
+                bet: 0,
+                took_trick: false,
+            },
+        );
         assert_eq!(
             t.bags, 0,
             "bags should be reduced through both 10-thresholds"
@@ -620,6 +634,6 @@ mod tests {
         assert_eq!(s.round, 1);
         assert_eq!(s.team_a.current_round_tricks_won, 0);
         assert_eq!(s.team_b.current_round_tricks_won, 0);
-        assert_eq!(s.nil_check, [false; 4]);
+        assert_eq!(s.won_a_trick, [false; 4]);
     }
 }

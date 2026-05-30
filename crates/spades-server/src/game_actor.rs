@@ -470,7 +470,7 @@ impl GameActor {
             return;
         }
         let is_first_round_betting = self.game.is_first_round_betting();
-        let current_state = self.game.get_state().clone();
+        let current_state = *self.game.get_state();
 
         // Zero the timed-out player's clock and clear the timer slot. The
         // task that just sent us this message is already done; no abort
@@ -658,7 +658,7 @@ impl GameActor {
         GameStateResponse {
             game_id: self.game_id,
             short_id: spades::uuid_to_short_id(self.game_id),
-            state: self.game.get_state().clone(),
+            state: *self.game.get_state(),
             team_a_score: self.game.get_team_a_score().ok().copied(),
             team_b_score: self.game.get_team_b_score().ok().copied(),
             team_a_bags: self.game.get_team_a_bags().ok().copied(),

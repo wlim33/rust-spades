@@ -108,22 +108,8 @@ mod tests {
 
     #[test]
     fn every_card_round_trips() {
-        for suit in [Suit::Club, Suit::Diamond, Suit::Heart, Suit::Spade] {
-            for rank in [
-                Rank::Two,
-                Rank::Three,
-                Rank::Four,
-                Rank::Five,
-                Rank::Six,
-                Rank::Seven,
-                Rank::Eight,
-                Rank::Nine,
-                Rank::Ten,
-                Rank::Jack,
-                Rank::Queen,
-                Rank::King,
-                Rank::Ace,
-            ] {
+        for suit in Suit::ALL {
+            for rank in Rank::ALL {
                 let c = Card { suit, rank };
                 let txt = s(c);
                 assert_eq!(parse_card(&txt), Some(c), "round trip {}", txt);

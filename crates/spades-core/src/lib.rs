@@ -54,56 +54,57 @@ fn sqids_instance() -> &'static Sqids {
     })
 }
 
+/// Split a [`Uuid`] into its big-endian `(high, low)` `u64` halves.
+fn uuid_to_pair(uuid: Uuid) -> [u64; 2] {
+    let b = uuid.as_bytes();
+    [
+        u64::from_be_bytes(b[0..8].try_into().unwrap()),
+        u64::from_be_bytes(b[8..16].try_into().unwrap()),
+    ]
+}
+
+/// Reassemble a [`Uuid`] from its big-endian `(high, low)` `u64` halves.
+fn uuid_from_pair(high: u64, low: u64) -> Uuid {
+    let mut bytes = [0u8; 16];
+    bytes[0..8].copy_from_slice(&high.to_be_bytes());
+    bytes[8..16].copy_from_slice(&low.to_be_bytes());
+    Uuid::from_bytes(bytes)
+}
+
 /// Encode a [`Uuid`] as a short, URL-safe id (sqids, min length 6). Inverse of [`short_id_to_uuid`].
 pub fn uuid_to_short_id(uuid: Uuid) -> String {
-    let bytes = uuid.as_bytes();
-    let high = u64::from_be_bytes(bytes[0..8].try_into().unwrap());
-    let low = u64::from_be_bytes(bytes[8..16].try_into().unwrap());
-    sqids_instance().encode(&[high, low]).expect("sqids encode")
+    sqids_instance()
+        .encode(&uuid_to_pair(uuid))
+        .expect("sqids encode")
 }
 
 /// Decode a short id from [`uuid_to_short_id`] back into a [`Uuid`], or `None` if malformed.
 pub fn short_id_to_uuid(short_id: &str) -> Option<Uuid> {
-    let nums = sqids_instance().decode(short_id);
-    if nums.len() != 2 {
-        return None;
+    match sqids_instance().decode(short_id)[..] {
+        [high, low] => Some(uuid_from_pair(high, low)),
+        _ => None,
     }
-    let mut bytes = [0u8; 16];
-    bytes[0..8].copy_from_slice(&nums[0].to_be_bytes());
-    bytes[8..16].copy_from_slice(&nums[1].to_be_bytes());
-    Some(Uuid::from_bytes(bytes))
 }
 
 /// Encode a `(game_id, player_id)` pair into a single short, URL-safe token. Inverse of [`decode_player_url`].
 pub fn encode_player_url(game_id: Uuid, player_id: Uuid) -> String {
-    let gb = game_id.as_bytes();
-    let pb = player_id.as_bytes();
+    let [g_hi, g_lo] = uuid_to_pair(game_id);
+    let [p_hi, p_lo] = uuid_to_pair(player_id);
     sqids_instance()
-        .encode(&[
-            u64::from_be_bytes(gb[0..8].try_into().unwrap()),
-            u64::from_be_bytes(gb[8..16].try_into().unwrap()),
-            u64::from_be_bytes(pb[0..8].try_into().unwrap()),
-            u64::from_be_bytes(pb[8..16].try_into().unwrap()),
-        ])
+        .encode(&[g_hi, g_lo, p_hi, p_lo])
         .expect("sqids encode")
 }
 
 /// Decode a token from [`encode_player_url`] into `(game_id, player_id)`, or `None` if malformed.
 pub fn decode_player_url(s: &str) -> Option<(Uuid, Uuid)> {
-    let nums = sqids_instance().decode(s);
-    if nums.len() != 4 {
-        return None;
+    match sqids_instance().decode(s)[..] {
+        [g_hi, g_lo, p_hi, p_lo] => Some((uuid_from_pair(g_hi, g_lo), uuid_from_pair(p_hi, p_lo))),
+        _ => None,
     }
-    let mut gb = [0u8; 16];
-    gb[0..8].copy_from_slice(&nums[0].to_be_bytes());
-    gb[8..16].copy_from_slice(&nums[1].to_be_bytes());
-    let mut pb = [0u8; 16];
-    pb[0..8].copy_from_slice(&nums[2].to_be_bytes());
-    pb[8..16].copy_from_slice(&nums[3].to_be_bytes());
-    Some((Uuid::from_bytes(gb), Uuid::from_bytes(pb)))
 }
 
 /// The primary way to interface with a spades game. Used as an argument to [Game::play](struct.Game.html#method.play).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameTransition {
     Bet(i32),
     Card(Card),
@@ -282,45 +283,52 @@ impl Game {
         &self.state
     }
 
-    /// Team A's (seats 0 & 2) cumulative score. `Err` before the game has started.
-    pub fn get_team_a_score(&self) -> Result<&i32, GetError> {
+    /// `Ok` once the game has started — i.e. any state other than [`State::NotStarted`].
+    fn require_started(&self) -> Result<(), GetError> {
         match self.state {
             State::NotStarted => Err(GetError::GameNotStarted),
-            _ => Ok(&self.scoring.team_a.cumulative_points),
+            _ => Ok(()),
         }
+    }
+
+    /// `Ok` only while a hand is in progress (Betting or Trick), distinguishing
+    /// not-yet-started from already-finished.
+    fn require_active(&self) -> Result<(), GetError> {
+        match self.state {
+            State::NotStarted => Err(GetError::GameNotStarted),
+            State::Completed | State::Aborted => Err(GetError::GameCompleted),
+            State::Betting(_) | State::Trick(_) => Ok(()),
+        }
+    }
+
+    /// Team A's (seats 0 & 2) cumulative score. `Err` before the game has started.
+    pub fn get_team_a_score(&self) -> Result<&i32, GetError> {
+        self.require_started()?;
+        Ok(&self.scoring.team_a.cumulative_points)
     }
 
     /// Team B's (seats 1 & 3) cumulative score. `Err` before the game has started.
     pub fn get_team_b_score(&self) -> Result<&i32, GetError> {
-        match self.state {
-            State::NotStarted => Err(GetError::GameNotStarted),
-            _ => Ok(&self.scoring.team_b.cumulative_points),
-        }
+        self.require_started()?;
+        Ok(&self.scoring.team_b.cumulative_points)
     }
 
     /// Team A's accumulated bags (overtricks). `Err` before the game has started.
     pub fn get_team_a_bags(&self) -> Result<&i32, GetError> {
-        match self.state {
-            State::NotStarted => Err(GetError::GameNotStarted),
-            _ => Ok(&self.scoring.team_a.bags),
-        }
+        self.require_started()?;
+        Ok(&self.scoring.team_a.bags)
     }
 
     /// Team B's accumulated bags (overtricks). `Err` before the game has started.
     pub fn get_team_b_bags(&self) -> Result<&i32, GetError> {
-        match self.state {
-            State::NotStarted => Err(GetError::GameNotStarted),
-            _ => Ok(&self.scoring.team_b.bags),
-        }
+        self.require_started()?;
+        Ok(&self.scoring.team_b.bags)
     }
 
     /// Returns `GetError` when the current game is not in the Betting or Trick stages.
     pub fn get_current_player_id(&self) -> Result<&Uuid, GetError> {
-        match self.state {
-            State::NotStarted => Err(GetError::GameNotStarted),
-            State::Completed | State::Aborted => Err(GetError::GameCompleted),
-            State::Betting(_) | State::Trick(_) => Ok(&self.players[self.current_player_index].id),
-        }
+        self.require_active()?;
+        Ok(&self.players[self.current_player_index].id)
     }
 
     /// Returns a `GetError::InvalidUuid` if the game does not contain a player with the given `Uuid`.
@@ -334,13 +342,8 @@ impl Game {
 
     /// The hand of the player whose turn it is. `Err` unless the game is in the Betting or Trick stage.
     pub fn get_current_hand(&self) -> Result<&Vec<Card>, GetError> {
-        match self.state {
-            State::NotStarted => Err(GetError::GameNotStarted),
-            State::Completed | State::Aborted => Err(GetError::GameCompleted),
-            State::Betting(_) | State::Trick(_) => {
-                Ok(&self.players[self.current_player_index].hand)
-            }
-        }
+        self.require_active()?;
+        Ok(&self.players[self.current_player_index].hand)
     }
 
     /// The suit led in the current trick, or `None` if no card has been led yet. Only valid in the Trick stage.
@@ -685,5 +688,42 @@ impl Game {
         for (i, hand) in hands.into_iter().enumerate() {
             self.players[i].hand = hand;
         }
+    }
+}
+
+#[cfg(test)]
+mod id_codec_tests {
+    use super::*;
+
+    #[test]
+    fn short_id_round_trips() {
+        let id = Uuid::from_u128(0xdead_beef_cafe_babe_0123_4567_89ab_cdef);
+        let short = uuid_to_short_id(id);
+        assert_eq!(short_id_to_uuid(&short), Some(id));
+    }
+
+    #[test]
+    fn short_id_rejects_malformed() {
+        // Empty input decodes to zero numbers, not two.
+        assert_eq!(short_id_to_uuid(""), None);
+        // A player-url token decodes to four numbers, not two.
+        let token = encode_player_url(Uuid::from_u128(1), Uuid::from_u128(2));
+        assert_eq!(short_id_to_uuid(&token), None);
+    }
+
+    #[test]
+    fn player_url_round_trips() {
+        let game = Uuid::from_u128(0x1111_2222_3333_4444_5555_6666_7777_8888);
+        let player = Uuid::from_u128(0x8888_7777_6666_5555_4444_3333_2222_1111);
+        let token = encode_player_url(game, player);
+        assert_eq!(decode_player_url(&token), Some((game, player)));
+    }
+
+    #[test]
+    fn player_url_rejects_malformed() {
+        assert_eq!(decode_player_url(""), None);
+        // A short id decodes to two numbers, not four.
+        let short = uuid_to_short_id(Uuid::from_u128(7));
+        assert_eq!(decode_player_url(&short), None);
     }
 }

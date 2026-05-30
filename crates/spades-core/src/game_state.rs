@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// respectively.
 ///
 /// **Example:** `State::Trick(2)` means the game is in the card playing stage, and two players have played their cards.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
 pub enum State {
     NotStarted,

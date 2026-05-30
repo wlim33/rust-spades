@@ -1,10 +1,9 @@
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
 use std::fmt;
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
 pub enum Suit {
     Club = 1,
@@ -24,7 +23,12 @@ impl fmt::Debug for Suit {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+impl Suit {
+    /// Every suit in canonical (ascending) order.
+    pub const ALL: [Suit; 4] = [Suit::Club, Suit::Diamond, Suit::Heart, Suit::Spade];
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
 pub enum Rank {
     Two = 2,
@@ -62,8 +66,28 @@ impl fmt::Debug for Rank {
     }
 }
 
-/// Intuitive card struct. Comparisons are made according to alphabetical order, ascending.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+impl Rank {
+    /// Every rank in ascending order (`Two` … `Ace`).
+    pub const ALL: [Rank; 13] = [
+        Rank::Two,
+        Rank::Three,
+        Rank::Four,
+        Rank::Five,
+        Rank::Six,
+        Rank::Seven,
+        Rank::Eight,
+        Rank::Nine,
+        Rank::Ten,
+        Rank::Jack,
+        Rank::Queen,
+        Rank::King,
+        Rank::Ace,
+    ];
+}
+
+/// Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),
+/// then rank ascending — the derived lexicographic order over the fields.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
 pub struct Card {
     pub suit: Suit,
@@ -73,19 +97,6 @@ pub struct Card {
 impl fmt::Debug for Card {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?} {:?}", self.suit, self.rank)
-    }
-}
-
-impl Ord for Card {
-    fn cmp(&self, other: &Card) -> Ordering {
-        ((self.suit as u64) * 15 + (self.rank as u64))
-            .cmp(&(((other.suit as u64) * 15) + (other.rank as u64)))
-    }
-}
-
-impl PartialOrd for Card {
-    fn partial_cmp(&self, other: &Card) -> Option<Ordering> {
-        Some(self.cmp(other))
     }
 }
 
@@ -113,33 +124,13 @@ pub fn get_trick_winner(index: usize, others: &[Card; 4]) -> usize {
     winning_index
 }
 
-/// Returns a shuffled deck of [`deck::Card`](struct.Card.html)'s, with 52 elements.
+/// Returns a full 52-card deck in canonical order (by suit, then rank).
+/// Call [`shuffle`] before dealing.
 pub fn new_deck() -> Vec<Card> {
-    let ranks: Vec<Rank> = vec![
-        Rank::Two,
-        Rank::Three,
-        Rank::Four,
-        Rank::Five,
-        Rank::Six,
-        Rank::Seven,
-        Rank::Eight,
-        Rank::Nine,
-        Rank::Ten,
-        Rank::Jack,
-        Rank::Queen,
-        Rank::King,
-        Rank::Ace,
-    ];
-    let suits: Vec<Suit> = vec![Suit::Club, Suit::Diamond, Suit::Heart, Suit::Spade];
-
-    let mut cards = Vec::new();
-    for s in &suits {
-        for r in &ranks {
-            cards.push(Card { suit: *s, rank: *r });
-        }
-    }
-
-    cards
+    Suit::ALL
+        .into_iter()
+        .flat_map(|suit| Rank::ALL.into_iter().map(move |rank| Card { suit, rank }))
+        .collect()
 }
 
 /// Shuffles a slice of cards in place, see [`rand::seq::SliceRandom::shuffle`].

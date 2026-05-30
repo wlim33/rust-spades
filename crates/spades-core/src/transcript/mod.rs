@@ -193,7 +193,7 @@ mod property_tests {
         let mut g = Game::new(game_id, player_ids, 60, None);
         g.play(GameTransition::Start).unwrap();
         loop {
-            match g.get_state().clone() {
+            match *g.get_state() {
                 State::Completed | State::Aborted => return g,
                 State::Betting(_) => {
                     let b = (rng.next_u32() % 4) as i32 + 1;
