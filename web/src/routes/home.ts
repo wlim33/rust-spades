@@ -18,11 +18,94 @@ export const quickplay = signal<QuickplayState>(null);
 
 const oauthBanner = signal<boolean>(false);
 
-const QUICKPLAY_TIMERS: { label: string; value: TimerCfg }[] = [
-  { label: '5+3', value: { initial_time_secs: 300, increment_secs: 3 } },
-  { label: '10+5', value: { initial_time_secs: 600, increment_secs: 5 } },
-  { label: '15+10', value: { initial_time_secs: 900, increment_secs: 10 } },
+const QUICKPLAY_TIMERS: { label: string; tier: string; key: string; value: TimerCfg }[] = [
+  {
+    label: '5+3',
+    tier: 'Blitz',
+    key: 'blitz',
+    value: { initial_time_secs: 300, increment_secs: 3 },
+  },
+  {
+    label: '10+5',
+    tier: 'Rapid',
+    key: 'rapid',
+    value: { initial_time_secs: 600, increment_secs: 5 },
+  },
+  {
+    label: '15+10',
+    tier: 'Classic',
+    key: 'classic',
+    value: { initial_time_secs: 900, increment_secs: 10 },
+  },
 ];
+
+// Decorative line icons (aria-hidden); they inherit the per-tier accent via `color`.
+const TIER_ICONS: Record<string, TemplateResult> = {
+  blitz: html`<svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M13 2 3 14h9l-1 8 9-12h-9z" />
+  </svg>`,
+  rapid: html`<svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3.5 2" />
+  </svg>`,
+  classic: html`<svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M6 3h12M6 21h12M8 3v4l4 4 4-4V3M8 21v-4l4-4 4 4v4" />
+  </svg>`,
+};
+
+const ROW_ICONS: Record<string, TemplateResult> = {
+  friends: html`<svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>`,
+  computers: html`<svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+    <rect x="9" y="9" width="6" height="6" />
+    <path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2" />
+  </svg>`,
+};
 
 function onSeek(timer: TimerCfg): void {
   if (quickplay.value) return;
@@ -106,24 +189,40 @@ function template(): TemplateResult {
       <div class="menu__quickplay">
         ${QUICKPLAY_TIMERS.map((t) => {
           const count = t.value ? queueCountFor(t.value) : 0;
-          return html`<div class="quickplay-col">
-            ${button({
-              label: t.label,
-              onClick: () => onSeek(t.value),
-              variant: 'primary',
-            })}
+          return html`<div class="quickplay-col quickplay-col--${t.key}">
+            <button class="quickplay-tile" type="button" @click=${() => onSeek(t.value)}>
+              ${TIER_ICONS[t.key]}
+              <span class="quickplay-tile__time">${t.label}</span>
+            </button>
+            <span class="quickplay-tile__tier">${t.tier}</span>
             <span class="queue-count">${count > 0 ? `${count} waiting` : 'No one waiting'}</span>
           </div>`;
         })}
       </div>
       <p class="menu__label">Other ways to play</p>
-      <button class="menu__row" type="button" @click=${onFriends} data-testid="play-friends">
-        <span class="menu__row-title">Play with friends</span>
-        <span class="menu__row-meta">Create a table · share a link · 500 pts</span>
+      <button
+        class="menu__row menu__row--friends"
+        type="button"
+        @click=${onFriends}
+        data-testid="play-friends"
+      >
+        <span class="menu__row-icon">${ROW_ICONS.friends}</span>
+        <span class="menu__row-text">
+          <span class="menu__row-title">Play with friends</span>
+          <span class="menu__row-meta">Create a table · share a link · 500 pts</span>
+        </span>
       </button>
-      <button class="menu__row" type="button" @click=${onComputers} data-testid="play-computers">
-        <span class="menu__row-title">Play with computers</span>
-        <span class="menu__row-meta">1 vs 3 bots · 500 pts · no timer</span>
+      <button
+        class="menu__row menu__row--computers"
+        type="button"
+        @click=${onComputers}
+        data-testid="play-computers"
+      >
+        <span class="menu__row-icon">${ROW_ICONS.computers}</span>
+        <span class="menu__row-text">
+          <span class="menu__row-title">Play with computers</span>
+          <span class="menu__row-meta">1 vs 3 bots · 500 pts · no timer</span>
+        </span>
       </button>
     </div>
   `);
