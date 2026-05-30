@@ -4,7 +4,7 @@ TypeScript SPA front-end for the [rust-spades](https://github.com/wlim/rust-spad
 
 ## Status
 
-Functional. Anonymous Quick Play / Play with Computers / Play with Friends all work end-to-end, plus email-password + OAuth (Google / GitHub) auth, profile pages, and game history. Design and plans are in `docs/superpowers/specs/` and `docs/superpowers/plans/`.
+Functional. Anonymous Quick Play / Play with Computers / Play with Friends all work end-to-end, plus email-password + OAuth (Google / GitHub) auth, profile pages, and game history.
 
 ## Dev
 
