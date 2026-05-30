@@ -9,9 +9,7 @@ export function header(): TemplateResult {
     <nav class="site-nav">
       ${user
         ? avatarMenu(user)
-        : html`<a class="btn btn--secondary" href="/login" data-link data-testid="sign-in"
-            >Sign in</a
-          >`}
+        : html`<a class="site-nav__link" href="/login" data-link data-testid="sign-in">Sign in</a>`}
     </nav>
   </header>`;
 }

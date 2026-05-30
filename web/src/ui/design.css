@@ -61,19 +61,29 @@ main#root {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-3) var(--space-6);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  background: rgba(255, 255, 255, 0.4);
+  padding: var(--space-2) var(--space-4);
+  background: transparent;
 }
 .site-title {
   font-weight: 600;
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-base);
   color: var(--color-fg);
   text-decoration: none;
 }
 .site-nav {
   display: flex;
+  align-items: center;
   gap: var(--space-3);
+}
+.site-nav__link {
+  color: var(--color-muted);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+}
+.site-nav__link:hover {
+  color: var(--color-fg);
 }
 
 /* Wrapper inserted by appShell() — display:contents keeps header + .page as flex children of main#root. */
@@ -445,9 +455,14 @@ button.seat-open {
 }
 .avatar-menu__btn {
   cursor: pointer;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-md);
-  background: rgba(0, 0, 0, 0.06);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+.avatar-menu__btn:hover {
+  color: var(--color-fg);
 }
 .avatar-menu__list {
   position: absolute;
