@@ -89,7 +89,6 @@ function template(): TemplateResult {
   if (quickplay.value) {
     const q = quickplay.value;
     return appShell(html`
-      <h1>Spades</h1>
       <div class="quickplay-wait">
         <p>Finding players… (${q.waiting}/4)</p>
         ${button({ label: 'Cancel', onClick: q.cancel, variant: 'secondary' })}
@@ -97,14 +96,13 @@ function template(): TemplateResult {
     `);
   }
   return appShell(html`
-    <h1>Spades</h1>
     <div class="banner" ?hidden=${!oauthBanner.value}>
       <span>Finish signing in to keep your account.</span>
       <a class="btn btn--primary" href="/auth/oauth/complete" data-link>Continue</a>
       <button class="btn btn--secondary" type="button" @click=${dismissOauthBanner}>Dismiss</button>
     </div>
     <div class="menu" data-testid="home-menu">
-      <p class="menu__label">Quick Play</p>
+      <p class="menu__label">Quick play</p>
       <div class="menu__quickplay">
         ${QUICKPLAY_TIMERS.map((t) => {
           const count = t.value ? queueCountFor(t.value) : 0;
@@ -118,8 +116,15 @@ function template(): TemplateResult {
           </div>`;
         })}
       </div>
-      ${button({ label: 'Play with Friends', onClick: onFriends, variant: 'secondary' })}
-      ${button({ label: 'Play with Computers', onClick: onComputers, variant: 'secondary' })}
+      <p class="menu__label">Other ways to play</p>
+      <button class="menu__row" type="button" @click=${onFriends} data-testid="play-friends">
+        <span class="menu__row-title">Play with friends</span>
+        <span class="menu__row-meta">Create a table · share a link · 500 pts</span>
+      </button>
+      <button class="menu__row" type="button" @click=${onComputers} data-testid="play-computers">
+        <span class="menu__row-title">Play with computers</span>
+        <span class="menu__row-meta">1 vs 3 bots · 500 pts · no timer</span>
+      </button>
     </div>
   `);
 }

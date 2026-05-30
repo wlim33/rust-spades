@@ -29,6 +29,8 @@ export function createFront(card: Card): CardEl {
   const el = document.createElement('div') as CardEl;
   el.className = `card card-front ${SUIT_COLOR[card.suit] === 'red' ? 'card-red' : 'card-black'}`;
   el.textContent = cardText(card);
+  el.dataset.rank = RANK_DISPLAY[card.rank];
+  el.dataset.suit = SUIT_SYMBOL[card.suit];
   el.setAttribute('role', 'button');
   el.setAttribute('aria-label', `${card.rank} of ${card.suit}s`);
   el._cm = { x: 0, y: 0 };
@@ -46,6 +48,8 @@ export function createBack(): CardEl {
 export function setFront(el: CardEl, card: Card): void {
   el.className = `card card-front ${SUIT_COLOR[card.suit] === 'red' ? 'card-red' : 'card-black'}`;
   el.textContent = cardText(card);
+  el.dataset.rank = RANK_DISPLAY[card.rank];
+  el.dataset.suit = SUIT_SYMBOL[card.suit];
   el.setAttribute('aria-label', `${card.rank} of ${card.suit}s`);
 }
 

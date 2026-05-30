@@ -35,11 +35,18 @@ export function gameTable(args: {
   centerText: string;
   refs: GameTableRefs;
 }): TemplateResult {
-  const seat = (cls: string, p: SeatProps, refEl: Ref<HTMLDivElement>): TemplateResult =>
-    html`<div class=${`spades-seat ${cls}${p.active ? ' active' : ''}`}>
-      <span class="spades-seat-label">${p.connected ? '● ' : '○ '}${p.name}</span>
+  const chip = (p: SeatProps): TemplateResult => {
+    const chipCls = `spades-seat-chip${p.connected ? '' : ' is-disconnected'}`;
+    return html`<div class=${chipCls}>
+      <span class="spades-seat-label">${p.name}</span>
       ${p.clockText ? html`<span class="spades-clock">${p.clockText}</span>` : null}
       <span class="spades-seat-info">${p.betInfo}</span>
+    </div>`;
+  };
+
+  const seat = (cls: string, p: SeatProps, refEl: Ref<HTMLDivElement>): TemplateResult =>
+    html`<div class=${`spades-seat ${cls}${p.active ? ' active' : ''}`}>
+      ${chip(p)}
       <div class="card-container opp-container" ${ref(refEl)}></div>
     </div>`;
 
@@ -56,11 +63,7 @@ export function gameTable(args: {
     </div>
     ${seat('seat-east', args.east, args.refs.east)}
     <div class="spades-seat seat-south${args.south.active ? ' active' : ''}">
-      <span class="spades-seat-label">${args.south.connected ? '● ' : '○ '}${args.south.name}</span>
-      ${args.south.clockText
-        ? html`<span class="spades-clock">${args.south.clockText}</span>`
-        : null}
-      <span class="spades-seat-info">${args.south.betInfo}</span>
+      ${chip(args.south)}
       <div class="card-container hand-container" ${ref(args.refs.hand)}></div>
     </div>
   </div>`;

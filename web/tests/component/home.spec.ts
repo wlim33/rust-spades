@@ -17,13 +17,11 @@ describe('home route', () => {
     expect(menu).not.toBeNull();
     const buttons = menu!.querySelectorAll('button');
     expect(buttons.length).toBe(5);
-    expect(Array.from(buttons).map((b) => b.textContent?.trim())).toEqual([
-      '5+3',
-      '10+5',
-      '15+10',
-      'Play with Friends',
-      'Play with Computers',
-    ]);
+
+    const labels = Array.from(buttons).map(
+      (b) => b.querySelector('.menu__row-title')?.textContent?.trim() ?? b.textContent?.trim(),
+    );
+    expect(labels).toEqual(['5+3', '10+5', '15+10', 'Play with friends', 'Play with computers']);
     cleanup();
   });
 
