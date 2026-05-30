@@ -54,6 +54,7 @@ fn sqids_instance() -> &'static Sqids {
     })
 }
 
+/// Encode a [`Uuid`] as a short, URL-safe id (sqids, min length 6). Inverse of [`short_id_to_uuid`].
 pub fn uuid_to_short_id(uuid: Uuid) -> String {
     let bytes = uuid.as_bytes();
     let high = u64::from_be_bytes(bytes[0..8].try_into().unwrap());
@@ -61,6 +62,7 @@ pub fn uuid_to_short_id(uuid: Uuid) -> String {
     sqids_instance().encode(&[high, low]).expect("sqids encode")
 }
 
+/// Decode a short id from [`uuid_to_short_id`] back into a [`Uuid`], or `None` if malformed.
 pub fn short_id_to_uuid(short_id: &str) -> Option<Uuid> {
     let nums = sqids_instance().decode(short_id);
     if nums.len() != 2 {
@@ -72,6 +74,7 @@ pub fn short_id_to_uuid(short_id: &str) -> Option<Uuid> {
     Some(Uuid::from_bytes(bytes))
 }
 
+/// Encode a `(game_id, player_id)` pair into a single short, URL-safe token. Inverse of [`decode_player_url`].
 pub fn encode_player_url(game_id: Uuid, player_id: Uuid) -> String {
     let gb = game_id.as_bytes();
     let pb = player_id.as_bytes();
@@ -85,6 +88,7 @@ pub fn encode_player_url(game_id: Uuid, player_id: Uuid) -> String {
         .expect("sqids encode")
 }
 
+/// Decode a token from [`encode_player_url`] into `(game_id, player_id)`, or `None` if malformed.
 pub fn decode_player_url(s: &str) -> Option<(Uuid, Uuid)> {
     let nums = sqids_instance().decode(s);
     if nums.len() != 4 {
@@ -233,6 +237,9 @@ impl<'de> serde::Deserialize<'de> for Game {
 }
 
 impl Game {
+    /// Create a new game for the four `player_ids` (seat order A, B, C, D), played to
+    /// `max_points`, with an optional Fischer-increment [`TimerConfig`]. The game begins in
+    /// [`State::NotStarted`]; call [`Game::play`] with [`GameTransition::Start`] to deal and bet.
     pub fn new(
         id: Uuid,
         player_ids: [Uuid; 4],
@@ -265,6 +272,7 @@ impl Game {
         }
     }
 
+    /// The game's unique id.
     pub fn get_id(&self) -> &Uuid {
         &self.id
     }
@@ -274,6 +282,7 @@ impl Game {
         &self.state
     }
 
+    /// Team A's (seats 0 & 2) cumulative score. `Err` before the game has started.
     pub fn get_team_a_score(&self) -> Result<&i32, GetError> {
         match self.state {
             State::NotStarted => Err(GetError::GameNotStarted),
@@ -281,6 +290,7 @@ impl Game {
         }
     }
 
+    /// Team B's (seats 1 & 3) cumulative score. `Err` before the game has started.
     pub fn get_team_b_score(&self) -> Result<&i32, GetError> {
         match self.state {
             State::NotStarted => Err(GetError::GameNotStarted),
@@ -288,6 +298,7 @@ impl Game {
         }
     }
 
+    /// Team A's accumulated bags (overtricks). `Err` before the game has started.
     pub fn get_team_a_bags(&self) -> Result<&i32, GetError> {
         match self.state {
             State::NotStarted => Err(GetError::GameNotStarted),
@@ -295,6 +306,7 @@ impl Game {
         }
     }
 
+    /// Team B's accumulated bags (overtricks). `Err` before the game has started.
     pub fn get_team_b_bags(&self) -> Result<&i32, GetError> {
         match self.state {
             State::NotStarted => Err(GetError::GameNotStarted),
@@ -320,6 +332,7 @@ impl Game {
             .ok_or(GetError::InvalidUuid)
     }
 
+    /// The hand of the player whose turn it is. `Err` unless the game is in the Betting or Trick stage.
     pub fn get_current_hand(&self) -> Result<&Vec<Card>, GetError> {
         match self.state {
             State::NotStarted => Err(GetError::GameNotStarted),
@@ -330,6 +343,7 @@ impl Game {
         }
     }
 
+    /// The suit led in the current trick, or `None` if no card has been led yet. Only valid in the Trick stage.
     pub fn get_leading_suit(&self) -> Result<Option<Suit>, GetError> {
         match &self.state {
             State::NotStarted => Err(GetError::GameNotStarted),
@@ -361,6 +375,7 @@ impl Game {
             .ok_or(GetError::InvalidUuid)
     }
 
+    /// The ids of the two players on the winning team. `Err` unless the game has completed.
     pub fn get_winner_ids(&self) -> Result<(&Uuid, &Uuid), GetError> {
         match self.state {
             State::Completed => {
@@ -498,6 +513,7 @@ impl Game {
         }
     }
 
+    /// Set (or clear, with `None`) a player's display name. `Err` if no player matches `player_id`.
     pub fn set_player_name(
         &mut self,
         player_id: Uuid,
@@ -512,22 +528,27 @@ impl Game {
         Ok(())
     }
 
+    /// Each seat's `(id, display name)` in seat order.
     pub fn get_player_names(&self) -> [(Uuid, Option<&str>); 4] {
         std::array::from_fn(|i| (self.players[i].id, self.players[i].name.as_deref()))
     }
 
+    /// The Fischer-increment timer config, if this game was created with one.
     pub fn get_timer_config(&self) -> Option<&TimerConfig> {
         self.timer_config.as_ref()
     }
 
+    /// Each player's remaining clock, if this game uses timers.
     pub fn get_player_clocks(&self) -> Option<&PlayerClocks> {
         self.player_clocks.as_ref()
     }
 
+    /// Mutable access to the player clocks, if this game uses timers (server debits time here).
     pub fn get_player_clocks_mut(&mut self) -> Option<&mut PlayerClocks> {
         self.player_clocks.as_mut()
     }
 
+    /// The 0-based seat index of the player whose turn it is.
     pub fn get_current_player_index_num(&self) -> usize {
         self.current_player_index
     }
@@ -537,14 +558,17 @@ impl Game {
         self.scoring.round == 0 && matches!(self.state, State::Betting(_))
     }
 
+    /// Wall-clock time (epoch ms) the current turn began, if tracked (server-set for timed games).
     pub fn get_turn_started_at_epoch_ms(&self) -> Option<u64> {
         self.turn_started_at_epoch_ms
     }
 
+    /// Record when the current turn began (epoch ms); used by the server for clock accounting.
     pub fn set_turn_started_at_epoch_ms(&mut self, epoch_ms: Option<u64>) {
         self.turn_started_at_epoch_ms = epoch_ms;
     }
 
+    /// Each seat's bet for the current round, or `None` before the game has started.
     pub fn get_player_bets(&self) -> Option<[i32; 4]> {
         match self.state {
             State::NotStarted => None,
@@ -552,6 +576,7 @@ impl Game {
         }
     }
 
+    /// Each seat's tricks won so far this round, or `None` before the game has started.
     pub fn get_player_tricks_won(&self) -> Option<[i32; 4]> {
         match self.state {
             State::NotStarted => None,
@@ -559,11 +584,17 @@ impl Game {
         }
     }
 
+    /// The id of the player who won the most recently completed trick, or `None`
+    /// between rounds and before any trick completes.
     pub fn get_last_trick_winner_id(&self) -> Option<Uuid> {
+        // `last_trick_winner` is always a valid seat by construction; `.min(3)`
+        // defensively guards against an out-of-range index from a corrupt
+        // deserialized row (prefer a wrong-but-safe id over a panic here).
         self.last_trick_winner
             .map(|idx| self.players[idx.min(3)].id)
     }
 
+    /// The four cards of the most recently completed trick, or `None` if none has completed this round.
     pub fn get_last_completed_trick(&self) -> Option<&[cards::Card; 4]> {
         self.last_completed_trick.as_ref()
     }

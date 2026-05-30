@@ -10,7 +10,7 @@ use super::{DecodeError, Headers, Round, Termination, Transcript};
 /// This function performs *syntactic* validation only: it confirms the format
 /// is well-formed (tag pairs, escape sequences, card notation, monotonic round
 /// numbers, count bounds). It does NOT verify that the encoded moves form a
-/// legal game — that semantic check happens in [`replay`].
+/// legal game — that semantic check happens in [`replay`](fn@super::replay).
 ///
 /// Returns specific `DecodeError` variants pointing to the offending line for
 /// every failure mode.

@@ -95,5 +95,4 @@ Standard bids and nil bids are supported. Blind nil (commit to nil before seeing
 
 All Phase 3/4 cleanup items are now done: `bin/server.rs` split into a module directory, HTTP error bodies use `Display`, `GameManagerError` carries typed `Transition`/`Get` variants, `Suit::Blank`/`Rank::Blank` removed, `current_round_tricks_won` collapsed to a single counter, and the workspace split (`spades-core` + `spades-server`) is in place.
 
-Remaining nits:
-- `GetError` still uses a manual `Display` impl and does not implement `std::error::Error`. Low priority — error consumers in this repo only need `Display`.
+Remaining nits: none outstanding. (`GetError` now implements `std::error::Error`, matching `TransitionError`.)
