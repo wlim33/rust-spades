@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { themeState, initialTheme } from '../../src/state/theme';
-import { clearThemePref, setThemePref } from '../../src/lib/storage';
+import { clearThemePref, setThemePref, getThemePref } from '../../src/lib/storage';
 
 /** In-memory localStorage stub for happy-dom / Node 26 environments. */
 function makeLocalStorage(): Storage {
@@ -26,14 +26,15 @@ function makeLocalStorage(): Storage {
 describe('theme controller', () => {
   beforeEach(() => {
     vi.stubGlobal('localStorage', makeLocalStorage());
-    clearThemePref();
-    document.documentElement.removeAttribute('data-theme');
     vi.stubGlobal('matchMedia', (q: string) => ({
       matches: false,
       media: q,
       addEventListener: () => {},
       removeEventListener: () => {},
     }));
+    themeState.set('light'); // reset the shared module signal to a known state
+    clearThemePref(); // ...then restore the "no explicit choice" precondition
+    document.documentElement.removeAttribute('data-theme');
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -50,6 +51,7 @@ describe('theme controller', () => {
     themeState.set('dark');
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     expect(themeState.theme.value).toBe('dark');
+    expect(getThemePref()).toBe('dark');
   });
 
   it('toggle() flips the current theme', () => {
