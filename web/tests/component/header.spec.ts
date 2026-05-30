@@ -3,7 +3,6 @@ import { render } from 'lit-html';
 import { header } from '../../src/ui/components/header';
 import { session } from '../../src/state/session';
 import type { User } from '../../src/state/user-types';
-import { icon } from '../../src/ui/icon'; // ensure icon module resolves in this suite
 import { themeState } from '../../src/state/theme';
 
 describe('header', () => {
@@ -50,6 +49,7 @@ describe('header theme toggle', () => {
     document.body.innerHTML = '<main id="root"></main>';
     themeState.set('light');
   });
+  afterEach(() => themeState.set('light'));
 
   it('renders a theme toggle button', () => {
     render(header(), document.getElementById('root')!);
