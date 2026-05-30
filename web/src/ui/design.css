@@ -63,6 +63,7 @@ main#root {
   justify-content: space-between;
   padding: var(--space-2) var(--space-4);
   background: transparent;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 .site-title {
   font-weight: 600;
