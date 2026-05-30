@@ -4,9 +4,9 @@
 //! are keyed by the per-session `anon_id` (carried through login) so a single
 //! household NAT doesn't share one bucket across four legitimate players.
 
-use governor::{Quota, RateLimiter};
 use governor::clock::DefaultClock;
 use governor::state::keyed::DefaultKeyedStateStore;
+use governor::{Quota, RateLimiter};
 use std::net::IpAddr;
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -39,26 +39,55 @@ pub struct RateLimitState {
 }
 
 impl Default for RateLimitState {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RateLimitState {
     pub fn new() -> Self {
-        fn ip_lim(quota: Quota) -> Arc<IpLimiter> { Arc::new(RateLimiter::keyed(quota)) }
-        fn s_lim(quota: Quota) -> Arc<StringLimiter> { Arc::new(RateLimiter::keyed(quota)) }
-        fn u_lim(quota: Quota) -> Arc<UuidLimiter> { Arc::new(RateLimiter::keyed(quota)) }
+        fn ip_lim(quota: Quota) -> Arc<IpLimiter> {
+            Arc::new(RateLimiter::keyed(quota))
+        }
+        fn s_lim(quota: Quota) -> Arc<StringLimiter> {
+            Arc::new(RateLimiter::keyed(quota))
+        }
+        fn u_lim(quota: Quota) -> Arc<UuidLimiter> {
+            Arc::new(RateLimiter::keyed(quota))
+        }
         RateLimitState {
-            login: ip_lim(Quota::per_minute(NonZeroU32::new(10).unwrap()).allow_burst(NonZeroU32::new(60).unwrap())),
-            register: ip_lim(Quota::per_minute(NonZeroU32::new(3).unwrap()).allow_burst(NonZeroU32::new(20).unwrap())),
+            login: ip_lim(
+                Quota::per_minute(NonZeroU32::new(10).unwrap())
+                    .allow_burst(NonZeroU32::new(60).unwrap()),
+            ),
+            register: ip_lim(
+                Quota::per_minute(NonZeroU32::new(3).unwrap())
+                    .allow_burst(NonZeroU32::new(20).unwrap()),
+            ),
             password_reset_request_ip: ip_lim(Quota::per_hour(NonZeroU32::new(3).unwrap())),
             password_reset_request_email: s_lim(Quota::per_minute(NonZeroU32::new(1).unwrap())),
             password_reset_confirm: ip_lim(Quota::per_hour(NonZeroU32::new(10).unwrap())),
             oauth_callback: ip_lim(Quota::per_minute(NonZeroU32::new(30).unwrap())),
-            create_game: u_lim(Quota::per_minute(NonZeroU32::new(5).unwrap()).allow_burst(NonZeroU32::new(10).unwrap())),
-            transition: u_lim(Quota::per_minute(NonZeroU32::new(60).unwrap()).allow_burst(NonZeroU32::new(120).unwrap())),
-            create_seek: u_lim(Quota::per_minute(NonZeroU32::new(10).unwrap()).allow_burst(NonZeroU32::new(20).unwrap())),
-            challenge_action: u_lim(Quota::per_minute(NonZeroU32::new(10).unwrap()).allow_burst(NonZeroU32::new(20).unwrap())),
-            chat_message: u_lim(Quota::per_minute(NonZeroU32::new(30).unwrap()).allow_burst(NonZeroU32::new(60).unwrap())),
+            create_game: u_lim(
+                Quota::per_minute(NonZeroU32::new(5).unwrap())
+                    .allow_burst(NonZeroU32::new(10).unwrap()),
+            ),
+            transition: u_lim(
+                Quota::per_minute(NonZeroU32::new(60).unwrap())
+                    .allow_burst(NonZeroU32::new(120).unwrap()),
+            ),
+            create_seek: u_lim(
+                Quota::per_minute(NonZeroU32::new(10).unwrap())
+                    .allow_burst(NonZeroU32::new(20).unwrap()),
+            ),
+            challenge_action: u_lim(
+                Quota::per_minute(NonZeroU32::new(10).unwrap())
+                    .allow_burst(NonZeroU32::new(20).unwrap()),
+            ),
+            chat_message: u_lim(
+                Quota::per_minute(NonZeroU32::new(30).unwrap())
+                    .allow_burst(NonZeroU32::new(60).unwrap()),
+            ),
         }
     }
 }
@@ -68,8 +97,13 @@ pub fn check_ip(
     ip: IpAddr,
 ) -> Result<(), crate::auth::AuthError> {
     limiter.check_key(&ip).map_err(|nu| {
-        let wait_secs = nu.wait_time_from(std::time::Instant::now()).as_secs().max(1);
-        crate::auth::AuthError::RateLimited { retry_after_secs: wait_secs }
+        let wait_secs = nu
+            .wait_time_from(std::time::Instant::now())
+            .as_secs()
+            .max(1);
+        crate::auth::AuthError::RateLimited {
+            retry_after_secs: wait_secs,
+        }
     })?;
     Ok(())
 }
@@ -79,8 +113,13 @@ pub fn check_email(
     email: &str,
 ) -> Result<(), crate::auth::AuthError> {
     limiter.check_key(&email.to_string()).map_err(|nu| {
-        let wait_secs = nu.wait_time_from(std::time::Instant::now()).as_secs().max(1);
-        crate::auth::AuthError::RateLimited { retry_after_secs: wait_secs }
+        let wait_secs = nu
+            .wait_time_from(std::time::Instant::now())
+            .as_secs()
+            .max(1);
+        crate::auth::AuthError::RateLimited {
+            retry_after_secs: wait_secs,
+        }
     })?;
     Ok(())
 }
@@ -90,8 +129,13 @@ pub fn check_user(
     user_id: Uuid,
 ) -> Result<(), crate::auth::AuthError> {
     limiter.check_key(&user_id).map_err(|nu| {
-        let wait_secs = nu.wait_time_from(std::time::Instant::now()).as_secs().max(1);
-        crate::auth::AuthError::RateLimited { retry_after_secs: wait_secs }
+        let wait_secs = nu
+            .wait_time_from(std::time::Instant::now())
+            .as_secs()
+            .max(1);
+        crate::auth::AuthError::RateLimited {
+            retry_after_secs: wait_secs,
+        }
     })?;
     Ok(())
 }
@@ -112,11 +156,13 @@ mod tests {
         let uid = Uuid::new_v4();
         // create_game burst is 10 — first 10 succeed, 11th fails.
         for i in 0..10 {
-            assert!(check_user(&state.create_game, uid).is_ok(),
-                    "call {i} should be within burst");
+            assert!(
+                check_user(&state.create_game, uid).is_ok(),
+                "call {i} should be within burst"
+            );
         }
-        let err = check_user(&state.create_game, uid)
-            .expect_err("11th call should be rate-limited");
+        let err =
+            check_user(&state.create_game, uid).expect_err("11th call should be rate-limited");
         match err {
             AuthError::RateLimited { retry_after_secs } => {
                 assert!(retry_after_secs >= 1, "retry_after should be at least 1s");
@@ -136,7 +182,9 @@ mod tests {
             let _ = check_user(&state.create_game, uid);
         }
         assert!(check_user(&state.create_game, uid).is_err());
-        assert!(check_user(&state.transition, uid).is_ok(),
-                "different limiter has its own bucket");
+        assert!(
+            check_user(&state.transition, uid).is_ok(),
+            "different limiter has its own bucket"
+        );
     }
 }

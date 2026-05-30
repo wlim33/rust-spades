@@ -33,13 +33,20 @@ async fn register_rejects_duplicate_username() {
         "email": "alice@example.com",
         "password": "hunter2-strong",
     });
-    server.post("/auth/register").json(&req).await.assert_status(StatusCode::CREATED);
+    server
+        .post("/auth/register")
+        .json(&req)
+        .await
+        .assert_status(StatusCode::CREATED);
 
-    let dup = server.post("/auth/register").json(&json!({
-        "username": "alice",
-        "email": "different@example.com",
-        "password": "hunter2-strong",
-    })).await;
+    let dup = server
+        .post("/auth/register")
+        .json(&json!({
+            "username": "alice",
+            "email": "different@example.com",
+            "password": "hunter2-strong",
+        }))
+        .await;
     dup.assert_status(StatusCode::CONFLICT);
     let b: serde_json::Value = dup.json();
     assert_eq!(b["error"], "username_taken");
@@ -48,28 +55,45 @@ async fn register_rejects_duplicate_username() {
 #[tokio::test]
 async fn login_with_email_works() {
     let server = common::test_server();
-    server.post("/auth/register").json(&json!({
-        "username": "Alice", "email": "alice@example.com", "password": "hunter2-strong",
-    })).await.assert_status(StatusCode::CREATED);
+    server
+        .post("/auth/register")
+        .json(&json!({
+            "username": "Alice", "email": "alice@example.com", "password": "hunter2-strong",
+        }))
+        .await
+        .assert_status(StatusCode::CREATED);
 
-    server.post("/auth/logout").await.assert_status(StatusCode::NO_CONTENT);
+    server
+        .post("/auth/logout")
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
 
-    let login = server.post("/auth/login").json(&json!({
-        "login": "alice@example.com", "password": "hunter2-strong",
-    })).await;
+    let login = server
+        .post("/auth/login")
+        .json(&json!({
+            "login": "alice@example.com", "password": "hunter2-strong",
+        }))
+        .await;
     login.assert_status(StatusCode::OK);
 }
 
 #[tokio::test]
 async fn login_with_wrong_password_returns_401() {
     let server = common::test_server();
-    server.post("/auth/register").json(&json!({
-        "username": "Alice", "email": "alice@example.com", "password": "hunter2-strong",
-    })).await.assert_status(StatusCode::CREATED);
+    server
+        .post("/auth/register")
+        .json(&json!({
+            "username": "Alice", "email": "alice@example.com", "password": "hunter2-strong",
+        }))
+        .await
+        .assert_status(StatusCode::CREATED);
     server.post("/auth/logout").await;
 
-    let login = server.post("/auth/login").json(&json!({
-        "login": "alice@example.com", "password": "wrong-password",
-    })).await;
+    let login = server
+        .post("/auth/login")
+        .json(&json!({
+            "login": "alice@example.com", "password": "wrong-password",
+        }))
+        .await;
     login.assert_status(StatusCode::UNAUTHORIZED);
 }

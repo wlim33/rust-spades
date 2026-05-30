@@ -3,14 +3,14 @@
 //! seat-to-identity mapping.
 
 pub mod error;
-pub mod password;
-pub mod users;
-pub mod session_ext;
-pub mod tokens;
 pub mod game_seats;
 pub mod mailer;
-pub mod rate_limit;
 pub mod oauth;
+pub mod password;
+pub mod rate_limit;
+pub mod session_ext;
+pub mod tokens;
+pub mod users;
 
 pub use error::AuthError;
 
@@ -78,7 +78,10 @@ where
             match auth_state.store.find_user_by_api_token(&hash) {
                 Ok(Some(user)) => {
                     let user_id = user.id;
-                    return Ok(Identity::Registered { user, anon_id: user_id });
+                    return Ok(Identity::Registered {
+                        user,
+                        anon_id: user_id,
+                    });
                 }
                 Ok(None) => {
                     // Header present but token not recognized — surface a
@@ -91,7 +94,8 @@ where
         }
 
         // Cookie-session path: the original behavior.
-        let session = Session::from_request_parts(parts, state).await
+        let session = Session::from_request_parts(parts, state)
+            .await
             .map_err(|_| AuthError::Internal("session extractor failed".into()))?;
         identify(&session, &auth_state).await
     }
@@ -121,7 +125,9 @@ pub async fn identify(session: &Session, state: &AuthState) -> Result<Identity, 
         return Ok(Identity::Anonymous { anon_id });
     };
 
-    let user = state.store.find_user_by_id(claimed_id)
+    let user = state
+        .store
+        .find_user_by_id(claimed_id)
         .map_err(AuthError::Storage)?;
 
     let Some(user) = user else {

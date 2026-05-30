@@ -75,17 +75,17 @@ impl MailerQueue {
 #[async_trait::async_trait]
 impl Mailer for MailerQueue {
     async fn send(&self, email: Email) -> Result<(), AuthError> {
-        self.sender.send(email).map_err(|_| {
-            AuthError::Internal("mailer queue closed".into())
-        })?;
+        self.sender
+            .send(email)
+            .map_err(|_| AuthError::Internal("mailer queue closed".into()))?;
         Ok(())
     }
 }
 
 use lettre::{
-    message::{header::ContentType, Mailbox},
-    transport::smtp::authentication::Credentials,
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+    message::{Mailbox, header::ContentType},
+    transport::smtp::authentication::Credentials,
 };
 
 #[derive(Clone)]
@@ -228,7 +228,11 @@ mod tests {
         }
 
         let sent = backing.sent();
-        assert_eq!(sent.len(), 3, "all enqueued emails reach the backing mailer");
+        assert_eq!(
+            sent.len(),
+            3,
+            "all enqueued emails reach the backing mailer"
+        );
         assert_eq!(sent[0].to, "u0@example.com");
         assert_eq!(sent[2].to, "u2@example.com");
     }

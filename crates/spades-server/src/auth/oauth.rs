@@ -40,26 +40,40 @@ pub fn google_client(state: &OauthState) -> Option<BasicClient> {
     let cfg = state.google.as_ref()?;
     let auth = AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".into()).ok()?;
     let token = TokenUrl::new("https://oauth2.googleapis.com/token".into()).ok()?;
-    let redirect = RedirectUrl::new(format!("{}/auth/oauth/google/callback", state.redirect_base_url)).ok()?;
-    Some(BasicClient::new(
-        ClientId::new(cfg.client_id.clone()),
-        Some(ClientSecret::new(cfg.client_secret.clone())),
-        auth,
-        Some(token),
-    ).set_redirect_uri(redirect))
+    let redirect = RedirectUrl::new(format!(
+        "{}/auth/oauth/google/callback",
+        state.redirect_base_url
+    ))
+    .ok()?;
+    Some(
+        BasicClient::new(
+            ClientId::new(cfg.client_id.clone()),
+            Some(ClientSecret::new(cfg.client_secret.clone())),
+            auth,
+            Some(token),
+        )
+        .set_redirect_uri(redirect),
+    )
 }
 
 pub fn github_client(state: &OauthState) -> Option<BasicClient> {
     let cfg = state.github.as_ref()?;
     let auth = AuthUrl::new("https://github.com/login/oauth/authorize".into()).ok()?;
     let token = TokenUrl::new("https://github.com/login/oauth/access_token".into()).ok()?;
-    let redirect = RedirectUrl::new(format!("{}/auth/oauth/github/callback", state.redirect_base_url)).ok()?;
-    Some(BasicClient::new(
-        ClientId::new(cfg.client_id.clone()),
-        Some(ClientSecret::new(cfg.client_secret.clone())),
-        auth,
-        Some(token),
-    ).set_redirect_uri(redirect))
+    let redirect = RedirectUrl::new(format!(
+        "{}/auth/oauth/github/callback",
+        state.redirect_base_url
+    ))
+    .ok()?;
+    Some(
+        BasicClient::new(
+            ClientId::new(cfg.client_id.clone()),
+            Some(ClientSecret::new(cfg.client_secret.clone())),
+            auth,
+            Some(token),
+        )
+        .set_redirect_uri(redirect),
+    )
 }
 
 impl OauthState {
@@ -91,12 +105,24 @@ impl OauthState {
     }
 
     pub fn from_env() -> Self {
-        let google = match (std::env::var("GOOGLE_OAUTH_CLIENT_ID"), std::env::var("GOOGLE_OAUTH_CLIENT_SECRET")) {
-            (Ok(id), Ok(sec)) => Some(OauthProviderConfig { client_id: id, client_secret: sec }),
+        let google = match (
+            std::env::var("GOOGLE_OAUTH_CLIENT_ID"),
+            std::env::var("GOOGLE_OAUTH_CLIENT_SECRET"),
+        ) {
+            (Ok(id), Ok(sec)) => Some(OauthProviderConfig {
+                client_id: id,
+                client_secret: sec,
+            }),
             _ => None,
         };
-        let github = match (std::env::var("GITHUB_OAUTH_CLIENT_ID"), std::env::var("GITHUB_OAUTH_CLIENT_SECRET")) {
-            (Ok(id), Ok(sec)) => Some(OauthProviderConfig { client_id: id, client_secret: sec }),
+        let github = match (
+            std::env::var("GITHUB_OAUTH_CLIENT_ID"),
+            std::env::var("GITHUB_OAUTH_CLIENT_SECRET"),
+        ) {
+            (Ok(id), Ok(sec)) => Some(OauthProviderConfig {
+                client_id: id,
+                client_secret: sec,
+            }),
             _ => None,
         };
         let redirect_base_url = std::env::var("OAUTH_REDIRECT_BASE_URL")
@@ -136,8 +162,12 @@ mod tests {
         let s = state();
         let past = OffsetDateTime::now_utc() - TimeDuration::seconds(60);
         let future = OffsetDateTime::now_utc() + TimeDuration::seconds(60);
-        s.csrf.lock_or_recover().insert("expired".into(), (Uuid::nil(), past, "v".into()));
-        s.csrf.lock_or_recover().insert("fresh".into(), (Uuid::nil(), future, "v".into()));
+        s.csrf
+            .lock_or_recover()
+            .insert("expired".into(), (Uuid::nil(), past, "v".into()));
+        s.csrf
+            .lock_or_recover()
+            .insert("fresh".into(), (Uuid::nil(), future, "v".into()));
         assert_eq!(s.sweep_expired(), 1);
         let csrf = s.csrf.lock_or_recover();
         assert_eq!(csrf.len(), 1);
@@ -149,8 +179,12 @@ mod tests {
         let s = state();
         let past = OffsetDateTime::now_utc() - TimeDuration::seconds(60);
         let future = OffsetDateTime::now_utc() + TimeDuration::seconds(60);
-        s.pending.lock_or_recover().insert("expired".into(), pending(past));
-        s.pending.lock_or_recover().insert("fresh".into(), pending(future));
+        s.pending
+            .lock_or_recover()
+            .insert("expired".into(), pending(past));
+        s.pending
+            .lock_or_recover()
+            .insert("fresh".into(), pending(future));
         assert_eq!(s.sweep_expired(), 1);
         let pending_map = s.pending.lock_or_recover();
         assert_eq!(pending_map.len(), 1);
@@ -161,8 +195,12 @@ mod tests {
     fn sweep_expired_counts_across_both_maps() {
         let s = state();
         let past = OffsetDateTime::now_utc() - TimeDuration::seconds(60);
-        s.csrf.lock_or_recover().insert("c".into(), (Uuid::nil(), past, "v".into()));
-        s.pending.lock_or_recover().insert("p".into(), pending(past));
+        s.csrf
+            .lock_or_recover()
+            .insert("c".into(), (Uuid::nil(), past, "v".into()));
+        s.pending
+            .lock_or_recover()
+            .insert("p".into(), pending(past));
         assert_eq!(s.sweep_expired(), 2);
     }
 
@@ -208,8 +246,12 @@ mod tests {
     fn sweep_expired_is_a_noop_when_nothing_expired() {
         let s = state();
         let future = OffsetDateTime::now_utc() + TimeDuration::seconds(60);
-        s.csrf.lock_or_recover().insert("c".into(), (Uuid::nil(), future, "v".into()));
-        s.pending.lock_or_recover().insert("p".into(), pending(future));
+        s.csrf
+            .lock_or_recover()
+            .insert("c".into(), (Uuid::nil(), future, "v".into()));
+        s.pending
+            .lock_or_recover()
+            .insert("p".into(), pending(future));
         assert_eq!(s.sweep_expired(), 0);
         assert_eq!(s.csrf.lock_or_recover().len(), 1);
         assert_eq!(s.pending.lock_or_recover().len(), 1);

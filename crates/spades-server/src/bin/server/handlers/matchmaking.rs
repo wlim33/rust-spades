@@ -2,8 +2,8 @@ use axum::{
     extract::State as AxumState,
     http::StatusCode,
     response::{
-        sse::{Event, KeepAlive, Sse},
         Json,
+        sse::{Event, KeepAlive, Sse},
     },
 };
 use oasgen::oasgen;
@@ -13,8 +13,8 @@ use std::convert::Infallible;
 use std::time::Duration;
 use uuid::Uuid;
 
-use super::super::dto::{ErrorResponse, SeekRequest};
 use super::super::AppState;
+use super::super::dto::{ErrorResponse, SeekRequest};
 
 struct SeekGuard {
     matchmaker: Matchmaker,
@@ -34,7 +34,10 @@ pub async fn seek(
     AxumState(state): AxumState<AppState>,
     identity: spades_server::auth::Identity,
     Json(request): Json<SeekRequest>,
-) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<
+    Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>,
+    (StatusCode, Json<ErrorResponse>),
+> {
     spades_server::auth::rate_limit::check_user(&state.auth.rate.create_seek, identity.anon_id())
         .map_err(super::super::dto::auth_err_response)?;
 
@@ -49,7 +52,12 @@ pub async fn seek(
 
     let validated_name = match request.name {
         Some(raw) => Some(validate_player_name(&raw).map_err(|e| {
-            (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() }))
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
         })?),
         None => None,
     };
@@ -64,8 +72,10 @@ pub async fn seek(
     let anon = identity.anon_id();
     let store = state.auth.store.clone();
 
-    let (player_id, mut rx) =
-        state.matchmaker.add_seek(request.max_points, request.timer_config, validated_name).await;
+    let (player_id, mut rx) = state
+        .matchmaker
+        .add_seek(request.max_points, request.timer_config, validated_name)
+        .await;
 
     let stream = async_stream::stream! {
         let mut guard = SeekGuard {
@@ -120,6 +130,8 @@ pub async fn list_seeks_handler(AxumState(state): AxumState<AppState>) -> Json<V
 }
 
 #[oasgen]
-pub async fn queue_sizes_handler(AxumState(state): AxumState<AppState>) -> Json<Vec<QueueSizeEntry>> {
+pub async fn queue_sizes_handler(
+    AxumState(state): AxumState<AppState>,
+) -> Json<Vec<QueueSizeEntry>> {
     Json(state.matchmaker.queue_sizes())
 }

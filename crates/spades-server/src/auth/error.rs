@@ -1,8 +1,8 @@
 //! AuthError type and HTTP response mapping.
 
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
@@ -65,7 +65,8 @@ impl AuthError {
 
     fn body(&self) -> ErrorBody<'_> {
         let retry_after_secs = match self {
-            AuthError::Locked { retry_after_secs } | AuthError::RateLimited { retry_after_secs } => Some(*retry_after_secs),
+            AuthError::Locked { retry_after_secs }
+            | AuthError::RateLimited { retry_after_secs } => Some(*retry_after_secs),
             _ => None,
         };
         let details = match self {
@@ -103,9 +104,12 @@ impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let status = self.status();
         let mut resp = (status, Json(self.body())).into_response();
-        if let AuthError::RateLimited { retry_after_secs } | AuthError::Locked { retry_after_secs } = &self {
+        if let AuthError::RateLimited { retry_after_secs }
+        | AuthError::Locked { retry_after_secs } = &self
+        {
             if let Ok(hv) = retry_after_secs.to_string().parse() {
-                resp.headers_mut().insert(axum::http::header::RETRY_AFTER, hv);
+                resp.headers_mut()
+                    .insert(axum::http::header::RETRY_AFTER, hv);
             }
         }
         resp
@@ -118,25 +122,57 @@ mod tests {
 
     #[test]
     fn status_codes_match_spec() {
-        assert_eq!(AuthError::Unauthenticated.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            AuthError::Unauthenticated.status(),
+            StatusCode::UNAUTHORIZED
+        );
         assert_eq!(AuthError::Forbidden.status(), StatusCode::FORBIDDEN);
         assert_eq!(AuthError::UsernameTaken.status(), StatusCode::CONFLICT);
         assert_eq!(AuthError::EmailTaken.status(), StatusCode::CONFLICT);
-        assert_eq!(AuthError::InvalidCredentials.status(), StatusCode::UNAUTHORIZED);
-        assert_eq!(AuthError::Locked { retry_after_secs: 30 }.status(), StatusCode::LOCKED);
-        assert_eq!(AuthError::RateLimited { retry_after_secs: 30 }.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            AuthError::InvalidCredentials.status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            AuthError::Locked {
+                retry_after_secs: 30
+            }
+            .status(),
+            StatusCode::LOCKED
+        );
+        assert_eq!(
+            AuthError::RateLimited {
+                retry_after_secs: 30
+            }
+            .status(),
+            StatusCode::TOO_MANY_REQUESTS
+        );
         assert_eq!(AuthError::TokenInvalid.status(), StatusCode::GONE);
-        assert_eq!(AuthError::OauthFailed("x".into()).status(), StatusCode::BAD_REQUEST);
-        assert_eq!(AuthError::Validation("x".into()).status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            AuthError::OauthFailed("x".into()).status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            AuthError::Validation("x".into()).status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
         assert_eq!(AuthError::MailerFailed.status(), StatusCode::BAD_GATEWAY);
-        assert_eq!(AuthError::Storage("x".into()).status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            AuthError::Storage("x".into()).status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
     }
 
     #[test]
     fn error_codes_stable() {
         assert_eq!(error_code(&AuthError::Unauthenticated), "unauthenticated");
         assert_eq!(error_code(&AuthError::UsernameTaken), "username_taken");
-        assert_eq!(error_code(&AuthError::Locked { retry_after_secs: 0 }), "locked");
+        assert_eq!(
+            error_code(&AuthError::Locked {
+                retry_after_secs: 0
+            }),
+            "locked"
+        );
         assert_eq!(error_code(&AuthError::Storage("x".into())), "internal");
     }
 }

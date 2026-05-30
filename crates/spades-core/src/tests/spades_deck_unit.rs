@@ -1,5 +1,5 @@
-use super::super::cards::{Card, Suit, Rank, get_trick_winner, deal_four_players};
 use super::super::cards;
+use super::super::cards::{Card, Rank, Suit, deal_four_players, get_trick_winner};
 use ntest::test_case;
 use std::cmp::Ordering;
 
@@ -24,10 +24,22 @@ fn deal_deck_four_players() {
 #[test_case(3, 1)]
 fn trick_winner_same_suit(start: usize, expected: usize) {
     let trick = [
-        Card { suit: Suit::Club, rank: Rank::Two },
-        Card { suit: Suit::Club, rank: Rank::Ace },
-        Card { suit: Suit::Club, rank: Rank::King },
-        Card { suit: Suit::Club, rank: Rank::Nine },
+        Card {
+            suit: Suit::Club,
+            rank: Rank::Two,
+        },
+        Card {
+            suit: Suit::Club,
+            rank: Rank::Ace,
+        },
+        Card {
+            suit: Suit::Club,
+            rank: Rank::King,
+        },
+        Card {
+            suit: Suit::Club,
+            rank: Rank::Nine,
+        },
     ];
     assert_eq!(expected, get_trick_winner(start, &trick));
 }
@@ -38,10 +50,22 @@ fn trick_winner_same_suit(start: usize, expected: usize) {
 #[test_case(3, 3)]
 fn trick_winner_no_spades(start: usize, expected: usize) {
     let trick = [
-        Card { suit: Suit::Diamond, rank: Rank::Two },
-        Card { suit: Suit::Heart, rank: Rank::Ace },
-        Card { suit: Suit::Heart, rank: Rank::King },
-        Card { suit: Suit::Diamond, rank: Rank::Nine },
+        Card {
+            suit: Suit::Diamond,
+            rank: Rank::Two,
+        },
+        Card {
+            suit: Suit::Heart,
+            rank: Rank::Ace,
+        },
+        Card {
+            suit: Suit::Heart,
+            rank: Rank::King,
+        },
+        Card {
+            suit: Suit::Diamond,
+            rank: Rank::Nine,
+        },
     ];
     assert_eq!(expected, get_trick_winner(start, &trick));
 }
@@ -52,23 +76,47 @@ fn trick_winner_no_spades(start: usize, expected: usize) {
 #[test_case(3, 2)]
 fn trick_winner_spades(start: usize, expected: usize) {
     let trick = [
-        Card { suit: Suit::Diamond, rank: Rank::Two },
-        Card { suit: Suit::Heart, rank: Rank::Ace },
-        Card { suit: Suit::Spade, rank: Rank::Two },
-        Card { suit: Suit::Diamond, rank: Rank::Nine },
+        Card {
+            suit: Suit::Diamond,
+            rank: Rank::Two,
+        },
+        Card {
+            suit: Suit::Heart,
+            rank: Rank::Ace,
+        },
+        Card {
+            suit: Suit::Spade,
+            rank: Rank::Two,
+        },
+        Card {
+            suit: Suit::Diamond,
+            rank: Rank::Nine,
+        },
     ];
     assert_eq!(expected, get_trick_winner(start, &trick));
 }
 
 #[test]
 fn test_card_ord_comparison() {
-    let low = Card { suit: Suit::Club, rank: Rank::Two };
-    let high = Card { suit: Suit::Spade, rank: Rank::Ace };
+    let low = Card {
+        suit: Suit::Club,
+        rank: Rank::Two,
+    };
+    let high = Card {
+        suit: Suit::Spade,
+        rank: Rank::Ace,
+    };
     assert_eq!(low.cmp(&high), Ordering::Less);
     assert_eq!(high.cmp(&low), Ordering::Greater);
 
-    let same = Card { suit: Suit::Heart, rank: Rank::King };
-    let same2 = Card { suit: Suit::Heart, rank: Rank::King };
+    let same = Card {
+        suit: Suit::Heart,
+        rank: Rank::King,
+    };
+    let same2 = Card {
+        suit: Suit::Heart,
+        rank: Rank::King,
+    };
     assert_eq!(same.cmp(&same2), Ordering::Equal);
     assert_eq!(same.partial_cmp(&same2), Some(Ordering::Equal));
 }
@@ -76,10 +124,22 @@ fn test_card_ord_comparison() {
 #[test]
 fn test_get_trick_winner_multiple_spades() {
     let trick = [
-        Card { suit: Suit::Club, rank: Rank::Ace },
-        Card { suit: Suit::Spade, rank: Rank::Two },
-        Card { suit: Suit::Spade, rank: Rank::King },
-        Card { suit: Suit::Heart, rank: Rank::Ace },
+        Card {
+            suit: Suit::Club,
+            rank: Rank::Ace,
+        },
+        Card {
+            suit: Suit::Spade,
+            rank: Rank::Two,
+        },
+        Card {
+            suit: Suit::Spade,
+            rank: Rank::King,
+        },
+        Card {
+            suit: Suit::Heart,
+            rank: Rank::Ace,
+        },
     ];
     assert_eq!(2, get_trick_winner(0, &trick));
 }
@@ -87,17 +147,32 @@ fn test_get_trick_winner_multiple_spades() {
 #[test]
 fn test_get_trick_winner_leader_wins() {
     let trick = [
-        Card { suit: Suit::Diamond, rank: Rank::Ace },
-        Card { suit: Suit::Diamond, rank: Rank::King },
-        Card { suit: Suit::Diamond, rank: Rank::Queen },
-        Card { suit: Suit::Diamond, rank: Rank::Jack },
+        Card {
+            suit: Suit::Diamond,
+            rank: Rank::Ace,
+        },
+        Card {
+            suit: Suit::Diamond,
+            rank: Rank::King,
+        },
+        Card {
+            suit: Suit::Diamond,
+            rank: Rank::Queen,
+        },
+        Card {
+            suit: Suit::Diamond,
+            rank: Rank::Jack,
+        },
     ];
     assert_eq!(0, get_trick_winner(0, &trick));
 }
 
 #[test]
 fn test_card_debug_format() {
-    let card = Card { suit: Suit::Spade, rank: Rank::Ace };
+    let card = Card {
+        suit: Suit::Spade,
+        rank: Rank::Ace,
+    };
     let debug = format!("{:?}", card);
     assert!(debug.contains("A"));
 

@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt;
-use serde::{Serialize, Deserialize};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum TransitionSuccess {
@@ -9,7 +9,7 @@ pub enum TransitionSuccess {
     Trick,
     PlayCard,
     GameOver,
-    Start
+    Start,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -18,22 +18,27 @@ pub enum GetError {
     GameNotStarted,
     GameCompleted,
     GameNotCompleted,
-    Unknown
+    Unknown,
 }
 
 impl fmt::Display for GetError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             GetError::InvalidUuid => {
-                write!(f, "Error: Attempted to retrieve by an invalid Uuid")},
+                write!(f, "Error: Attempted to retrieve by an invalid Uuid")
+            }
             GetError::GameNotStarted => {
-                write!(f, "Error: Game not started yet.")},
+                write!(f, "Error: Game not started yet.")
+            }
             GetError::GameCompleted => {
-                write!(f, "Error: Game is completed.")},
+                write!(f, "Error: Game is completed.")
+            }
             GetError::GameNotCompleted => {
-                write!(f, "Error: Game is still ongoing.")},
+                write!(f, "Error: Game is still ongoing.")
+            }
             GetError::Unknown => {
-                write!(f, "Error: Unknown get error occurred.")},
+                write!(f, "Error: Unknown get error occurred.")
+            }
         }
     }
 }
@@ -56,21 +61,38 @@ impl fmt::Display for TransitionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             TransitionError::AlreadyStarted => {
-                write!(f, "Error: Attempted to start a game already started.")},
+                write!(f, "Error: Attempted to start a game already started.")
+            }
             TransitionError::NotStarted => {
-                write!(f, "Error: Attempted to play a game not started yet.")},
+                write!(f, "Error: Attempted to play a game not started yet.")
+            }
             TransitionError::CardInBettingStage => {
-                write!(f, "Error: Attempted to play a card while game is in betting stage.")},
+                write!(
+                    f,
+                    "Error: Attempted to play a card while game is in betting stage."
+                )
+            }
             TransitionError::BetInTrickStage => {
-                write!(f, "Error: Attempted to place a bet while game is in trick stage.")},
+                write!(
+                    f,
+                    "Error: Attempted to place a bet while game is in trick stage."
+                )
+            }
             TransitionError::CompletedGame => {
-                write!(f, "Error: Attempted to play a completed game.")},
+                write!(f, "Error: Attempted to play a completed game.")
+            }
             TransitionError::CardNotInHand => {
-                write!(f, "Error: Attempted to play a card not in hand.")},
+                write!(f, "Error: Attempted to play a card not in hand.")
+            }
             TransitionError::CardIncorrectSuit => {
-                write!(f, "Error: Attempted to play a card of the wrong suit.")},
+                write!(f, "Error: Attempted to play a card of the wrong suit.")
+            }
             TransitionError::SpadesNotBroken => {
-                write!(f, "Error: Cannot lead a spade until spades have been broken.")},
+                write!(
+                    f,
+                    "Error: Cannot lead a spade until spades have been broken."
+                )
+            }
         }
     }
 }
@@ -98,7 +120,12 @@ mod tests {
             _ => unreachable!(),
         };
         let msg = format!("{}", err);
-        assert!(msg.starts_with("Error:"), "GetError::{} display should start with 'Error:', got: {}", variant_name, msg);
+        assert!(
+            msg.starts_with("Error:"),
+            "GetError::{} display should start with 'Error:', got: {}",
+            variant_name,
+            msg
+        );
     }
 
     #[test_case("AlreadyStarted")]
@@ -122,13 +149,21 @@ mod tests {
             _ => unreachable!(),
         };
         let msg = format!("{}", err);
-        assert!(msg.starts_with("Error:"), "TransitionError::{} display should start with 'Error:', got: {}", variant_name, msg);
+        assert!(
+            msg.starts_with("Error:"),
+            "TransitionError::{} display should start with 'Error:', got: {}",
+            variant_name,
+            msg
+        );
     }
 
     #[test]
     fn transition_error_implements_std_error() {
         let err = TransitionError::NotStarted;
-        assert_eq!(err.to_string(), "Error: Attempted to play a game not started yet.");
+        assert_eq!(
+            err.to_string(),
+            "Error: Attempted to play a game not started yet."
+        );
         assert!(err.source().is_none());
     }
 }

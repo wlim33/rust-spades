@@ -1,4 +1,7 @@
-use axum::{extract::{ConnectInfo, Path, Query, State}, response::{Json, Redirect}};
+use axum::{
+    extract::{ConnectInfo, Path, Query, State},
+    response::{Json, Redirect},
+};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use tower_sessions::Session;
@@ -7,18 +10,18 @@ use uuid::Uuid;
 use crate::auth::{
     AuthError, AuthState, AuthUser,
     mailer::Email,
-    oauth::{google_client, github_client, PendingSignup},
-    password::{hash_password, validate_password, verify_password, verify_against_dummy},
+    oauth::{PendingSignup, github_client, google_client},
+    password::{hash_password, validate_password, verify_against_dummy, verify_password},
     rate_limit::{check_email, check_ip},
     session_ext,
-    tokens::{generate_token, hash_token, PURPOSE_PASSWORD_RESET, PURPOSE_VERIFY_EMAIL},
-    users::{validate_email, validate_username, NewUser, User},
+    tokens::{PURPOSE_PASSWORD_RESET, PURPOSE_VERIFY_EMAIL, generate_token, hash_token},
+    users::{NewUser, User, validate_email, validate_username},
 };
 use crate::lock_util::MutexExt;
 use crate::sqlite_store::{
-    claim_anon_game_seats_in, clear_login_failures_in, consume_auth_token_in,
-    find_user_by_id_in, insert_auth_token_in, insert_oauth_account_in, insert_user_in,
-    set_user_email_verified_in, touch_user_login_in, update_user_password_in,
+    claim_anon_game_seats_in, clear_login_failures_in, consume_auth_token_in, find_user_by_id_in,
+    insert_auth_token_in, insert_oauth_account_in, insert_user_in, set_user_email_verified_in,
+    touch_user_login_in, update_user_password_in,
 };
 
 #[derive(Deserialize)]
@@ -75,32 +78,43 @@ pub async fn register(
     // Without the transaction, a mid-sequence failure would leave a user row
     // without claimed seats or without an outstanding verify token (or both),
     // which the registration UI can't recover from.
-    let (user_id, user) = auth.store.with_tx(|conn| {
-        let user_id = insert_user_in(conn, &new)?;
-        claim_anon_game_seats_in(conn, anon_id, user_id)?;
-        insert_auth_token_in(conn, &token_hash, user_id, PURPOSE_VERIFY_EMAIL, 24 * 3600)?;
-        let user = find_user_by_id_in(conn, user_id)?
-            .ok_or_else(|| "user vanished after insert".to_string())?;
-        Ok((user_id, user))
-    }).map_err(|e| match e.as_str() {
-        "username_taken" => AuthError::UsernameTaken,
-        "email_taken" => AuthError::EmailTaken,
-        "user vanished after insert" => AuthError::Internal(e),
-        other => AuthError::Storage(other.to_string()),
-    })?;
+    let (user_id, user) = auth
+        .store
+        .with_tx(|conn| {
+            let user_id = insert_user_in(conn, &new)?;
+            claim_anon_game_seats_in(conn, anon_id, user_id)?;
+            insert_auth_token_in(conn, &token_hash, user_id, PURPOSE_VERIFY_EMAIL, 24 * 3600)?;
+            let user = find_user_by_id_in(conn, user_id)?
+                .ok_or_else(|| "user vanished after insert".to_string())?;
+            Ok((user_id, user))
+        })
+        .map_err(|e| match e.as_str() {
+            "username_taken" => AuthError::UsernameTaken,
+            "email_taken" => AuthError::EmailTaken,
+            "user vanished after insert" => AuthError::Internal(e),
+            other => AuthError::Storage(other.to_string()),
+        })?;
 
     session_ext::set_claimed(&session, user_id, user.token_version).await?;
 
-    let link = format!("{}/auth/verify-email?token={}", auth.oauth.redirect_base_url, token);
-    let _ = auth.mailer.send(Email {
-        to: user.email.clone(),
-        subject: "Verify your Spades email".into(),
-        body: format!("Verify your email: {link}\n\nThis link expires in 24 hours."),
-    }).await;
+    let link = format!(
+        "{}/auth/verify-email?token={}",
+        auth.oauth.redirect_base_url, token
+    );
+    let _ = auth
+        .mailer
+        .send(Email {
+            to: user.email.clone(),
+            subject: "Verify your Spades email".into(),
+            body: format!("Verify your email: {link}\n\nThis link expires in 24 hours."),
+        })
+        .await;
 
-    Ok((axum::http::StatusCode::CREATED, Json(UserResponse::from(&user))))
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(UserResponse::from(&user)),
+    ))
 }
-
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
@@ -116,9 +130,13 @@ pub async fn login(
 ) -> Result<Json<UserResponse>, AuthError> {
     check_ip(&auth.rate.login, addr.ip())?;
     let user_opt = if req.login.contains('@') {
-        auth.store.find_user_by_email(&req.login).map_err(AuthError::Storage)?
+        auth.store
+            .find_user_by_email(&req.login)
+            .map_err(AuthError::Storage)?
     } else {
-        auth.store.find_user_by_username(&req.login).map_err(AuthError::Storage)?
+        auth.store
+            .find_user_by_username(&req.login)
+            .map_err(AuthError::Storage)?
     };
 
     let Some(user) = user_opt else {
@@ -126,12 +144,19 @@ pub async fn login(
         return Err(AuthError::InvalidCredentials);
     };
 
-    if let Some(locked_until) = auth.store.get_lockout(user.id).map_err(AuthError::Storage)? {
+    if let Some(locked_until) = auth
+        .store
+        .get_lockout(user.id)
+        .map_err(AuthError::Storage)?
+    {
         let now = chrono::Utc::now().naive_utc();
-        if let Ok(when) = chrono::NaiveDateTime::parse_from_str(&locked_until, "%Y-%m-%d %H:%M:%S") {
+        if let Ok(when) = chrono::NaiveDateTime::parse_from_str(&locked_until, "%Y-%m-%d %H:%M:%S")
+        {
             if when > now {
                 let secs = (when - now).num_seconds().max(1) as u64;
-                return Err(AuthError::Locked { retry_after_secs: secs });
+                return Err(AuthError::Locked {
+                    retry_after_secs: secs,
+                });
             }
         }
     }
@@ -142,27 +167,36 @@ pub async fn login(
     };
 
     if !verify_password(&req.password, hash)? {
-        let new_count = auth.store.bump_login_failure(user.id).map_err(AuthError::Storage)?;
+        let new_count = auth
+            .store
+            .bump_login_failure(user.id)
+            .map_err(AuthError::Storage)?;
         let lock_secs = match new_count {
             n if n >= 10 => Some(60 * 60),
-            n if n >= 5  => Some(15 * 60),
+            n if n >= 5 => Some(15 * 60),
             _ => None,
         };
         if let Some(secs) = lock_secs {
-            auth.store.set_lockout(user.id, secs).map_err(AuthError::Storage)?;
-            return Err(AuthError::Locked { retry_after_secs: secs as u64 });
+            auth.store
+                .set_lockout(user.id, secs)
+                .map_err(AuthError::Storage)?;
+            return Err(AuthError::Locked {
+                retry_after_secs: secs as u64,
+            });
         }
         return Err(AuthError::InvalidCredentials);
     }
 
     let s = session_ext::load_or_init(&session).await?;
     // Atomic: clear failure counter + touch last_login + claim anon seats.
-    auth.store.with_tx(|conn| {
-        clear_login_failures_in(conn, user.id)?;
-        touch_user_login_in(conn, user.id)?;
-        claim_anon_game_seats_in(conn, s.user_id, user.id)?;
-        Ok(())
-    }).map_err(AuthError::Storage)?;
+    auth.store
+        .with_tx(|conn| {
+            clear_login_failures_in(conn, user.id)?;
+            touch_user_login_in(conn, user.id)?;
+            claim_anon_game_seats_in(conn, s.user_id, user.id)?;
+            Ok(())
+        })
+        .map_err(AuthError::Storage)?;
     session_ext::set_claimed(&session, user.id, user.token_version).await?;
 
     Ok(Json(UserResponse::from(&user)))
@@ -203,7 +237,9 @@ pub async fn create_token(
 ) -> Result<(axum::http::StatusCode, Json<CreatedToken>), AuthError> {
     let name = req.name.trim();
     if name.is_empty() || name.chars().count() > 100 {
-        return Err(AuthError::Validation("token name must be 1-100 chars".into()));
+        return Err(AuthError::Validation(
+            "token name must be 1-100 chars".into(),
+        ));
     }
     let plaintext = generate_token();
     let hash = hash_token(&plaintext);
@@ -213,7 +249,11 @@ pub async fn create_token(
         .map_err(AuthError::Storage)?;
     Ok((
         axum::http::StatusCode::CREATED,
-        Json(CreatedToken { id, name: name.to_string(), token: plaintext }),
+        Json(CreatedToken {
+            id,
+            name: name.to_string(),
+            token: plaintext,
+        }),
     ))
 }
 
@@ -221,13 +261,20 @@ pub async fn list_tokens(
     State(auth): State<AuthState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<Vec<TokenListEntry>>, AuthError> {
-    let rows = auth.store.list_api_tokens(user.id).map_err(AuthError::Storage)?;
-    Ok(Json(rows.into_iter().map(|r| TokenListEntry {
-        id: r.id,
-        name: r.name,
-        created_at: r.created_at,
-        last_used_at: r.last_used_at,
-    }).collect()))
+    let rows = auth
+        .store
+        .list_api_tokens(user.id)
+        .map_err(AuthError::Storage)?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|r| TokenListEntry {
+                id: r.id,
+                name: r.name,
+                created_at: r.created_at,
+                last_used_at: r.last_used_at,
+            })
+            .collect(),
+    ))
 }
 
 pub async fn revoke_token(
@@ -263,11 +310,19 @@ pub async fn verify_email(
     // Atomic: consume one-shot token + flip email_verified. Without the
     // transaction, a failure to flip the bit after token consumption leaves
     // the user unable to re-verify with the same link.
-    auth.store.with_tx(|conn| {
-        let consumed = consume_auth_token_in(conn, &hash, PURPOSE_VERIFY_EMAIL)?;
-        set_user_email_verified_in(conn, consumed.user_id)?;
-        Ok(())
-    }).map_err(|e| if e == "token_invalid" { AuthError::TokenInvalid } else { AuthError::Storage(e) })?;
+    auth.store
+        .with_tx(|conn| {
+            let consumed = consume_auth_token_in(conn, &hash, PURPOSE_VERIFY_EMAIL)?;
+            set_user_email_verified_in(conn, consumed.user_id)?;
+            Ok(())
+        })
+        .map_err(|e| {
+            if e == "token_invalid" {
+                AuthError::TokenInvalid
+            } else {
+                AuthError::Storage(e)
+            }
+        })?;
     Ok(Redirect::to("/"))
 }
 
@@ -283,17 +338,28 @@ pub async fn password_reset_request(
 ) -> Result<axum::http::StatusCode, AuthError> {
     check_ip(&auth.rate.password_reset_request_ip, addr.ip())?;
     check_email(&auth.rate.password_reset_request_email, &req.email)?;
-    if let Some(user) = auth.store.find_user_by_email(&req.email).map_err(AuthError::Storage)? {
+    if let Some(user) = auth
+        .store
+        .find_user_by_email(&req.email)
+        .map_err(AuthError::Storage)?
+    {
         let token = generate_token();
         let hash = hash_token(&token);
-        auth.store.insert_auth_token(&hash, user.id, PURPOSE_PASSWORD_RESET, 3600)
+        auth.store
+            .insert_auth_token(&hash, user.id, PURPOSE_PASSWORD_RESET, 3600)
             .map_err(AuthError::Storage)?;
-        let link = format!("{}/auth/password-reset?token={}", auth.oauth.redirect_base_url, token);
-        let _ = auth.mailer.send(Email {
-            to: user.email,
-            subject: "Reset your Spades password".into(),
-            body: format!("Reset link: {link}\n\nExpires in 1 hour."),
-        }).await;
+        let link = format!(
+            "{}/auth/password-reset?token={}",
+            auth.oauth.redirect_base_url, token
+        );
+        let _ = auth
+            .mailer
+            .send(Email {
+                to: user.email,
+                subject: "Reset your Spades password".into(),
+                body: format!("Reset link: {link}\n\nExpires in 1 hour."),
+            })
+            .await;
     }
     Ok(axum::http::StatusCode::ACCEPTED)
 }
@@ -317,11 +383,20 @@ pub async fn password_reset_confirm(
     // Atomic: consume one-shot token + write new password. Without the
     // transaction, a failed password update after token consumption would
     // leave the user locked out (token spent, password unchanged).
-    let (user_id, new_version) = auth.store.with_tx(|conn| {
-        let consumed = consume_auth_token_in(conn, &hash, PURPOSE_PASSWORD_RESET)?;
-        let new_version = update_user_password_in(conn, consumed.user_id, &new_hash)?;
-        Ok((consumed.user_id, new_version))
-    }).map_err(|e| if e == "token_invalid" { AuthError::TokenInvalid } else { AuthError::Storage(e) })?;
+    let (user_id, new_version) = auth
+        .store
+        .with_tx(|conn| {
+            let consumed = consume_auth_token_in(conn, &hash, PURPOSE_PASSWORD_RESET)?;
+            let new_version = update_user_password_in(conn, consumed.user_id, &new_hash)?;
+            Ok((consumed.user_id, new_version))
+        })
+        .map_err(|e| {
+            if e == "token_invalid" {
+                AuthError::TokenInvalid
+            } else {
+                AuthError::Storage(e)
+            }
+        })?;
     session_ext::set_claimed(&session, user_id, new_version).await?;
     Ok(axum::http::StatusCode::OK)
 }
@@ -330,7 +405,9 @@ pub async fn password_reset_confirm(
 // OAuth handlers
 // ---------------------------------------------------------------------------
 
-use oauth2::{AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, Scope, TokenResponse};
+use oauth2::{
+    AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, Scope, TokenResponse,
+};
 
 pub async fn oauth_login(
     State(auth): State<AuthState>,
@@ -344,22 +421,35 @@ pub async fn oauth_login(
         "google" => google_client(&auth.oauth),
         "github" => github_client(&auth.oauth),
         _ => return Err(AuthError::OauthFailed("unknown provider".into())),
-    }.ok_or_else(|| AuthError::OauthFailed("provider not configured".into()))?;
+    }
+    .ok_or_else(|| AuthError::OauthFailed("provider not configured".into()))?;
 
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
     let scopes: Vec<Scope> = match provider.as_str() {
-        "google" => vec![Scope::new("openid".into()), Scope::new("email".into()), Scope::new("profile".into())],
-        "github" => vec![Scope::new("read:user".into()), Scope::new("user:email".into())],
+        "google" => vec![
+            Scope::new("openid".into()),
+            Scope::new("email".into()),
+            Scope::new("profile".into()),
+        ],
+        "github" => vec![
+            Scope::new("read:user".into()),
+            Scope::new("user:email".into()),
+        ],
         _ => vec![],
     };
-    let (auth_url, csrf_token) = client.authorize_url(CsrfToken::new_random)
+    let (auth_url, csrf_token) = client
+        .authorize_url(CsrfToken::new_random)
         .add_scopes(scopes)
         .set_pkce_challenge(challenge)
         .url();
 
     auth.oauth.csrf.lock_or_recover().insert(
         csrf_token.secret().clone(),
-        (anon_id, time::OffsetDateTime::now_utc() + time::Duration::minutes(10), verifier.secret().to_string()),
+        (
+            anon_id,
+            time::OffsetDateTime::now_utc() + time::Duration::minutes(10),
+            verifier.secret().to_string(),
+        ),
     );
 
     Ok(Redirect::to(auth_url.as_str()))
@@ -391,34 +481,54 @@ pub async fn oauth_google_callback(
     check_ip(&auth.rate.oauth_callback, addr.ip())?;
 
     let entry = auth.oauth.csrf.lock_or_recover().remove(&q.state);
-    let (anon_from_csrf, _expires, verifier_secret) = entry.ok_or_else(|| AuthError::OauthFailed("invalid state".into()))?;
+    let (anon_from_csrf, _expires, verifier_secret) =
+        entry.ok_or_else(|| AuthError::OauthFailed("invalid state".into()))?;
     let client = google_client(&auth.oauth)
         .ok_or_else(|| AuthError::OauthFailed("google not configured".into()))?;
 
     let verifier = PkceCodeVerifier::new(verifier_secret);
-    let token = client.exchange_code(AuthorizationCode::new(q.code))
+    let token = client
+        .exchange_code(AuthorizationCode::new(q.code))
         .set_pkce_verifier(verifier)
-        .request_async(oauth2::reqwest::async_http_client).await
+        .request_async(oauth2::reqwest::async_http_client)
+        .await
         .map_err(|e| AuthError::OauthFailed(format!("token exchange: {e}")))?;
 
     let info: GoogleUserinfo = reqwest::Client::new()
         .get("https://openidconnect.googleapis.com/v1/userinfo")
         .bearer_auth(token.access_token().secret())
-        .send().await.map_err(|e| AuthError::OauthFailed(format!("userinfo fetch: {e}")))?
-        .error_for_status().map_err(|e| AuthError::OauthFailed(format!("userinfo status: {e}")))?
-        .json().await.map_err(|e| AuthError::OauthFailed(format!("userinfo parse: {e}")))?;
+        .send()
+        .await
+        .map_err(|e| AuthError::OauthFailed(format!("userinfo fetch: {e}")))?
+        .error_for_status()
+        .map_err(|e| AuthError::OauthFailed(format!("userinfo status: {e}")))?
+        .json()
+        .await
+        .map_err(|e| AuthError::OauthFailed(format!("userinfo parse: {e}")))?;
 
-    if let Some(uid) = auth.store.find_oauth_account("google", &info.sub).map_err(AuthError::Storage)? {
-        let user = auth.store.find_user_by_id(uid).map_err(AuthError::Storage)?
+    if let Some(uid) = auth
+        .store
+        .find_oauth_account("google", &info.sub)
+        .map_err(AuthError::Storage)?
+    {
+        let user = auth
+            .store
+            .find_user_by_id(uid)
+            .map_err(AuthError::Storage)?
             .ok_or_else(|| AuthError::Internal("oauth account refs missing user".into()))?;
         oauth_claim_and_login(&session, &auth, anon_from_csrf, &user).await?;
         return Ok(Redirect::to("/").into_response());
     }
 
     if info.email_verified {
-        if let Some(existing) = auth.store.find_user_by_email(&info.email).map_err(AuthError::Storage)? {
+        if let Some(existing) = auth
+            .store
+            .find_user_by_email(&info.email)
+            .map_err(AuthError::Storage)?
+        {
             if existing.email_verified {
-                auth.store.insert_oauth_account("google", &info.sub, existing.id, &info.email)
+                auth.store
+                    .insert_oauth_account("google", &info.sub, existing.id, &info.email)
                     .map_err(AuthError::Storage)?;
                 oauth_claim_and_login(&session, &auth, anon_from_csrf, &existing).await?;
                 return Ok(Redirect::to("/").into_response());
@@ -428,22 +538,33 @@ pub async fn oauth_google_callback(
 
     // Pending signup
     let temp_id = generate_token();
-    let suggested = info.name.clone()
-        .map(|n| n.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').take(20).collect::<String>())
+    let suggested = info
+        .name
+        .clone()
+        .map(|n| {
+            n.chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .take(20)
+                .collect::<String>()
+        })
         .filter(|s| s.len() >= 2)
         .unwrap_or_else(|| "user".into());
     let expires_at = time::OffsetDateTime::now_utc() + time::Duration::minutes(15);
-    auth.oauth.pending.lock_or_recover().insert(temp_id.clone(), PendingSignup {
-        provider: "google".into(),
-        provider_uid: info.sub,
-        email: info.email,
-        email_verified: info.email_verified,
-        suggested_username: suggested,
-        expires_at,
-    });
+    auth.oauth.pending.lock_or_recover().insert(
+        temp_id.clone(),
+        PendingSignup {
+            provider: "google".into(),
+            provider_uid: info.sub,
+            email: info.email,
+            email_verified: info.email_verified,
+            suggested_username: suggested,
+            expires_at,
+        },
+    );
     let cookie = format!("__oauth_pending={temp_id}; Max-Age=900; HttpOnly; SameSite=Lax; Path=/");
     let mut resp = Redirect::to("/").into_response();
-    resp.headers_mut().append(axum::http::header::SET_COOKIE, cookie.parse().unwrap());
+    resp.headers_mut()
+        .append(axum::http::header::SET_COOKIE, cookie.parse().unwrap());
     Ok(resp)
 }
 
@@ -455,9 +576,13 @@ async fn oauth_claim_and_login(
 ) -> Result<(), AuthError> {
     let live = session_ext::load_or_init(session).await?;
     let anon = live.user_id;
-    auth.store.claim_anon_game_seats(anon, user.id).map_err(AuthError::Storage)?;
+    auth.store
+        .claim_anon_game_seats(anon, user.id)
+        .map_err(AuthError::Storage)?;
     if anon != anon_from_csrf {
-        auth.store.claim_anon_game_seats(anon_from_csrf, user.id).map_err(AuthError::Storage)?;
+        auth.store
+            .claim_anon_game_seats(anon_from_csrf, user.id)
+            .map_err(AuthError::Storage)?;
     }
     session_ext::set_claimed(session, user.id, user.token_version).await?;
     Ok(())
@@ -476,10 +601,16 @@ pub async fn oauth_complete(
     Json(req): Json<OauthCompleteRequest>,
 ) -> Result<(axum::http::StatusCode, Json<UserResponse>), AuthError> {
     check_ip(&auth.rate.oauth_callback, addr.ip())?;
-    let temp_id = cookie_jar.get("__oauth_pending")
+    let temp_id = cookie_jar
+        .get("__oauth_pending")
         .ok_or(AuthError::TokenInvalid)?
-        .value().to_string();
-    let pending = auth.oauth.pending.lock_or_recover().remove(&temp_id)
+        .value()
+        .to_string();
+    let pending = auth
+        .oauth
+        .pending
+        .lock_or_recover()
+        .remove(&temp_id)
         .ok_or(AuthError::TokenInvalid)?;
     if pending.expires_at < time::OffsetDateTime::now_utc() {
         return Err(AuthError::TokenInvalid);
@@ -498,23 +629,35 @@ pub async fn oauth_complete(
     // Atomic: user creation + OAuth-account link + anon seat claim. Without
     // the transaction, an OAuth-account insert failure would leave an
     // orphaned user with no way to log in (no password and no OAuth link).
-    let (user_id, user) = auth.store.with_tx(|conn| {
-        let user_id = insert_user_in(conn, &new_user)?;
-        insert_oauth_account_in(conn, &pending.provider, &pending.provider_uid, user_id, &pending.email)?;
-        claim_anon_game_seats_in(conn, anon_id, user_id)?;
-        let user = find_user_by_id_in(conn, user_id)?
-            .ok_or_else(|| "user vanished".to_string())?;
-        Ok((user_id, user))
-    }).map_err(|e| match e.as_str() {
-        "username_taken" => AuthError::UsernameTaken,
-        "email_taken" => AuthError::EmailTaken,
-        "user vanished" => AuthError::Internal(e),
-        other => AuthError::Storage(other.into()),
-    })?;
+    let (user_id, user) = auth
+        .store
+        .with_tx(|conn| {
+            let user_id = insert_user_in(conn, &new_user)?;
+            insert_oauth_account_in(
+                conn,
+                &pending.provider,
+                &pending.provider_uid,
+                user_id,
+                &pending.email,
+            )?;
+            claim_anon_game_seats_in(conn, anon_id, user_id)?;
+            let user =
+                find_user_by_id_in(conn, user_id)?.ok_or_else(|| "user vanished".to_string())?;
+            Ok((user_id, user))
+        })
+        .map_err(|e| match e.as_str() {
+            "username_taken" => AuthError::UsernameTaken,
+            "email_taken" => AuthError::EmailTaken,
+            "user vanished" => AuthError::Internal(e),
+            other => AuthError::Storage(other.into()),
+        })?;
 
     session_ext::set_claimed(&session, user_id, user.token_version).await?;
 
-    Ok((axum::http::StatusCode::CREATED, Json(UserResponse::from(&user))))
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(UserResponse::from(&user)),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -540,42 +683,76 @@ pub async fn oauth_github_callback(
     check_ip(&auth.rate.oauth_callback, addr.ip())?;
 
     let entry = auth.oauth.csrf.lock_or_recover().remove(&q.state);
-    let (anon_from_csrf, _expires, verifier_secret) = entry.ok_or_else(|| AuthError::OauthFailed("invalid state".into()))?;
+    let (anon_from_csrf, _expires, verifier_secret) =
+        entry.ok_or_else(|| AuthError::OauthFailed("invalid state".into()))?;
     let client = github_client(&auth.oauth)
         .ok_or_else(|| AuthError::OauthFailed("github not configured".into()))?;
 
     let verifier = PkceCodeVerifier::new(verifier_secret);
-    let token = client.exchange_code(AuthorizationCode::new(q.code))
+    let token = client
+        .exchange_code(AuthorizationCode::new(q.code))
         .set_pkce_verifier(verifier)
-        .request_async(oauth2::reqwest::async_http_client).await
+        .request_async(oauth2::reqwest::async_http_client)
+        .await
         .map_err(|e| AuthError::OauthFailed(format!("token exchange: {e}")))?;
 
     let http = reqwest::Client::new();
-    let user: GithubUser = http.get("https://api.github.com/user")
+    let user: GithubUser = http
+        .get("https://api.github.com/user")
         .bearer_auth(token.access_token().secret())
         .header("User-Agent", "rust-spades")
-        .send().await.map_err(|e| AuthError::OauthFailed(format!("user fetch: {e}")))?
-        .error_for_status().map_err(|e| AuthError::OauthFailed(format!("user status: {e}")))?
-        .json().await.map_err(|e| AuthError::OauthFailed(format!("user parse: {e}")))?;
-    let emails: Vec<GithubEmail> = http.get("https://api.github.com/user/emails")
+        .send()
+        .await
+        .map_err(|e| AuthError::OauthFailed(format!("user fetch: {e}")))?
+        .error_for_status()
+        .map_err(|e| AuthError::OauthFailed(format!("user status: {e}")))?
+        .json()
+        .await
+        .map_err(|e| AuthError::OauthFailed(format!("user parse: {e}")))?;
+    let emails: Vec<GithubEmail> = http
+        .get("https://api.github.com/user/emails")
         .bearer_auth(token.access_token().secret())
         .header("User-Agent", "rust-spades")
-        .send().await.map_err(|e| AuthError::OauthFailed(format!("emails fetch: {e}")))?
-        .error_for_status().map_err(|e| AuthError::OauthFailed(format!("emails status: {e}")))?
-        .json().await.map_err(|e| AuthError::OauthFailed(format!("emails parse: {e}")))?;
-    let primary = emails.iter().find(|e| e.primary)
+        .send()
+        .await
+        .map_err(|e| AuthError::OauthFailed(format!("emails fetch: {e}")))?
+        .error_for_status()
+        .map_err(|e| AuthError::OauthFailed(format!("emails status: {e}")))?
+        .json()
+        .await
+        .map_err(|e| AuthError::OauthFailed(format!("emails parse: {e}")))?;
+    let primary = emails
+        .iter()
+        .find(|e| e.primary)
         .ok_or_else(|| AuthError::OauthFailed("no primary email".into()))?;
 
-    if let Some(uid) = auth.store.find_oauth_account("github", &user.id.to_string()).map_err(AuthError::Storage)? {
-        let u = auth.store.find_user_by_id(uid).map_err(AuthError::Storage)?
+    if let Some(uid) = auth
+        .store
+        .find_oauth_account("github", &user.id.to_string())
+        .map_err(AuthError::Storage)?
+    {
+        let u = auth
+            .store
+            .find_user_by_id(uid)
+            .map_err(AuthError::Storage)?
             .ok_or_else(|| AuthError::Internal("oauth account refs missing".into()))?;
         oauth_claim_and_login(&session, &auth, anon_from_csrf, &u).await?;
         return Ok(Redirect::to("/").into_response());
     }
     if primary.verified {
-        if let Some(existing) = auth.store.find_user_by_email(&primary.email).map_err(AuthError::Storage)? {
+        if let Some(existing) = auth
+            .store
+            .find_user_by_email(&primary.email)
+            .map_err(AuthError::Storage)?
+        {
             if existing.email_verified {
-                auth.store.insert_oauth_account("github", &user.id.to_string(), existing.id, &primary.email)
+                auth.store
+                    .insert_oauth_account(
+                        "github",
+                        &user.id.to_string(),
+                        existing.id,
+                        &primary.email,
+                    )
                     .map_err(AuthError::Storage)?;
                 oauth_claim_and_login(&session, &auth, anon_from_csrf, &existing).await?;
                 return Ok(Redirect::to("/").into_response());
@@ -584,18 +761,27 @@ pub async fn oauth_github_callback(
     }
 
     let temp_id = generate_token();
-    let suggested: String = user.login.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-').take(20).collect();
+    let suggested: String = user
+        .login
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+        .take(20)
+        .collect();
     let expires_at = time::OffsetDateTime::now_utc() + time::Duration::minutes(15);
-    auth.oauth.pending.lock_or_recover().insert(temp_id.clone(), PendingSignup {
-        provider: "github".into(),
-        provider_uid: user.id.to_string(),
-        email: primary.email.clone(),
-        email_verified: primary.verified,
-        suggested_username: suggested,
-        expires_at,
-    });
+    auth.oauth.pending.lock_or_recover().insert(
+        temp_id.clone(),
+        PendingSignup {
+            provider: "github".into(),
+            provider_uid: user.id.to_string(),
+            email: primary.email.clone(),
+            email_verified: primary.verified,
+            suggested_username: suggested,
+            expires_at,
+        },
+    );
     let mut resp = Redirect::to("/").into_response();
     let cookie = format!("__oauth_pending={temp_id}; Max-Age=900; HttpOnly; SameSite=Lax; Path=/");
-    resp.headers_mut().append(axum::http::header::SET_COOKIE, cookie.parse().unwrap());
+    resp.headers_mut()
+        .append(axum::http::header::SET_COOKIE, cookie.parse().unwrap());
     Ok(resp)
 }

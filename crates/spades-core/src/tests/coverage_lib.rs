@@ -1,13 +1,18 @@
-use crate::cards::{Card, Suit, Rank};
-use crate::result::{TransitionError, GetError};
-use crate::{Game, GameTransition, TimerConfig};
+use crate::cards::{Card, Rank, Suit};
 use crate::game_state::State;
-use uuid::Uuid;
+use crate::result::{GetError, TransitionError};
+use crate::{Game, GameTransition, TimerConfig};
 use ntest::test_case;
+use uuid::Uuid;
 
 /// Helper: create a started game with known hands for controlled testing.
 fn make_started_game() -> (Game, [Uuid; 4]) {
-    let player_ids = [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+    let player_ids = [
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+    ];
     let mut g = Game::new(Uuid::new_v4(), player_ids, 500, None);
     g.play(GameTransition::Start).unwrap();
     (g, player_ids)
@@ -89,10 +94,12 @@ fn test_get_leading_suit_trick() {
 fn get_current_trick_cards_error_states(state_name: &str) {
     let mut g = Game::new(Uuid::new_v4(), [Uuid::new_v4(); 4], 500, None);
     match state_name {
-        "NotStarted" => {},
+        "NotStarted" => {}
         "Completed" => g.set_state(State::Completed),
         "Aborted" => g.set_state(State::Aborted),
-        "Betting" => { g.play(GameTransition::Start).unwrap(); },
+        "Betting" => {
+            g.play(GameTransition::Start).unwrap();
+        }
         _ => unreachable!(),
     }
     assert!(g.get_current_trick_cards().is_err());
@@ -137,7 +144,12 @@ fn test_get_winner_ids_not_completed() {
 
 #[test]
 fn test_get_winner_ids_team_a_wins() {
-    let pids = [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+    let pids = [
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+    ];
     let mut g = Game::new(Uuid::new_v4(), pids, 500, None);
     g.set_state(State::Completed);
     g.scoring.team_a.cumulative_points = 500;
@@ -149,7 +161,12 @@ fn test_get_winner_ids_team_a_wins() {
 
 #[test]
 fn test_get_winner_ids_team_b_wins() {
-    let pids = [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+    let pids = [
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+    ];
     let mut g = Game::new(Uuid::new_v4(), pids, 500, None);
     g.set_state(State::Completed);
     g.scoring.team_a.cumulative_points = 100;
@@ -215,7 +232,10 @@ fn test_get_legal_cards_must_follow_suit() {
 
 #[test]
 fn test_timer_config_and_clocks() {
-    let tc = TimerConfig { initial_time_secs: 300, increment_secs: 5 };
+    let tc = TimerConfig {
+        initial_time_secs: 300,
+        increment_secs: 5,
+    };
     let g = Game::new(Uuid::new_v4(), [Uuid::new_v4(); 4], 500, Some(tc));
     assert_eq!(g.get_timer_config(), Some(&tc));
     assert!(g.get_player_clocks().is_some());
@@ -231,7 +251,10 @@ fn test_timer_config_none() {
 
 #[test]
 fn test_player_clocks_mut() {
-    let tc = TimerConfig { initial_time_secs: 300, increment_secs: 5 };
+    let tc = TimerConfig {
+        initial_time_secs: 300,
+        increment_secs: 5,
+    };
     let mut g = Game::new(Uuid::new_v4(), [Uuid::new_v4(); 4], 500, Some(tc));
     if let Some(clocks) = g.get_player_clocks_mut() {
         clocks.remaining_ms[0] = 100_000;
@@ -281,21 +304,33 @@ fn test_set_state() {
 fn test_bet_on_completed_game() {
     let mut g = Game::new(Uuid::new_v4(), [Uuid::new_v4(); 4], 500, None);
     g.set_state(State::Completed);
-    assert_eq!(g.play(GameTransition::Bet(3)), Err(TransitionError::CompletedGame));
+    assert_eq!(
+        g.play(GameTransition::Bet(3)),
+        Err(TransitionError::CompletedGame)
+    );
 }
 
 #[test]
 fn test_card_on_completed_game() {
     let mut g = Game::new(Uuid::new_v4(), [Uuid::new_v4(); 4], 500, None);
     g.set_state(State::Completed);
-    let card = Card { suit: Suit::Heart, rank: Rank::Ace };
-    assert_eq!(g.play(GameTransition::Card(card)), Err(TransitionError::CompletedGame));
+    let card = Card {
+        suit: Suit::Heart,
+        rank: Rank::Ace,
+    };
+    assert_eq!(
+        g.play(GameTransition::Card(card)),
+        Err(TransitionError::CompletedGame)
+    );
 }
 
 #[test]
 fn test_bet_in_trick_stage() {
     let (mut g, _) = make_game_in_trick_state();
-    assert_eq!(g.play(GameTransition::Bet(3)), Err(TransitionError::BetInTrickStage));
+    assert_eq!(
+        g.play(GameTransition::Bet(3)),
+        Err(TransitionError::BetInTrickStage)
+    );
 }
 
 #[test]
@@ -307,9 +342,19 @@ fn test_card_not_in_hand() {
     let fake_card = (|| {
         for &s in &[Suit::Club, Suit::Diamond, Suit::Heart, Suit::Spade] {
             for &r in &[
-                Rank::Two, Rank::Three, Rank::Four, Rank::Five, Rank::Six,
-                Rank::Seven, Rank::Eight, Rank::Nine, Rank::Ten,
-                Rank::Jack, Rank::Queen, Rank::King, Rank::Ace,
+                Rank::Two,
+                Rank::Three,
+                Rank::Four,
+                Rank::Five,
+                Rank::Six,
+                Rank::Seven,
+                Rank::Eight,
+                Rank::Nine,
+                Rank::Ten,
+                Rank::Jack,
+                Rank::Queen,
+                Rank::King,
+                Rank::Ace,
             ] {
                 let c = Card { suit: s, rank: r };
                 if !hand.contains(&c) {
@@ -319,7 +364,10 @@ fn test_card_not_in_hand() {
         }
         unreachable!("a 13-card hand cannot cover all 52 cards");
     })();
-    assert_eq!(g.play(GameTransition::Card(fake_card)), Err(TransitionError::CardNotInHand));
+    assert_eq!(
+        g.play(GameTransition::Card(fake_card)),
+        Err(TransitionError::CardNotInHand)
+    );
 }
 
 #[test]
@@ -350,7 +398,10 @@ fn test_card_incorrect_suit() {
 #[test]
 fn test_get_hand_by_player_id_invalid() {
     let (g, _) = make_started_game();
-    assert_eq!(g.get_hand_by_player_id(Uuid::new_v4()), Err(GetError::InvalidUuid));
+    assert_eq!(
+        g.get_hand_by_player_id(Uuid::new_v4()),
+        Err(GetError::InvalidUuid)
+    );
 }
 
 #[test]
@@ -366,7 +417,12 @@ fn test_get_hand_by_player_id_all_players() {
 
 #[test]
 fn test_get_player_names_default_none() {
-    let pids = [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+    let pids = [
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+    ];
     let g = Game::new(Uuid::new_v4(), pids, 500, None);
     let names = g.get_player_names();
     for (id, name) in &names {

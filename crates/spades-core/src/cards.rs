@@ -1,8 +1,8 @@
-use rand::thread_rng;
 use rand::seq::SliceRandom;
-use std::fmt;
+use rand::thread_rng;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use serde::{Serialize, Deserialize};
+use std::fmt;
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
@@ -67,18 +67,19 @@ impl fmt::Debug for Rank {
 #[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
 pub struct Card {
     pub suit: Suit,
-    pub rank: Rank
+    pub rank: Rank,
 }
 
 impl fmt::Debug for Card {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?} {:?}",self.suit , self.rank)
+        write!(f, "{:?} {:?}", self.suit, self.rank)
     }
 }
 
 impl Ord for Card {
     fn cmp(&self, other: &Card) -> Ordering {
-        ((self.suit as u64) * 15 + (self.rank as u64)).cmp(&(((other.suit as u64)* 15) + (other.rank as u64)))
+        ((self.suit as u64) * 15 + (self.rank as u64))
+            .cmp(&(((other.suit as u64) * 15) + (other.rank as u64)))
     }
 }
 
@@ -88,12 +89,9 @@ impl PartialOrd for Card {
     }
 }
 
-
-
-
 /// Given four cards and a starting card, returns the winner of a trick.
-/// 
-/// The rules used to determine the winner of a trick are as follows: 
+///
+/// The rules used to determine the winner of a trick are as follows:
 /// * Spades trump all other suits
 /// * The suit the first player (given by index) plays sets the suit of the trick
 /// * The highest ranking spades card or card of suit of first player's card wins the trick.
@@ -115,8 +113,6 @@ pub fn get_trick_winner(index: usize, others: &[Card; 4]) -> usize {
     winning_index
 }
 
-
-
 /// Returns a shuffled deck of [`deck::Card`](struct.Card.html)'s, with 52 elements.
 pub fn new_deck() -> Vec<Card> {
     let ranks: Vec<Rank> = vec![
@@ -132,14 +128,9 @@ pub fn new_deck() -> Vec<Card> {
         Rank::Jack,
         Rank::Queen,
         Rank::King,
-        Rank::Ace
+        Rank::Ace,
     ];
-    let suits: Vec<Suit> = vec![
-        Suit::Club,
-        Suit::Diamond,
-        Suit::Heart,
-        Suit::Spade,
-    ];
+    let suits: Vec<Suit> = vec![Suit::Club, Suit::Diamond, Suit::Heart, Suit::Spade];
 
     let mut cards = Vec::new();
     for s in &suits {
@@ -171,4 +162,3 @@ pub fn deal_four_players(cards: &mut Vec<Card>) -> Vec<Vec<Card>> {
 
     hands
 }
-

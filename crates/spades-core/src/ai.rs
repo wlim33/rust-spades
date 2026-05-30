@@ -1,6 +1,6 @@
 use crate::{Card, Game};
-use rand::seq::SliceRandom;
 use rand::Rng;
+use rand::seq::SliceRandom;
 
 /// Trait for AI decision-making in Spades. Implement this to create new AI strategies.
 pub trait AiStrategy: Send + Sync {
@@ -21,7 +21,11 @@ impl AiStrategy for RandomStrategy {
 
     fn choose_card(&self, game: &Game, _player_index: usize) -> Card {
         let mut rng = rand::thread_rng();
-        let legal_cards = game.get_legal_cards().expect("AI should only be called in Trick state");
-        *legal_cards.choose(&mut rng).expect("hand should not be empty")
+        let legal_cards = game
+            .get_legal_cards()
+            .expect("AI should only be called in Trick state");
+        *legal_cards
+            .choose(&mut rng)
+            .expect("hand should not be empty")
     }
 }

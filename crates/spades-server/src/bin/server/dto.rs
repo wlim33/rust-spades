@@ -1,7 +1,7 @@
 use oasgen::OaSchema;
 use serde::{Deserialize, Serialize};
-use spades_server::game_manager::{GameStateResponse, HandResponse};
 use spades::{Card, TimerConfig};
+use spades_server::game_manager::{GameStateResponse, HandResponse};
 use uuid::Uuid;
 
 pub fn default_max_points() -> i32 {
@@ -153,7 +153,9 @@ pub enum ServerEvent {
     /// Server detected that this subscription lagged past the broadcast
     /// buffer and cannot continue cleanly. Client should reconnect to
     /// receive a fresh snapshot.
-    Resync { reason: String },
+    Resync {
+        reason: String,
+    },
     /// Public chat message. Carries the same per-game `seq` as state
     /// events so clients can order it in the timeline.
     ChatMessage {

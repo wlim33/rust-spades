@@ -23,7 +23,10 @@ fn test_random_strategy_card_is_legal() {
     assert!(matches!(game.get_state(), State::Trick(_)));
     let legal_cards = game.get_legal_cards().unwrap();
     let chosen = strategy.choose_card(&game, 0);
-    assert!(legal_cards.contains(&chosen), "chosen card not in legal cards");
+    assert!(
+        legal_cards.contains(&chosen),
+        "chosen card not in legal cards"
+    );
 }
 
 #[test]

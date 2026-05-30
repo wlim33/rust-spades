@@ -34,7 +34,10 @@ impl PresenceTracker {
         conns
             .entry(game_id)
             .or_insert_with(|| player_ids.iter().map(|&pid| (pid, 0usize)).collect());
-        self.spectators.write_or_recover().entry(game_id).or_insert(0);
+        self.spectators
+            .write_or_recover()
+            .entry(game_id)
+            .or_insert(0);
         let mut bcast = self.broadcasters.write_or_recover();
         bcast
             .entry(game_id)
@@ -114,7 +117,12 @@ impl PresenceTracker {
     }
 
     fn build_snapshot(&self, game_id: Uuid, players: &HashMap<Uuid, usize>) -> PresenceSnapshot {
-        let spectator_count = self.spectators.read_or_recover().get(&game_id).copied().unwrap_or(0);
+        let spectator_count = self
+            .spectators
+            .read_or_recover()
+            .get(&game_id)
+            .copied()
+            .unwrap_or(0);
         PresenceSnapshot {
             game_id,
             players: players
@@ -137,10 +145,17 @@ mod tests {
     fn spectator_count_increments_and_saturates() {
         let tracker = PresenceTracker::new();
         let game_id = Uuid::new_v4();
-        let players = [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+        let players = [
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+        ];
         tracker.ensure_game(game_id, &players);
 
-        let snap = tracker.spectator_connected(game_id).expect("game initialised");
+        let snap = tracker
+            .spectator_connected(game_id)
+            .expect("game initialised");
         assert_eq!(snap.spectator_count, 1);
         let snap = tracker.spectator_connected(game_id).unwrap();
         assert_eq!(snap.spectator_count, 2);
@@ -165,7 +180,12 @@ mod tests {
     fn snapshot_includes_both_players_and_spectator_count() {
         let tracker = PresenceTracker::new();
         let game_id = Uuid::new_v4();
-        let players = [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+        let players = [
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+        ];
         tracker.ensure_game(game_id, &players);
         tracker.player_connected(game_id, players[0]);
         tracker.spectator_connected(game_id);

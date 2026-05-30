@@ -68,7 +68,10 @@ impl IdempotencyCache {
         let mut entries = self.entries.lock_or_recover();
         entries.insert(
             (game_id, user_id, key),
-            CacheEntry { stored_at: Instant::now(), outcome },
+            CacheEntry {
+                stored_at: Instant::now(),
+                outcome,
+            },
         );
     }
 
@@ -108,7 +111,11 @@ mod tests {
     #[test]
     fn get_missing_returns_none() {
         let cache = IdempotencyCache::new();
-        assert!(cache.get(Uuid::new_v4(), Uuid::new_v4(), "missing").is_none());
+        assert!(
+            cache
+                .get(Uuid::new_v4(), Uuid::new_v4(), "missing")
+                .is_none()
+        );
     }
 
     #[test]
@@ -138,7 +145,9 @@ mod tests {
             "k".into(),
             CachedOutcome::Err(
                 StatusCode::BAD_REQUEST,
-                ErrorResponse { error: "boom".to_string() },
+                ErrorResponse {
+                    error: "boom".to_string(),
+                },
             ),
         );
         let out = cache.get(g, u, "k").expect("hit");

@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use uuid::Uuid;
-use serde::{Serialize, Deserialize};
-use tokio::sync::mpsc;
 use crate::game_manager::GameManager;
 use crate::lock_util::MutexExt;
+use serde::{Deserialize, Serialize};
 use spades::{GameTransition, TimerConfig};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
+use uuid::Uuid;
 
 /// Result sent to matched players
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,7 +67,12 @@ impl Matchmaker {
 
     /// Add a seek to the queue. Returns (player_id, receiver) so the caller
     /// can cancel the seek on disconnect.
-    pub async fn add_seek(&self, max_points: i32, timer_config: TimerConfig, name: Option<String>) -> (Uuid, mpsc::UnboundedReceiver<SeekEvent>) {
+    pub async fn add_seek(
+        &self,
+        max_points: i32,
+        timer_config: TimerConfig,
+        name: Option<String>,
+    ) -> (Uuid, mpsc::UnboundedReceiver<SeekEvent>) {
         let player_id = Uuid::new_v4();
         let (tx, rx) = mpsc::unbounded_channel();
 
@@ -92,7 +97,10 @@ impl Matchmaker {
         let seek_info;
         {
             let mut queue = self.seek_queue.lock_or_recover();
-            seek_info = queue.iter().find(|s| s.player_id == player_id).map(|s| (s.max_points, s.timer_config));
+            seek_info = queue
+                .iter()
+                .find(|s| s.player_id == player_id)
+                .map(|s| (s.max_points, s.timer_config));
             queue.retain(|s| s.player_id != player_id);
         }
         if let Some((mp, tc)) = seek_info {
@@ -109,7 +117,10 @@ impl Matchmaker {
         }
         counts
             .into_iter()
-            .map(|(max_points, waiting)| SeekSummary { max_points, waiting })
+            .map(|(max_points, waiting)| SeekSummary {
+                max_points,
+                waiting,
+            })
             .collect()
     }
 
@@ -118,7 +129,9 @@ impl Matchmaker {
         let queue = self.seek_queue.lock_or_recover();
         let mut counts: HashMap<(i32, TimerConfig), usize> = HashMap::new();
         for seek in queue.iter() {
-            *counts.entry((seek.max_points, seek.timer_config)).or_insert(0) += 1;
+            *counts
+                .entry((seek.max_points, seek.timer_config))
+                .or_insert(0) += 1;
         }
         counts
             .into_iter()
@@ -174,7 +187,11 @@ impl Matchmaker {
         ];
 
         // Create game with pre-assigned player IDs and auto-start
-        let response = match self.game_manager.create_game_with_players(player_ids, max_points, Some(timer_config)) {
+        let response = match self.game_manager.create_game_with_players(
+            player_ids,
+            max_points,
+            Some(timer_config),
+        ) {
             Ok(r) => r,
             Err(_) => {
                 // Re-queue the seeks so players aren't lost
@@ -186,7 +203,12 @@ impl Matchmaker {
             }
         };
 
-        if self.game_manager.make_transition(response.game_id, GameTransition::Start).await.is_err() {
+        if self
+            .game_manager
+            .make_transition(response.game_id, GameTransition::Start)
+            .await
+            .is_err()
+        {
             // Game was created but couldn't start — remove it and re-queue seeks
             let _ = self.game_manager.remove_game(response.game_id);
             let mut queue = self.seek_queue.lock_or_recover();
@@ -199,7 +221,10 @@ impl Matchmaker {
         // Set player names on the game
         for (i, name) in player_names.iter().enumerate() {
             if name.is_some() {
-                let _ = self.game_manager.set_player_name(response.game_id, player_ids[i], name.clone()).await;
+                let _ = self
+                    .game_manager
+                    .set_player_name(response.game_id, player_ids[i], name.clone())
+                    .await;
             }
         }
 
@@ -221,13 +246,16 @@ impl Matchmaker {
     /// Notify all seekers for a given max_points and timer_config of the current queue count.
     fn notify_seekers(&self, max_points: i32, timer_config: TimerConfig) {
         let queue = self.seek_queue.lock_or_recover();
-        let matches = |s: &&PendingSeek| s.max_points == max_points && s.timer_config == timer_config;
+        let matches =
+            |s: &&PendingSeek| s.max_points == max_points && s.timer_config == timer_config;
         let waiting = queue.iter().filter(matches).count();
-        for seek in queue.iter().filter(|s| s.max_points == max_points && s.timer_config == timer_config) {
+        for seek in queue
+            .iter()
+            .filter(|s| s.max_points == max_points && s.timer_config == timer_config)
+        {
             let _ = seek.sender.send(SeekEvent::QueueUpdate { waiting });
         }
     }
-
 }
 
 #[cfg(test)]
@@ -239,7 +267,10 @@ mod tests {
     }
 
     fn default_timer() -> TimerConfig {
-        TimerConfig { initial_time_secs: 300, increment_secs: 3 }
+        TimerConfig {
+            initial_time_secs: 300,
+            increment_secs: 3,
+        }
     }
 
     #[tokio::test]
@@ -315,7 +346,9 @@ mod tests {
         let names = ["Alice", "Bob", "Carol", "Dave"];
 
         for name in &names {
-            let (_pid, rx) = mm.add_seek(500, default_timer(), Some(name.to_string())).await;
+            let (_pid, rx) = mm
+                .add_seek(500, default_timer(), Some(name.to_string()))
+                .await;
             receivers.push(rx);
         }
 
@@ -349,8 +382,14 @@ mod tests {
     #[tokio::test]
     async fn test_queue_sizes_groups_by_config() {
         let mm = make_matchmaker();
-        let fast_timer = TimerConfig { initial_time_secs: 180, increment_secs: 2 };
-        let slow_timer = TimerConfig { initial_time_secs: 600, increment_secs: 5 };
+        let fast_timer = TimerConfig {
+            initial_time_secs: 180,
+            increment_secs: 2,
+        };
+        let slow_timer = TimerConfig {
+            initial_time_secs: 600,
+            increment_secs: 5,
+        };
 
         // 2 seeks: 500 pts + fast timer
         let (_p1, _rx1) = mm.add_seek(500, fast_timer, None).await;
@@ -363,10 +402,13 @@ mod tests {
         let sizes = mm.queue_sizes();
         assert_eq!(sizes.len(), 3);
 
-        let find = |mp: i32, tc: TimerConfig| sizes.iter().find(|e| e.max_points == mp && e.timer_config == tc);
+        let find = |mp: i32, tc: TimerConfig| {
+            sizes
+                .iter()
+                .find(|e| e.max_points == mp && e.timer_config == tc)
+        };
         assert_eq!(find(500, fast_timer).unwrap().waiting, 2);
         assert_eq!(find(500, slow_timer).unwrap().waiting, 1);
         assert_eq!(find(300, fast_timer).unwrap().waiting, 1);
     }
-
 }

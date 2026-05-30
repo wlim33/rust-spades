@@ -8,18 +8,43 @@ pub fn canonicalize_username(input: &str) -> String {
 }
 
 const RESERVED: &[&str] = &[
-    "me", "admin", "root", "auth", "oauth", "api",
-    "users", "games", "lobbies", "challenges", "matchmaking",
-    "ws", "static", "assets", "docs", "openapi", "swagger-ui",
-    "player", "spades", "system", "null", "undefined",
+    "me",
+    "admin",
+    "root",
+    "auth",
+    "oauth",
+    "api",
+    "users",
+    "games",
+    "lobbies",
+    "challenges",
+    "matchmaking",
+    "ws",
+    "static",
+    "assets",
+    "docs",
+    "openapi",
+    "swagger-ui",
+    "player",
+    "spades",
+    "system",
+    "null",
+    "undefined",
 ];
 
 pub fn validate_username(input: &str) -> Result<String, AuthError> {
     if input.len() < 2 || input.len() > 20 {
-        return Err(AuthError::Validation("username must be 2-20 characters".into()));
+        return Err(AuthError::Validation(
+            "username must be 2-20 characters".into(),
+        ));
     }
-    if !input.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
-        return Err(AuthError::Validation("username may only contain letters, digits, underscore, hyphen".into()));
+    if !input
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err(AuthError::Validation(
+            "username may only contain letters, digits, underscore, hyphen".into(),
+        ));
     }
     if input.starts_with('-') || input.ends_with('-') || input.contains("--") {
         return Err(AuthError::Validation("invalid hyphen placement".into()));
@@ -105,7 +130,15 @@ mod tests {
 
     #[test]
     fn invalid_usernames_fail() {
-        for s in ["a", "this_username_is_too_long_yes", "user@host", "user space", "-bad", "bad-", "double--hyphen"] {
+        for s in [
+            "a",
+            "this_username_is_too_long_yes",
+            "user@host",
+            "user space",
+            "-bad",
+            "bad-",
+            "double--hyphen",
+        ] {
             assert!(validate_username(s).is_err(), "{s} should be rejected");
         }
     }

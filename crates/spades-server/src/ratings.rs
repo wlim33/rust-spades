@@ -139,24 +139,62 @@ mod tests {
     /// depend on the bisection tolerance.)
     #[test]
     fn glicko2_paper_example() {
-        let player = Rating { rating: 1500.0, rd: 200.0, volatility: 0.06 };
+        let player = Rating {
+            rating: 1500.0,
+            rd: 200.0,
+            volatility: 0.06,
+        };
         let opps = [
-            (Rating { rating: 1400.0, rd: 30.0, volatility: 0.06 }, 1.0),
-            (Rating { rating: 1550.0, rd: 100.0, volatility: 0.06 }, 0.0),
-            (Rating { rating: 1700.0, rd: 300.0, volatility: 0.06 }, 0.0),
+            (
+                Rating {
+                    rating: 1400.0,
+                    rd: 30.0,
+                    volatility: 0.06,
+                },
+                1.0,
+            ),
+            (
+                Rating {
+                    rating: 1550.0,
+                    rd: 100.0,
+                    volatility: 0.06,
+                },
+                0.0,
+            ),
+            (
+                Rating {
+                    rating: 1700.0,
+                    rd: 300.0,
+                    volatility: 0.06,
+                },
+                0.0,
+            ),
         ];
         let out = update(player, &opps);
-        assert!((out.rating - 1464.06).abs() < 0.5,
-                "rating: got {}, want ~1464.06", out.rating);
-        assert!((out.rd - 151.52).abs() < 0.5,
-                "rd: got {}, want ~151.52", out.rd);
-        assert!((out.volatility - 0.05999).abs() < 1e-4,
-                "volatility: got {}, want ~0.05999", out.volatility);
+        assert!(
+            (out.rating - 1464.06).abs() < 0.5,
+            "rating: got {}, want ~1464.06",
+            out.rating
+        );
+        assert!(
+            (out.rd - 151.52).abs() < 0.5,
+            "rd: got {}, want ~151.52",
+            out.rd
+        );
+        assert!(
+            (out.volatility - 0.05999).abs() < 1e-4,
+            "volatility: got {}, want ~0.05999",
+            out.volatility
+        );
     }
 
     #[test]
     fn no_opponents_only_widens_rd() {
-        let player = Rating { rating: 1500.0, rd: 100.0, volatility: 0.06 };
+        let player = Rating {
+            rating: 1500.0,
+            rd: 100.0,
+            volatility: 0.06,
+        };
         let out = update(player, &[]);
         // No games → rating unchanged, RD grows by √(φ² + σ²) on the
         // internal scale.
@@ -168,7 +206,11 @@ mod tests {
     #[test]
     fn winning_against_higher_rated_increases_rating() {
         let player = DEFAULT_RATING;
-        let higher = Rating { rating: 1800.0, rd: 30.0, volatility: 0.06 };
+        let higher = Rating {
+            rating: 1800.0,
+            rd: 30.0,
+            volatility: 0.06,
+        };
         let out = update(player, &[(higher, 1.0)]);
         assert!(out.rating > player.rating);
     }
@@ -176,7 +218,11 @@ mod tests {
     #[test]
     fn losing_against_lower_rated_decreases_rating() {
         let player = DEFAULT_RATING;
-        let lower = Rating { rating: 1200.0, rd: 30.0, volatility: 0.06 };
+        let lower = Rating {
+            rating: 1200.0,
+            rd: 30.0,
+            volatility: 0.06,
+        };
         let out = update(player, &[(lower, 0.0)]);
         assert!(out.rating < player.rating);
     }

@@ -1,16 +1,16 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex, RwLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use uuid::Uuid;
-use tokio::sync::broadcast;
-use spades::{Game, GameTransition, State, Card, TimerConfig};
-use spades::ai::AiStrategy;
-use spades::{GetError, TransitionError, TransitionSuccess};
 use crate::game_actor::{GameActor, GameHandle};
 use crate::lock_util::{MutexExt, RwLockExt};
 use crate::sqlite_store::SqliteStore;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use spades::ai::AiStrategy;
+use spades::{Card, Game, GameTransition, State, TimerConfig};
+use spades::{GetError, TransitionError, TransitionSuccess};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tokio::sync::broadcast;
 use tracing::{error, info};
+use uuid::Uuid;
 
 /// Event broadcast to WebSocket subscribers when game state changes.
 ///
@@ -189,11 +189,15 @@ impl std::error::Error for GameManagerError {
 }
 
 impl From<TransitionError> for GameManagerError {
-    fn from(e: TransitionError) -> Self { Self::Transition(e) }
+    fn from(e: TransitionError) -> Self {
+        Self::Transition(e)
+    }
 }
 
 impl From<GetError> for GameManagerError {
-    fn from(e: GetError) -> Self { Self::Get(e) }
+    fn from(e: GetError) -> Self {
+        Self::Get(e)
+    }
 }
 
 pub(crate) fn epoch_ms_now() -> u64 {
@@ -202,7 +206,6 @@ pub(crate) fn epoch_ms_now() -> u64 {
         .unwrap_or_default()
         .as_millis() as u64
 }
-
 
 impl GameManager {
     /// Create a new game manager (in-memory only).
@@ -237,16 +240,18 @@ impl GameManager {
 
     fn persist_insert(&self, game: &Game) {
         if let Some(db) = &self.db
-            && let Err(e) = db.insert_game(game) {
-                error!(game_id = %game.get_id(), error = %e, "failed to persist game insert");
-            }
+            && let Err(e) = db.insert_game(game)
+        {
+            error!(game_id = %game.get_id(), error = %e, "failed to persist game insert");
+        }
     }
 
     fn persist_delete(&self, game_id: Uuid) {
         if let Some(db) = &self.db
-            && let Err(e) = db.delete_game(game_id) {
-                error!(game_id = %game_id, error = %e, "failed to persist game delete");
-            }
+            && let Err(e) = db.delete_game(game_id)
+        {
+            error!(game_id = %game_id, error = %e, "failed to persist game delete");
+        }
     }
 
     /// Spawn a fresh actor for `game` and insert its handle into the
@@ -263,7 +268,10 @@ impl GameManager {
         let handle = GameActor::spawn(game, self.db.clone(), ai_config);
         let mut games = self.games.write_or_recover();
         games.insert(game_id, handle);
-        Ok(CreateGameResponse { game_id, player_ids })
+        Ok(CreateGameResponse {
+            game_id,
+            player_ids,
+        })
     }
 
     pub fn create_game(
@@ -309,7 +317,13 @@ impl GameManager {
         ];
         let game = Game::new(game_id, player_ids, max_points, timer_config);
         let ai_players: HashSet<usize> = (0..4).filter(|i| !human_seats.contains(i)).collect();
-        self.spawn_and_insert(game, Some(AiPlayerConfig { ai_players, strategy }))
+        self.spawn_and_insert(
+            game,
+            Some(AiPlayerConfig {
+                ai_players,
+                strategy,
+            }),
+        )
     }
 
     /// Look up the handle for `game_id`. Fast path: in-memory HashMap.
@@ -345,11 +359,18 @@ impl GameManager {
         Ok(new_handle)
     }
 
-    pub async fn get_game_state(&self, game_id: Uuid) -> Result<GameStateResponse, GameManagerError> {
+    pub async fn get_game_state(
+        &self,
+        game_id: Uuid,
+    ) -> Result<GameStateResponse, GameManagerError> {
         self.handle(game_id).await?.get_state().await
     }
 
-    pub async fn get_hand(&self, game_id: Uuid, player_id: Uuid) -> Result<HandResponse, GameManagerError> {
+    pub async fn get_hand(
+        &self,
+        game_id: Uuid,
+        player_id: Uuid,
+    ) -> Result<HandResponse, GameManagerError> {
         self.handle(game_id).await?.get_hand(player_id).await
     }
 
@@ -358,7 +379,10 @@ impl GameManager {
         game_id: Uuid,
         transition: GameTransition,
     ) -> Result<TransitionSuccess, GameManagerError> {
-        self.handle(game_id).await?.apply_transition(transition).await
+        self.handle(game_id)
+            .await?
+            .apply_transition(transition)
+            .await
     }
 
     pub async fn set_player_name(
@@ -367,7 +391,10 @@ impl GameManager {
         player_id: Uuid,
         name: Option<String>,
     ) -> Result<(), GameManagerError> {
-        self.handle(game_id).await?.set_player_name(player_id, name).await
+        self.handle(game_id)
+            .await?
+            .set_player_name(player_id, name)
+            .await
     }
 
     pub async fn subscribe(
@@ -392,7 +419,10 @@ impl GameManager {
         player_id: Uuid,
         content: String,
     ) -> Result<(), GameManagerError> {
-        self.handle(game_id).await?.send_chat(player_id, content).await
+        self.handle(game_id)
+            .await?
+            .send_chat(player_id, content)
+            .await
     }
 
     /// Sweep games that have been in a terminal state (Completed /
@@ -421,7 +451,9 @@ impl GameManager {
                     None => continue,
                 }
             };
-            let Ok(state) = handle.get_state().await else { continue };
+            let Ok(state) = handle.get_state().await else {
+                continue;
+            };
             let is_terminal = matches!(state.state, State::Completed | State::Aborted);
             let should_evict = {
                 let mut completed_at = self.completed_at.lock_or_recover();
@@ -463,7 +495,9 @@ impl GameManager {
     /// broadcast `Sender` drops with the actor.
     pub fn remove_game(&self, game_id: Uuid) -> Result<(), GameManagerError> {
         let mut games = self.games.write_or_recover();
-        games.remove(&game_id).ok_or(GameManagerError::GameNotFound)?;
+        games
+            .remove(&game_id)
+            .ok_or(GameManagerError::GameNotFound)?;
         drop(games);
         self.persist_delete(game_id);
         Ok(())
@@ -495,7 +529,10 @@ mod tests {
     async fn transition_advances_state() {
         let m = GameManager::new();
         let r = m.create_game(500, None).unwrap();
-        let out = m.make_transition(r.game_id, GameTransition::Start).await.unwrap();
+        let out = m
+            .make_transition(r.game_id, GameTransition::Start)
+            .await
+            .unwrap();
         assert_eq!(out, TransitionSuccess::Start);
         let state = m.get_game_state(r.game_id).await.unwrap();
         assert_eq!(state.state, State::Betting(0));
@@ -505,11 +542,26 @@ mod tests {
     async fn missing_game_returns_game_not_found() {
         let m = GameManager::new();
         let id = Uuid::new_v4();
-        assert!(matches!(m.get_game_state(id).await, Err(GameManagerError::GameNotFound)));
-        assert!(matches!(m.get_hand(id, Uuid::new_v4()).await, Err(GameManagerError::GameNotFound)));
-        assert!(matches!(m.make_transition(id, GameTransition::Start).await, Err(GameManagerError::GameNotFound)));
-        assert!(matches!(m.set_player_name(id, Uuid::new_v4(), None).await, Err(GameManagerError::GameNotFound)));
-        assert!(matches!(m.subscribe(id, None).await, Err(GameManagerError::GameNotFound)));
+        assert!(matches!(
+            m.get_game_state(id).await,
+            Err(GameManagerError::GameNotFound)
+        ));
+        assert!(matches!(
+            m.get_hand(id, Uuid::new_v4()).await,
+            Err(GameManagerError::GameNotFound)
+        ));
+        assert!(matches!(
+            m.make_transition(id, GameTransition::Start).await,
+            Err(GameManagerError::GameNotFound)
+        ));
+        assert!(matches!(
+            m.set_player_name(id, Uuid::new_v4(), None).await,
+            Err(GameManagerError::GameNotFound)
+        ));
+        assert!(matches!(
+            m.subscribe(id, None).await,
+            Err(GameManagerError::GameNotFound)
+        ));
     }
 
     #[tokio::test]
@@ -526,7 +578,9 @@ mod tests {
     async fn subscribe_after_transitions_receives_seq_n() {
         let m = GameManager::new();
         let r = m.create_game(500, None).unwrap();
-        m.make_transition(r.game_id, GameTransition::Start).await.unwrap();
+        m.make_transition(r.game_id, GameTransition::Start)
+            .await
+            .unwrap();
         // One broadcast happened. New subscriber's cursor should be 1.
         let sub = m.subscribe(r.game_id, None).await.unwrap();
         assert_eq!(sub.current_seq, 1);
@@ -536,7 +590,9 @@ mod tests {
     async fn subscribe_since_returns_empty_when_caller_caught_up() {
         let m = GameManager::new();
         let r = m.create_game(500, None).unwrap();
-        m.make_transition(r.game_id, GameTransition::Start).await.unwrap();
+        m.make_transition(r.game_id, GameTransition::Start)
+            .await
+            .unwrap();
         let sub = m.subscribe(r.game_id, Some(1)).await.unwrap();
         match sub.catch_up {
             Some(v) => assert!(v.is_empty()),
@@ -560,7 +616,9 @@ mod tests {
     async fn set_player_name_persists() {
         let m = GameManager::new();
         let r = m.create_game(500, None).unwrap();
-        m.set_player_name(r.game_id, r.player_ids[0], Some("Alice".to_string())).await.unwrap();
+        m.set_player_name(r.game_id, r.player_ids[0], Some("Alice".to_string()))
+            .await
+            .unwrap();
         let state = m.get_game_state(r.game_id).await.unwrap();
         assert_eq!(state.player_names[0].name.as_deref(), Some("Alice"));
     }
@@ -569,7 +627,9 @@ mod tests {
     async fn get_hand_after_start_returns_13_cards() {
         let m = GameManager::new();
         let r = m.create_game(500, None).unwrap();
-        m.make_transition(r.game_id, GameTransition::Start).await.unwrap();
+        m.make_transition(r.game_id, GameTransition::Start)
+            .await
+            .unwrap();
         let hand = m.get_hand(r.game_id, r.player_ids[0]).await.unwrap();
         assert_eq!(hand.cards.len(), 13);
         assert_eq!(hand.player_id, r.player_ids[0]);
@@ -580,7 +640,10 @@ mod tests {
         let m = GameManager::new();
         let r = m.create_game(500, None).unwrap();
         let evicted = m.sweep_completed_games(Duration::from_secs(0)).await;
-        assert_eq!(evicted, 0, "active game must not be evicted regardless of ttl");
+        assert_eq!(
+            evicted, 0,
+            "active game must not be evicted regardless of ttl"
+        );
         assert!(m.list_games().unwrap().contains(&r.game_id));
     }
 
@@ -592,13 +655,22 @@ mod tests {
         // and the sweeper will mark it; we then assert that a non-zero
         // TTL prevents immediate eviction (it just records first-seen).
         let m = GameManager::new();
-        let tc = TimerConfig { initial_time_secs: 0, increment_secs: 0 };
+        let tc = TimerConfig {
+            initial_time_secs: 0,
+            increment_secs: 0,
+        };
         let r = m.create_game(100, Some(tc)).unwrap();
-        m.make_transition(r.game_id, GameTransition::Start).await.unwrap();
+        m.make_transition(r.game_id, GameTransition::Start)
+            .await
+            .unwrap();
         // Give the actor's timeout task a moment to fire and abort.
         tokio::time::sleep(Duration::from_millis(50)).await;
         let state = m.get_game_state(r.game_id).await.unwrap();
-        assert_eq!(state.state, State::Aborted, "0-second clock should have aborted the game");
+        assert_eq!(
+            state.state,
+            State::Aborted,
+            "0-second clock should have aborted the game"
+        );
         // First sweep with a long TTL: marks the timestamp but doesn't evict.
         let evicted = m.sweep_completed_games(Duration::from_secs(3600)).await;
         assert_eq!(evicted, 0, "first sweep records the mark but waits for ttl");
@@ -608,14 +680,22 @@ mod tests {
     #[tokio::test]
     async fn sweep_evicts_after_ttl_elapses() {
         let m = GameManager::new();
-        let tc = TimerConfig { initial_time_secs: 0, increment_secs: 0 };
+        let tc = TimerConfig {
+            initial_time_secs: 0,
+            increment_secs: 0,
+        };
         let r = m.create_game(100, Some(tc)).unwrap();
-        m.make_transition(r.game_id, GameTransition::Start).await.unwrap();
+        m.make_transition(r.game_id, GameTransition::Start)
+            .await
+            .unwrap();
         tokio::time::sleep(Duration::from_millis(50)).await;
         // Game has aborted by now. Sweep with ttl=0 evicts immediately
         // (first observation sets timestamp to now, ttl=0 says now-now >= 0).
         let evicted = m.sweep_completed_games(Duration::from_secs(0)).await;
-        assert_eq!(evicted, 1, "ttl=0 should evict the aborted game on first sweep");
+        assert_eq!(
+            evicted, 1,
+            "ttl=0 should evict the aborted game on first sweep"
+        );
         assert!(!m.list_games().unwrap().contains(&r.game_id));
     }
 
@@ -654,10 +734,17 @@ mod tests {
         let m = GameManager::new();
         let r = m.create_game(500, None).unwrap();
         let mut sub = m.subscribe(r.game_id, None).await.unwrap();
-        m.send_chat(r.game_id, r.player_ids[0], "hello".to_string()).await.unwrap();
+        m.send_chat(r.game_id, r.player_ids[0], "hello".to_string())
+            .await
+            .unwrap();
         let event = sub.rx.try_recv().expect("chat event reached subscriber");
         match event {
-            GameEvent::ChatMessage { game_id, player_id, content, seq } => {
+            GameEvent::ChatMessage {
+                game_id,
+                player_id,
+                content,
+                seq,
+            } => {
                 assert_eq!(game_id, r.game_id);
                 assert_eq!(player_id, r.player_ids[0]);
                 assert_eq!(content, "hello");
@@ -677,4 +764,3 @@ mod tests {
         ));
     }
 }
-

@@ -2,8 +2,8 @@ use axum::{
     extract::{Path, State as AxumState},
     http::StatusCode,
     response::{
-        sse::{Event, KeepAlive, Sse},
         Json,
+        sse::{Event, KeepAlive, Sse},
     },
 };
 use oasgen::oasgen;
@@ -17,10 +17,8 @@ use std::convert::Infallible;
 use std::time::Duration;
 use uuid::Uuid;
 
-use super::super::dto::{
-    ErrorResponse, JoinChallengeRequest,
-};
 use super::super::AppState;
+use super::super::dto::{ErrorResponse, JoinChallengeRequest};
 
 struct ChallengeGuard {
     challenge_manager: ChallengeManager,
@@ -43,9 +41,15 @@ pub async fn create_challenge_handler(
     AxumState(state): AxumState<AppState>,
     identity: spades_server::auth::Identity,
     Json(mut config): Json<ChallengeConfig>,
-) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<ErrorResponse>)> {
-    spades_server::auth::rate_limit::check_user(&state.auth.rate.challenge_action, identity.anon_id())
-        .map_err(super::super::dto::auth_err_response)?;
+) -> Result<
+    Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>,
+    (StatusCode, Json<ErrorResponse>),
+> {
+    spades_server::auth::rate_limit::check_user(
+        &state.auth.rate.challenge_action,
+        identity.anon_id(),
+    )
+    .map_err(super::super::dto::auth_err_response)?;
 
     if config.max_points <= 0 {
         return Err((
@@ -58,7 +62,12 @@ pub async fn create_challenge_handler(
 
     config.creator_name = match config.creator_name {
         Some(raw) => Some(validate_player_name(&raw).map_err(|e| {
-            (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() }))
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
         })?),
         None => None,
     };
@@ -86,14 +95,17 @@ pub async fn create_challenge_handler(
             )
         })?;
 
-    let status = state.challenge_manager.get_status(challenge_id).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("{}", e),
-            }),
-        )
-    })?;
+    let status = state
+        .challenge_manager
+        .get_status(challenge_id)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("{}", e),
+                }),
+            )
+        })?;
 
     let challenge_manager = state.challenge_manager.clone();
     let stream = async_stream::stream! {
@@ -245,9 +257,15 @@ pub async fn join_challenge_handler(
     identity: spades_server::auth::Identity,
     Path((challenge_id, seat_str)): Path<(Uuid, String)>,
     body: Option<Json<JoinChallengeRequest>>,
-) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<ErrorResponse>)> {
-    spades_server::auth::rate_limit::check_user(&state.auth.rate.challenge_action, identity.anon_id())
-        .map_err(super::super::dto::auth_err_response)?;
+) -> Result<
+    Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>,
+    (StatusCode, Json<ErrorResponse>),
+> {
+    spades_server::auth::rate_limit::check_user(
+        &state.auth.rate.challenge_action,
+        identity.anon_id(),
+    )
+    .map_err(super::super::dto::auth_err_response)?;
 
     let seat: Seat = seat_str.parse().map_err(|_| {
         (
@@ -260,7 +278,12 @@ pub async fn join_challenge_handler(
 
     let validated_name = match body.and_then(|b| b.0.name) {
         Some(raw) => Some(validate_player_name(&raw).map_err(|e| {
-            (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() }))
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
         })?),
         None => None,
     };

@@ -1,4 +1,4 @@
-//! This crate provides an implementation of the four person card game, [spades](https://www.pagat.com/auctionwhist/spades.html). 
+//! This crate provides an implementation of the four person card game, [spades](https://www.pagat.com/auctionwhist/spades.html).
 //! ## Example usage
 //! ```
 //! use spades::{Game, GameTransition, State};
@@ -27,22 +27,22 @@
 
 #![allow(clippy::large_enum_variant)]
 
-mod scoring;
-mod game_state;
-mod cards;
-mod result;
 pub mod ai;
+mod cards;
+mod game_state;
+mod result;
+mod scoring;
 pub mod transcript;
 
 #[cfg(test)]
 mod tests;
 
-use std::sync::OnceLock;
-use uuid::Uuid;
-use sqids::Sqids;
-pub use result::*;
 pub use cards::*;
 pub use game_state::*;
+pub use result::*;
+use sqids::Sqids;
+use std::sync::OnceLock;
+use uuid::Uuid;
 
 fn sqids_instance() -> &'static Sqids {
     static SQIDS: OnceLock<Sqids> = OnceLock::new();
@@ -75,12 +75,14 @@ pub fn short_id_to_uuid(short_id: &str) -> Option<Uuid> {
 pub fn encode_player_url(game_id: Uuid, player_id: Uuid) -> String {
     let gb = game_id.as_bytes();
     let pb = player_id.as_bytes();
-    sqids_instance().encode(&[
-        u64::from_be_bytes(gb[0..8].try_into().unwrap()),
-        u64::from_be_bytes(gb[8..16].try_into().unwrap()),
-        u64::from_be_bytes(pb[0..8].try_into().unwrap()),
-        u64::from_be_bytes(pb[8..16].try_into().unwrap()),
-    ]).expect("sqids encode")
+    sqids_instance()
+        .encode(&[
+            u64::from_be_bytes(gb[0..8].try_into().unwrap()),
+            u64::from_be_bytes(gb[8..16].try_into().unwrap()),
+            u64::from_be_bytes(pb[0..8].try_into().unwrap()),
+            u64::from_be_bytes(pb[8..16].try_into().unwrap()),
+        ])
+        .expect("sqids encode")
 }
 
 pub fn decode_player_url(s: &str) -> Option<(Uuid, Uuid)> {
@@ -201,10 +203,14 @@ impl<'de> serde::Deserialize<'de> for Game {
             ps
         } else {
             [
-                s.player_a.ok_or_else(|| D::Error::missing_field("players or player_a"))?,
-                s.player_b.ok_or_else(|| D::Error::missing_field("player_b"))?,
-                s.player_c.ok_or_else(|| D::Error::missing_field("player_c"))?,
-                s.player_d.ok_or_else(|| D::Error::missing_field("player_d"))?,
+                s.player_a
+                    .ok_or_else(|| D::Error::missing_field("players or player_a"))?,
+                s.player_b
+                    .ok_or_else(|| D::Error::missing_field("player_b"))?,
+                s.player_c
+                    .ok_or_else(|| D::Error::missing_field("player_c"))?,
+                s.player_d
+                    .ok_or_else(|| D::Error::missing_field("player_d"))?,
             ]
         };
         Ok(Game {
@@ -227,7 +233,12 @@ impl<'de> serde::Deserialize<'de> for Game {
 }
 
 impl Game {
-    pub fn new(id: Uuid, player_ids: [Uuid; 4], max_points: i32, timer_config: Option<TimerConfig>) -> Game {
+    pub fn new(
+        id: Uuid,
+        player_ids: [Uuid; 4],
+        max_points: i32,
+        timer_config: Option<TimerConfig>,
+    ) -> Game {
         let player_clocks = timer_config.map(|tc| PlayerClocks {
             remaining_ms: [tc.initial_time_secs * 1000; 4],
         });
@@ -257,7 +268,7 @@ impl Game {
     pub fn get_id(&self) -> &Uuid {
         &self.id
     }
-    
+
     /// See [`State`](enum.State.html)
     pub fn get_state(&self) -> &State {
         &self.state
@@ -290,7 +301,7 @@ impl Game {
             _ => Ok(&self.scoring.team_b.bags),
         }
     }
-    
+
     /// Returns `GetError` when the current game is not in the Betting or Trick stages.
     pub fn get_current_player_id(&self) -> Result<&Uuid, GetError> {
         match self.state {
@@ -313,7 +324,9 @@ impl Game {
         match self.state {
             State::NotStarted => Err(GetError::GameNotStarted),
             State::Completed | State::Aborted => Err(GetError::GameCompleted),
-            State::Betting(_) | State::Trick(_) => Ok(&self.players[self.current_player_index].hand),
+            State::Betting(_) | State::Trick(_) => {
+                Ok(&self.players[self.current_player_index].hand)
+            }
         }
     }
 
@@ -337,9 +350,15 @@ impl Game {
         }
     }
 
-    #[deprecated(since="1.0.0", note="Please use `get_current_hand` or `get_hand_by_player_id`")]
+    #[deprecated(
+        since = "1.0.0",
+        note = "Please use `get_current_hand` or `get_hand_by_player_id`"
+    )]
     pub fn get_hand(&self, player: usize) -> Result<&Vec<Card>, GetError> {
-        self.players.get(player).map(|p| &p.hand).ok_or(GetError::InvalidUuid)
+        self.players
+            .get(player)
+            .map(|p| &p.hand)
+            .ok_or(GetError::InvalidUuid)
     }
 
     pub fn get_winner_ids(&self) -> Result<(&Uuid, &Uuid), GetError> {
@@ -347,66 +366,52 @@ impl Game {
             State::Completed => {
                 if self.scoring.team_a.cumulative_points > self.scoring.team_b.cumulative_points {
                     Ok((&self.players[0].id, &self.players[2].id))
-                } else if self.scoring.team_b.cumulative_points > self.scoring.team_a.cumulative_points {
+                } else if self.scoring.team_b.cumulative_points
+                    > self.scoring.team_a.cumulative_points
+                {
                     Ok((&self.players[1].id, &self.players[3].id))
                 } else {
                     // Unreachable: Scoring keeps is_over = false on a tie at max_points,
                     // so the game never transitions to State::Completed with equal scores.
                     Err(GetError::GameNotCompleted)
                 }
-            },
-            _ => {
-                Err(GetError::GameNotCompleted)
             }
+            _ => Err(GetError::GameNotCompleted),
         }
     }
 
-    /// The primary function used to progress the game state. The first `GameTransition` argument must always be 
+    /// The primary function used to progress the game state. The first `GameTransition` argument must always be
     /// [`GameTransition::Start`](enum.GameTransition.html#variant.Start). The stages and player rotations are managed
     /// internally. The order of `GameTransition` arguments should be:
-    /// 
+    ///
     /// Start -> Bet * 4 -> Card * 13 -> Bet * 4 -> Card * 13 -> Bet * 4 -> ...
     pub fn play(&mut self, entry: GameTransition) -> Result<TransitionSuccess, TransitionError> {
         self.last_completed_trick = None;
         match entry {
-            GameTransition::Bet(bet) => {
-                match self.state {
-                    State::NotStarted => {
-                        Err(TransitionError::NotStarted)
-                    },
-                    State::Trick(_rotation_status) => {
-                        Err(TransitionError::BetInTrickStage)
-                    },
-                    State::Completed | State::Aborted => {
-                        Err(TransitionError::CompletedGame)
-                    },
-                    State::Betting(rotation_status) => {
-                        self.scoring.add_bet(self.current_player_index,bet);
-                        if rotation_status == 3 {
-                            self.scoring.bet();
-                            self.state = State::Trick((rotation_status + 1) % 4);
-                            self.current_player_index = 0;
-                            return Ok(TransitionSuccess::BetComplete);
-                        } else {
-                            self.current_player_index = (self.current_player_index + 1) % 4;
-                            self.state = State::Betting((rotation_status + 1) % 4);
-                        }
+            GameTransition::Bet(bet) => match self.state {
+                State::NotStarted => Err(TransitionError::NotStarted),
+                State::Trick(_rotation_status) => Err(TransitionError::BetInTrickStage),
+                State::Completed | State::Aborted => Err(TransitionError::CompletedGame),
+                State::Betting(rotation_status) => {
+                    self.scoring.add_bet(self.current_player_index, bet);
+                    if rotation_status == 3 {
+                        self.scoring.bet();
+                        self.state = State::Trick((rotation_status + 1) % 4);
+                        self.current_player_index = 0;
+                        return Ok(TransitionSuccess::BetComplete);
+                    } else {
+                        self.current_player_index = (self.current_player_index + 1) % 4;
+                        self.state = State::Betting((rotation_status + 1) % 4);
+                    }
 
-                        Ok(TransitionSuccess::Bet)
-                    },
+                    Ok(TransitionSuccess::Bet)
                 }
             },
             GameTransition::Card(card) => {
                 match self.state {
-                    State::NotStarted => {
-                        Err(TransitionError::NotStarted)
-                    },
-                    State::Completed | State::Aborted => {
-                        Err(TransitionError::CompletedGame)
-                    },
-                    State::Betting(_rotation_status) => {
-                        Err(TransitionError::CardInBettingStage)
-                    },
+                    State::NotStarted => Err(TransitionError::NotStarted),
+                    State::Completed | State::Aborted => Err(TransitionError::CompletedGame),
+                    State::Betting(_rotation_status) => Err(TransitionError::CardInBettingStage),
                     State::Trick(rotation_status) => {
                         {
                             let player_hand = &mut self.players[self.current_player_index].hand;
@@ -437,7 +442,8 @@ impl Game {
                         if card.suit == Suit::Spade {
                             self.spades_broken = true;
                         }
-                        self.hands_played.last_mut().unwrap()[self.current_player_index] = Some(card);
+                        self.hands_played.last_mut().unwrap()[self.current_player_index] =
+                            Some(card);
 
                         if rotation_status == 3 {
                             let trick = self.hands_played.last().unwrap();
@@ -480,7 +486,7 @@ impl Game {
                         }
                     }
                 }
-            },
+            }
             GameTransition::Start => {
                 if self.state != State::NotStarted {
                     return Err(TransitionError::AlreadyStarted);
@@ -492,7 +498,11 @@ impl Game {
         }
     }
 
-    pub fn set_player_name(&mut self, player_id: Uuid, name: Option<String>) -> Result<(), GetError> {
+    pub fn set_player_name(
+        &mut self,
+        player_id: Uuid,
+        name: Option<String>,
+    ) -> Result<(), GetError> {
         let p = self
             .players
             .iter_mut()
@@ -550,7 +560,8 @@ impl Game {
     }
 
     pub fn get_last_trick_winner_id(&self) -> Option<Uuid> {
-        self.last_trick_winner.map(|idx| self.players[idx.min(3)].id)
+        self.last_trick_winner
+            .map(|idx| self.players[idx.min(3)].id)
     }
 
     pub fn get_last_completed_trick(&self) -> Option<&[cards::Card; 4]> {
@@ -570,8 +581,11 @@ impl Game {
                 let hand = self.get_current_hand()?;
                 if *rotation_status == 0 {
                     if !self.spades_broken {
-                        let non_spades: Vec<Card> =
-                            hand.iter().filter(|c| c.suit != Suit::Spade).copied().collect();
+                        let non_spades: Vec<Card> = hand
+                            .iter()
+                            .filter(|c| c.suit != Suit::Spade)
+                            .copied()
+                            .collect();
                         if !non_spades.is_empty() {
                             return Ok(non_spades);
                         }

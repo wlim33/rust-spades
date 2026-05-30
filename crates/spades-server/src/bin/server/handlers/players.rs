@@ -3,8 +3,8 @@ use spades_server::validation::validate_player_name;
 use tower_sessions::Session;
 use uuid::Uuid;
 
-use super::super::dto::{ErrorResponse, SessionPlayerResponse, SetDisplayNameRequest, UserSession};
 use super::super::SESSION_USER_KEY;
+use super::super::dto::{ErrorResponse, SessionPlayerResponse, SetDisplayNameRequest, UserSession};
 
 pub async fn get_player(session: Session) -> Result<Json<SessionPlayerResponse>, StatusCode> {
     let user = match session
@@ -67,16 +67,13 @@ pub async fn set_display_name(
     };
 
     user.display_name = validated_name;
-    session
-        .insert(SESSION_USER_KEY, user)
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Session error".to_string(),
-                }),
-            )
-        })?;
+    session.insert(SESSION_USER_KEY, user).await.map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Session error".to_string(),
+            }),
+        )
+    })?;
     Ok(StatusCode::NO_CONTENT)
 }

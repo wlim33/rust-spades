@@ -1,9 +1,9 @@
-use serde::{Serialize, Deserialize};
 use crate::cards::{Card, get_trick_winner};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GameConfig {
-    pub(crate) max_points: i32
+    pub(crate) max_points: i32,
 }
 
 fn deser_tricks_won<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i32, D::Error> {
@@ -37,11 +37,17 @@ impl TeamState {
         }
     }
 
-    fn calculate_round_totals(&mut self, first_bet: i32, first_nil: bool, second_bet:i32, second_nil: bool) {
+    fn calculate_round_totals(
+        &mut self,
+        first_bet: i32,
+        first_nil: bool,
+        second_bet: i32,
+        second_nil: bool,
+    ) {
         let team_tricks: i32 = self.current_round_tricks_won;
 
         let team_bets = first_bet + second_bet;
-        
+
         if team_tricks >= team_bets {
             let round_bags = team_tricks - team_bets;
             self.bags += round_bags;
@@ -54,7 +60,7 @@ impl TeamState {
             self.bags -= 10;
             self.cumulative_points -= 100;
         }
-        
+
         if first_bet == 0 {
             if !first_nil {
                 self.cumulative_points += 100;
@@ -69,7 +75,6 @@ impl TeamState {
                 self.cumulative_points -= 100;
             }
         }
-
     }
 }
 
@@ -93,17 +98,16 @@ impl Scoring {
             team_a: TeamState::new(),
             team_b: TeamState::new(),
             in_betting_stage: true,
-            bets_placed: vec![[0;4]],
+            bets_placed: vec![[0; 4]],
             is_over: false,
             round: 0,
             trick: 0,
-            config: GameConfig {max_points},
+            config: GameConfig { max_points },
             nil_check: [false, false, false, false],
             player_tricks_won: [0; 4],
-
         }
     }
-    
+
     pub fn add_bet(&mut self, current_player_index: usize, bet: i32) {
         self.bets_placed.last_mut().unwrap()[current_player_index] = bet;
     }
@@ -111,8 +115,8 @@ impl Scoring {
     pub fn bet(&mut self) {
         self.trick = 0;
         self.in_betting_stage = false;
-        
-        self.bets_placed.push([0;4]);
+
+        self.bets_placed.push([0; 4]);
     }
 
     pub fn trick(&mut self, starting_player_index: usize, cards: &[Card; 4]) -> usize {
@@ -127,8 +131,18 @@ impl Scoring {
         }
 
         if self.trick == 12 {
-            self.team_a.calculate_round_totals(self.bets_placed[self.round][0], self.nil_check[0], self.bets_placed[self.round][2], self.nil_check[2]);
-            self.team_b.calculate_round_totals(self.bets_placed[self.round][1], self.nil_check[1], self.bets_placed[self.round][3], self.nil_check[3]);
+            self.team_a.calculate_round_totals(
+                self.bets_placed[self.round][0],
+                self.nil_check[0],
+                self.bets_placed[self.round][2],
+                self.nil_check[2],
+            );
+            self.team_b.calculate_round_totals(
+                self.bets_placed[self.round][1],
+                self.nil_check[1],
+                self.bets_placed[self.round][3],
+                self.nil_check[3],
+            );
             self.nil_check = [false; 4];
             self.player_tricks_won = [0; 4];
             self.in_betting_stage = true;
@@ -159,16 +173,28 @@ impl Scoring {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::{Suit, Rank};
+    use crate::cards::{Rank, Suit};
 
     /// Helper: create 4 cards of the same suit with given ranks.
     /// Player at `winner_idx` gets the highest rank to win the trick.
     fn make_trick(suit: Suit, ranks: [Rank; 4]) -> [Card; 4] {
         [
-            Card { suit, rank: ranks[0] },
-            Card { suit, rank: ranks[1] },
-            Card { suit, rank: ranks[2] },
-            Card { suit, rank: ranks[3] },
+            Card {
+                suit,
+                rank: ranks[0],
+            },
+            Card {
+                suit,
+                rank: ranks[1],
+            },
+            Card {
+                suit,
+                rank: ranks[2],
+            },
+            Card {
+                suit,
+                rank: ranks[3],
+            },
         ]
     }
 
@@ -356,7 +382,11 @@ mod tests {
     }
 
     /// Helper: just calls scoring.trick with starting index
-    fn scoring_trick_with_start(scoring: &mut Scoring, starting_idx: usize, cards: &[Card; 4]) -> usize {
+    fn scoring_trick_with_start(
+        scoring: &mut Scoring,
+        starting_idx: usize,
+        cards: &[Card; 4],
+    ) -> usize {
         scoring.trick(starting_idx, cards)
     }
 
@@ -564,7 +594,10 @@ mod tests {
         // Two bag penalties (-200), plus nil bonus (+100 for second_bet=0, second_nil=false)
         // Net: 21 - 200 + 100 = -79
         t.calculate_round_totals(1, false, 0, false);
-        assert_eq!(t.bags, 0, "bags should be reduced through both 10-thresholds");
+        assert_eq!(
+            t.bags, 0,
+            "bags should be reduced through both 10-thresholds"
+        );
         assert_eq!(t.cumulative_points, -79);
     }
 

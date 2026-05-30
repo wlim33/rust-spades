@@ -13,17 +13,17 @@
 use std::fmt;
 use uuid::Uuid;
 
+use crate::TimerConfig;
 use crate::cards::Card;
 use crate::result::TransitionError;
-use crate::TimerConfig;
 
-mod format;
-mod encode;
 mod decode;
+mod encode;
+mod format;
 mod replay;
 
-pub use encode::encode;
 pub use decode::decode;
+pub use encode::encode;
 pub use replay::replay;
 
 /// Parsed transcript. Constructed by `decode`, consumed by `replay`, produced
@@ -170,8 +170,8 @@ mod display_tests {
 mod property_tests {
     use super::*;
     use crate::{Game, GameTransition, State};
-    use rand::seq::SliceRandom;
     use rand::rngs::StdRng;
+    use rand::seq::SliceRandom;
     use rand::{RngCore, SeedableRng};
     use uuid::Uuid;
 

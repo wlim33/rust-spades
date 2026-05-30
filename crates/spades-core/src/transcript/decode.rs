@@ -20,7 +20,12 @@ pub fn decode(text: &str) -> Result<Transcript, DecodeError> {
     let (termination, result) = parser.consume_termination_and_result()?;
     let rounds = parser.parse_rounds()?;
     parser.expect_eof()?;
-    Ok(Transcript { headers, rounds, termination, result })
+    Ok(Transcript {
+        headers,
+        rounds,
+        termination,
+        result,
+    })
 }
 
 struct Parser<'a> {
@@ -38,7 +43,13 @@ impl<'a> Parser<'a> {
             .enumerate()
             .map(|(i, l)| (i + 1, l))
             .collect();
-        Parser { lines, cursor: 0, termination: None, result: None, result_was_star: false }
+        Parser {
+            lines,
+            cursor: 0,
+            termination: None,
+            result: None,
+            result_was_star: false,
+        }
     }
 
     fn peek(&self) -> Option<&(usize, &'a str)> {
@@ -68,7 +79,10 @@ impl<'a> Parser<'a> {
                 break;
             }
             if !line.starts_with('[') {
-                return Err(DecodeError::BadTag { line: ln, found: line.to_string() });
+                return Err(DecodeError::BadTag {
+                    line: ln,
+                    found: line.to_string(),
+                });
             }
             let (key, value) = parse_tag_line(ln, line)?;
             self.advance();
@@ -83,8 +97,18 @@ impl<'a> Parser<'a> {
                 "Name1" => set_once(&mut names[1], value, ln, "Name1")?,
                 "Name2" => set_once(&mut names[2], value, ln, "Name2")?,
                 "Name3" => set_once(&mut names[3], value, ln, "Name3")?,
-                "TimerInitial" => set_once(&mut timer_initial, parse_u64(ln, &value)?, ln, "TimerInitial")?,
-                "TimerIncrement" => set_once(&mut timer_increment, parse_u64(ln, &value)?, ln, "TimerIncrement")?,
+                "TimerInitial" => set_once(
+                    &mut timer_initial,
+                    parse_u64(ln, &value)?,
+                    ln,
+                    "TimerInitial",
+                )?,
+                "TimerIncrement" => set_once(
+                    &mut timer_increment,
+                    parse_u64(ln, &value)?,
+                    ln,
+                    "TimerIncrement",
+                )?,
                 "Termination" => {
                     let t = match value.as_str() {
                         "Completed" => Termination::Completed,
@@ -93,27 +117,51 @@ impl<'a> Parser<'a> {
                         _ => return Err(DecodeError::BadTermination { line: ln, value }),
                     };
                     if self.termination.is_some() {
-                        return Err(DecodeError::DuplicateTag { line: ln, key: "Termination".into() });
+                        return Err(DecodeError::DuplicateTag {
+                            line: ln,
+                            key: "Termination".into(),
+                        });
                     }
                     self.termination = Some(t);
                 }
                 "Result" => {
                     if self.result.is_some() || self.result_was_star {
-                        return Err(DecodeError::DuplicateTag { line: ln, key: "Result".into() });
+                        return Err(DecodeError::DuplicateTag {
+                            line: ln,
+                            key: "Result".into(),
+                        });
                     }
                     if value == "*" {
                         self.result_was_star = true;
                     } else {
                         let parts: Vec<&str> = value.split_whitespace().collect();
                         if parts.len() != 2 {
-                            return Err(DecodeError::BadResult { line: ln, value: value.clone() });
+                            return Err(DecodeError::BadResult {
+                                line: ln,
+                                value: value.clone(),
+                            });
                         }
-                        let a = parts[0].parse::<i32>().map_err(|_| DecodeError::BadResult { line: ln, value: value.clone() })?;
-                        let b = parts[1].parse::<i32>().map_err(|_| DecodeError::BadResult { line: ln, value: value.clone() })?;
+                        let a = parts[0]
+                            .parse::<i32>()
+                            .map_err(|_| DecodeError::BadResult {
+                                line: ln,
+                                value: value.clone(),
+                            })?;
+                        let b = parts[1]
+                            .parse::<i32>()
+                            .map_err(|_| DecodeError::BadResult {
+                                line: ln,
+                                value: value.clone(),
+                            })?;
                         self.result = Some((a, b));
                     }
                 }
-                _ => return Err(DecodeError::BadTag { line: ln, found: line.to_string() }),
+                _ => {
+                    return Err(DecodeError::BadTag {
+                        line: ln,
+                        found: line.to_string(),
+                    });
+                }
             }
         }
 
@@ -126,15 +174,32 @@ impl<'a> Parser<'a> {
             player_ids[3].ok_or(DecodeError::MissingRequiredTag { key: "Player3" })?,
         ];
         let timer = match (timer_initial, timer_increment) {
-            (Some(a), Some(b)) => Some(TimerConfig { initial_time_secs: a, increment_secs: b }),
+            (Some(a), Some(b)) => Some(TimerConfig {
+                initial_time_secs: a,
+                increment_secs: b,
+            }),
             (None, None) => None,
-            _ => return Err(DecodeError::MissingRequiredTag { key: "TimerInitial/Increment pair" }),
+            _ => {
+                return Err(DecodeError::MissingRequiredTag {
+                    key: "TimerInitial/Increment pair",
+                });
+            }
         };
-        Ok(Headers { game_id, max_points, player_ids, names, timer })
+        Ok(Headers {
+            game_id,
+            max_points,
+            player_ids,
+            names,
+            timer,
+        })
     }
 
-    fn consume_termination_and_result(&mut self) -> Result<(Termination, Option<(i32, i32)>), DecodeError> {
-        let term = self.termination.ok_or(DecodeError::MissingRequiredTag { key: "Termination" })?;
+    fn consume_termination_and_result(
+        &mut self,
+    ) -> Result<(Termination, Option<(i32, i32)>), DecodeError> {
+        let term = self
+            .termination
+            .ok_or(DecodeError::MissingRequiredTag { key: "Termination" })?;
         if !self.result_was_star && self.result.is_none() {
             return Err(DecodeError::MissingRequiredTag { key: "Result" });
         }
@@ -172,7 +237,10 @@ impl<'a> Parser<'a> {
                 let (ln2, line2) = self.advance().copied().ok_or(DecodeError::UnexpectedEof)?;
                 let (k, v) = parse_tag_line(ln2, line2)?;
                 if k != format!("Hand{}", seat) {
-                    return Err(DecodeError::BadTag { line: ln2, found: line2.to_string() });
+                    return Err(DecodeError::BadTag {
+                        line: ln2,
+                        found: line2.to_string(),
+                    });
                 }
                 for tok in v.split_whitespace() {
                     let c = parse_card(tok).ok_or(DecodeError::BadCard {
@@ -187,7 +255,10 @@ impl<'a> Parser<'a> {
             let (ln3, line3) = self.advance().copied().ok_or(DecodeError::UnexpectedEof)?;
             let (k3, v3) = parse_tag_line(ln3, line3)?;
             if k3 != "Bets" {
-                return Err(DecodeError::BadTag { line: ln3, found: line3.to_string() });
+                return Err(DecodeError::BadTag {
+                    line: ln3,
+                    found: line3.to_string(),
+                });
             }
             let bets: Vec<i32> = if v3.is_empty() {
                 Vec::new()
@@ -199,7 +270,9 @@ impl<'a> Parser<'a> {
                 out
             };
             if bets.len() > 4 {
-                return Err(DecodeError::TooManyBets { round: round_num as usize });
+                return Err(DecodeError::TooManyBets {
+                    round: round_num as usize,
+                });
             }
 
             // Trick lines until blank/next [Round]/EOF
@@ -208,13 +281,17 @@ impl<'a> Parser<'a> {
                 if line4.is_empty() || line4.starts_with('[') {
                     break;
                 }
-                let (num_str, rest) = line4
-                    .split_once('.')
-                    .ok_or_else(|| DecodeError::BadTag { line: ln4, found: line4.to_string() })?;
+                let (num_str, rest) = line4.split_once('.').ok_or_else(|| DecodeError::BadTag {
+                    line: ln4,
+                    found: line4.to_string(),
+                })?;
                 let trick_num = parse_int(ln4, num_str)?;
                 let expected_t = tricks.len() + 1;
                 if (trick_num as usize) != expected_t {
-                    return Err(DecodeError::BadTag { line: ln4, found: line4.to_string() });
+                    return Err(DecodeError::BadTag {
+                        line: ln4,
+                        found: line4.to_string(),
+                    });
                 }
                 let mut cards: Vec<crate::cards::Card> = Vec::new();
                 for tok in rest.split_whitespace() {
@@ -225,7 +302,10 @@ impl<'a> Parser<'a> {
                     cards.push(c);
                 }
                 if cards.is_empty() {
-                    return Err(DecodeError::BadTag { line: ln4, found: line4.to_string() });
+                    return Err(DecodeError::BadTag {
+                        line: ln4,
+                        found: line4.to_string(),
+                    });
                 }
                 if cards.len() > 4 {
                     return Err(DecodeError::TooManyCardsInTrick {
@@ -236,11 +316,17 @@ impl<'a> Parser<'a> {
                 self.advance();
                 tricks.push(cards);
                 if tricks.len() > 13 {
-                    return Err(DecodeError::TooManyTricks { round: round_num as usize });
+                    return Err(DecodeError::TooManyTricks {
+                        round: round_num as usize,
+                    });
                 }
             }
 
-            rounds.push(Round { hands, bets, tricks });
+            rounds.push(Round {
+                hands,
+                bets,
+                tricks,
+            });
         }
         Ok(rounds)
     }
@@ -260,39 +346,59 @@ fn parse_tag_line(line_no: usize, line: &str) -> Result<(String, String), Decode
     let inside = line
         .strip_prefix('[')
         .and_then(|s| s.strip_suffix(']'))
-        .ok_or_else(|| DecodeError::BadTag { line: line_no, found: line.to_string() })?;
-    let (key, rest) = inside
-        .split_once(' ')
-        .ok_or_else(|| DecodeError::BadTag { line: line_no, found: line.to_string() })?;
+        .ok_or_else(|| DecodeError::BadTag {
+            line: line_no,
+            found: line.to_string(),
+        })?;
+    let (key, rest) = inside.split_once(' ').ok_or_else(|| DecodeError::BadTag {
+        line: line_no,
+        found: line.to_string(),
+    })?;
     let value = rest
         .strip_prefix('"')
         .and_then(|s| s.strip_suffix('"'))
-        .ok_or_else(|| DecodeError::BadTag { line: line_no, found: line.to_string() })?;
-    let unescaped = unescape_tag_value(value)
-        .ok_or_else(|| DecodeError::BadEscape { line: line_no, value: value.to_string() })?;
+        .ok_or_else(|| DecodeError::BadTag {
+            line: line_no,
+            found: line.to_string(),
+        })?;
+    let unescaped = unescape_tag_value(value).ok_or_else(|| DecodeError::BadEscape {
+        line: line_no,
+        value: value.to_string(),
+    })?;
     Ok((key.to_string(), unescaped))
 }
 
 fn set_once<T>(slot: &mut Option<T>, value: T, ln: usize, key: &str) -> Result<(), DecodeError> {
     if slot.is_some() {
-        return Err(DecodeError::DuplicateTag { line: ln, key: key.to_string() });
+        return Err(DecodeError::DuplicateTag {
+            line: ln,
+            key: key.to_string(),
+        });
     }
     *slot = Some(value);
     Ok(())
 }
 
 fn parse_uuid(ln: usize, v: &str) -> Result<Uuid, DecodeError> {
-    Uuid::parse_str(v).map_err(|_| DecodeError::BadUuid { line: ln, value: v.to_string() })
+    Uuid::parse_str(v).map_err(|_| DecodeError::BadUuid {
+        line: ln,
+        value: v.to_string(),
+    })
 }
 
 fn parse_int(ln: usize, v: &str) -> Result<i32, DecodeError> {
-    v.parse::<i32>().map_err(|_| DecodeError::BadInteger { line: ln, value: v.to_string() })
+    v.parse::<i32>().map_err(|_| DecodeError::BadInteger {
+        line: ln,
+        value: v.to_string(),
+    })
 }
 
 fn parse_u64(ln: usize, v: &str) -> Result<u64, DecodeError> {
-    v.parse::<u64>().map_err(|_| DecodeError::BadInteger { line: ln, value: v.to_string() })
+    v.parse::<u64>().map_err(|_| DecodeError::BadInteger {
+        line: ln,
+        value: v.to_string(),
+    })
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -346,7 +452,12 @@ mod tests {
         assert_eq!(t.headers.names[1], None);
         assert_eq!(t.headers.names[2].as_deref(), Some("Carol \"Q\""));
         assert_eq!(t.headers.names[3], None);
-        assert_eq!(t.headers.timer.map(|tc| (tc.initial_time_secs, tc.increment_secs)), Some((300, 5)));
+        assert_eq!(
+            t.headers
+                .timer
+                .map(|tc| (tc.initial_time_secs, tc.increment_secs)),
+            Some((300, 5))
+        );
         assert_eq!(t.termination, Termination::Completed);
         assert_eq!(t.result, Some((520, 430)));
     }
@@ -434,12 +545,15 @@ mod tests {
         assert_eq!(r.hands[0][0], c(Rank::Two, Suit::Club));
         assert_eq!(r.bets, vec![3, 4, 2, 4]);
         assert_eq!(r.tricks.len(), 1);
-        assert_eq!(r.tricks[0], vec![
-            c(Rank::Two, Suit::Club),
-            c(Rank::Five, Suit::Club),
-            c(Rank::Seven, Suit::Club),
-            c(Rank::Ten, Suit::Club),
-        ]);
+        assert_eq!(
+            r.tricks[0],
+            vec![
+                c(Rank::Two, Suit::Club),
+                c(Rank::Five, Suit::Club),
+                c(Rank::Seven, Suit::Club),
+                c(Rank::Ten, Suit::Club),
+            ]
+        );
     }
 
     #[test]
@@ -487,7 +601,10 @@ mod tests {
 ";
         assert!(matches!(
             decode(s),
-            Err(DecodeError::NonMonotonicRound { expected: 1, found: 3 })
+            Err(DecodeError::NonMonotonicRound {
+                expected: 1,
+                found: 3
+            })
         ));
     }
 
@@ -510,7 +627,10 @@ mod tests {
 [Hand3 \"2C 5D JD KD 7H 8H KH 5S 9S JS QS 6D 3H\"]
 [Bets \"3 4 2 4 1\"]
 ";
-        assert!(matches!(decode(s), Err(DecodeError::TooManyBets { round: 1 })));
+        assert!(matches!(
+            decode(s),
+            Err(DecodeError::TooManyBets { round: 1 })
+        ));
     }
 
     #[test]
@@ -623,7 +743,10 @@ mod tests {
 
 garbage
 ";
-        assert!(matches!(decode(s), Err(DecodeError::TrailingContent { .. })));
+        assert!(matches!(
+            decode(s),
+            Err(DecodeError::TrailingContent { .. })
+        ));
     }
 
     #[test]
@@ -682,7 +805,9 @@ not a tag at all
 [Termination \"InProgress\"]
 [Result \"*\"]
 ";
-        assert!(matches!(decode(s), Err(DecodeError::BadTag { found, .. }) if found == "not a tag at all"));
+        assert!(
+            matches!(decode(s), Err(DecodeError::BadTag { found, .. }) if found == "not a tag at all")
+        );
     }
 
     #[test]
@@ -857,7 +982,8 @@ not a tag at all
     #[test]
     fn decode_rejects_too_many_tricks() {
         // 14 trick lines in one round (max is 13).
-        let mut s = String::from("\
+        let mut s = String::from(
+            "\
 [GameId \"01010101-0101-0101-0101-010101010101\"]
 [MaxPoints \"500\"]
 [Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]
@@ -873,10 +999,14 @@ not a tag at all
 [Hand2 \"4C 7C 9C QC 5D TD 2H 6H QH 4S 8S TS AS\"]
 [Hand3 \"2C 5D JD KD 7H 8H KH 5S 9S JS QS 6D 3H\"]
 [Bets \"3 4 2 4\"]
-");
+",
+        );
         for i in 1..=14 {
             s.push_str(&format!("{}. 2C 5C 7C TC\n", i));
         }
-        assert!(matches!(decode(&s), Err(DecodeError::TooManyTricks { round: 1 })));
+        assert!(matches!(
+            decode(&s),
+            Err(DecodeError::TooManyTricks { round: 1 })
+        ));
     }
 }

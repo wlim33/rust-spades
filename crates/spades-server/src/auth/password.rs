@@ -1,15 +1,20 @@
 //! argon2id password hashing + weak-password reject list.
 
 use crate::auth::AuthError;
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, Params, Version, Algorithm};
-use argon2::password_hash::{rand_core::OsRng, SaltString};
+use argon2::password_hash::{SaltString, rand_core::OsRng};
+use argon2::{Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version};
 use std::sync::OnceLock;
 
 const WEAK_PASSWORDS_RAW: &str = include_str!("weak_passwords.txt");
 
 fn weak_set() -> &'static std::collections::HashSet<&'static str> {
     static SET: OnceLock<std::collections::HashSet<&'static str>> = OnceLock::new();
-    SET.get_or_init(|| WEAK_PASSWORDS_RAW.lines().filter(|l| !l.is_empty()).collect())
+    SET.get_or_init(|| {
+        WEAK_PASSWORDS_RAW
+            .lines()
+            .filter(|l| !l.is_empty())
+            .collect()
+    })
 }
 
 fn argon2() -> Argon2<'static> {
@@ -19,10 +24,14 @@ fn argon2() -> Argon2<'static> {
 
 pub fn validate_password(password: &str) -> Result<(), AuthError> {
     if password.len() < 8 {
-        return Err(AuthError::Validation("password must be at least 8 characters".into()));
+        return Err(AuthError::Validation(
+            "password must be at least 8 characters".into(),
+        ));
     }
     if password.len() > 256 {
-        return Err(AuthError::Validation("password must be at most 256 characters".into()));
+        return Err(AuthError::Validation(
+            "password must be at most 256 characters".into(),
+        ));
     }
     if weak_set().contains(password.to_lowercase().as_str()) {
         return Err(AuthError::Validation("password is too common".into()));
@@ -39,7 +48,8 @@ pub fn hash_password(password: &str) -> Result<String, AuthError> {
 }
 
 pub fn verify_password(password: &str, phc: &str) -> Result<bool, AuthError> {
-    let parsed = PasswordHash::new(phc).map_err(|e| AuthError::Internal(format!("password parse: {e}")))?;
+    let parsed =
+        PasswordHash::new(phc).map_err(|e| AuthError::Internal(format!("password parse: {e}")))?;
     match argon2().verify_password(password.as_bytes(), &parsed) {
         Ok(()) => Ok(true),
         Err(argon2::password_hash::Error::Password) => Ok(false),

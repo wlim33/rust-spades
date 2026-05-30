@@ -110,9 +110,19 @@ mod tests {
     fn every_card_round_trips() {
         for suit in [Suit::Club, Suit::Diamond, Suit::Heart, Suit::Spade] {
             for rank in [
-                Rank::Two, Rank::Three, Rank::Four, Rank::Five, Rank::Six,
-                Rank::Seven, Rank::Eight, Rank::Nine, Rank::Ten, Rank::Jack,
-                Rank::Queen, Rank::King, Rank::Ace,
+                Rank::Two,
+                Rank::Three,
+                Rank::Four,
+                Rank::Five,
+                Rank::Six,
+                Rank::Seven,
+                Rank::Eight,
+                Rank::Nine,
+                Rank::Ten,
+                Rank::Jack,
+                Rank::Queen,
+                Rank::King,
+                Rank::Ace,
             ] {
                 let c = Card { suit, rank };
                 let txt = s(c);
@@ -123,11 +133,41 @@ mod tests {
 
     #[test]
     fn known_examples() {
-        assert_eq!(s(Card { suit: Suit::Club, rank: Rank::Two }), "2C");
-        assert_eq!(s(Card { suit: Suit::Club, rank: Rank::Ten }), "TC");
-        assert_eq!(s(Card { suit: Suit::Spade, rank: Rank::Ace }), "AS");
-        assert_eq!(s(Card { suit: Suit::Diamond, rank: Rank::King }), "KD");
-        assert_eq!(s(Card { suit: Suit::Heart, rank: Rank::Jack }), "JH");
+        assert_eq!(
+            s(Card {
+                suit: Suit::Club,
+                rank: Rank::Two
+            }),
+            "2C"
+        );
+        assert_eq!(
+            s(Card {
+                suit: Suit::Club,
+                rank: Rank::Ten
+            }),
+            "TC"
+        );
+        assert_eq!(
+            s(Card {
+                suit: Suit::Spade,
+                rank: Rank::Ace
+            }),
+            "AS"
+        );
+        assert_eq!(
+            s(Card {
+                suit: Suit::Diamond,
+                rank: Rank::King
+            }),
+            "KD"
+        );
+        assert_eq!(
+            s(Card {
+                suit: Suit::Heart,
+                rank: Rank::Jack
+            }),
+            "JH"
+        );
     }
 
     #[test]
@@ -170,7 +210,12 @@ mod tests {
             "Carol \"the queen\" Q",
         ] {
             let esc = escape_tag_value(s);
-            assert_eq!(unescape_tag_value(&esc).as_deref(), Some(s), "round trip {:?}", s);
+            assert_eq!(
+                unescape_tag_value(&esc).as_deref(),
+                Some(s),
+                "round trip {:?}",
+                s
+            );
         }
     }
 
@@ -179,7 +224,11 @@ mod tests {
         assert_eq!(unescape_tag_value("\\n"), None, "\\n not allowed");
         assert_eq!(unescape_tag_value("\\t"), None);
         assert_eq!(unescape_tag_value("\\"), None, "trailing backslash");
-        assert_eq!(unescape_tag_value("\"bare"), None, "bare quote inside value");
+        assert_eq!(
+            unescape_tag_value("\"bare"),
+            None,
+            "bare quote inside value"
+        );
         assert_eq!(unescape_tag_value("safe\""), None);
     }
 }

@@ -5,7 +5,12 @@ use uuid::Uuid;
 fn test_game_json_roundtrip_not_started() {
     let game = Game::new(
         Uuid::new_v4(),
-        [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()],
+        [
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+        ],
         500,
         None,
     );
@@ -19,7 +24,12 @@ fn test_game_json_roundtrip_not_started() {
 fn test_game_json_roundtrip_after_start() {
     let mut game = Game::new(
         Uuid::new_v4(),
-        [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()],
+        [
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+        ],
         500,
         None,
     );
@@ -82,7 +92,12 @@ fn test_game_json_deserialize_legacy_player_fields() {
 
 #[test]
 fn test_game_json_roundtrip_after_bets() {
-    let player_ids = [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+    let player_ids = [
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+    ];
     let mut game = Game::new(Uuid::new_v4(), player_ids, 500, None);
     game.play(GameTransition::Start).unwrap();
     game.play(GameTransition::Bet(3)).unwrap();

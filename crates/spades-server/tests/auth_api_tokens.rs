@@ -11,18 +11,24 @@ use serde_json::json;
 mod common;
 
 async fn register_alice(server: &axum_test::TestServer) {
-    let resp = server.post("/auth/register").json(&json!({
-        "username": "Alice",
-        "email": "alice@example.com",
-        "password": "hunter2-strong",
-    })).await;
+    let resp = server
+        .post("/auth/register")
+        .json(&json!({
+            "username": "Alice",
+            "email": "alice@example.com",
+            "password": "hunter2-strong",
+        }))
+        .await;
     resp.assert_status(StatusCode::CREATED);
 }
 
 #[tokio::test]
 async fn create_token_requires_authenticated_user() {
     let server = common::test_server();
-    let resp = server.post("/auth/tokens").json(&json!({"name": "anon"})).await;
+    let resp = server
+        .post("/auth/tokens")
+        .json(&json!({"name": "anon"}))
+        .await;
     resp.assert_status(StatusCode::UNAUTHORIZED);
 }
 
@@ -46,7 +52,10 @@ async fn revoke_token_requires_authenticated_user() {
 async fn create_token_rejects_empty_name() {
     let server = common::test_server();
     register_alice(&server).await;
-    let resp = server.post("/auth/tokens").json(&json!({"name": "   "})).await;
+    let resp = server
+        .post("/auth/tokens")
+        .json(&json!({"name": "   "}))
+        .await;
     resp.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
     let body: serde_json::Value = resp.json();
     assert_eq!(body["error"], "validation");
@@ -56,7 +65,10 @@ async fn create_token_rejects_empty_name() {
 async fn create_token_rejects_long_name() {
     let server = common::test_server();
     register_alice(&server).await;
-    let resp = server.post("/auth/tokens").json(&json!({"name": "x".repeat(101)})).await;
+    let resp = server
+        .post("/auth/tokens")
+        .json(&json!({"name": "x".repeat(101)}))
+        .await;
     resp.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
 }
 
@@ -77,14 +89,27 @@ async fn revoke_token_404_when_token_belongs_to_other_user() {
     // tokens owned by other users.
     let server = common::test_server();
     register_alice(&server).await;
-    let create = server.post("/auth/tokens").json(&json!({"name": "alice-bot"})).await;
+    let create = server
+        .post("/auth/tokens")
+        .json(&json!({"name": "alice-bot"}))
+        .await;
     create.assert_status(StatusCode::CREATED);
-    let token_id = create.json::<serde_json::Value>()["id"].as_str().unwrap().to_string();
+    let token_id = create.json::<serde_json::Value>()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
-    server.post("/auth/logout").await.assert_status(StatusCode::NO_CONTENT);
-    server.post("/auth/register").json(&json!({
-        "username": "Bob", "email": "bob@example.com", "password": "hunter2-strong",
-    })).await.assert_status(StatusCode::CREATED);
+    server
+        .post("/auth/logout")
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    server
+        .post("/auth/register")
+        .json(&json!({
+            "username": "Bob", "email": "bob@example.com", "password": "hunter2-strong",
+        }))
+        .await
+        .assert_status(StatusCode::CREATED);
 
     let resp = server.delete(&format!("/auth/tokens/{token_id}")).await;
     resp.assert_status(StatusCode::NOT_FOUND);
@@ -104,9 +129,15 @@ async fn list_tokens_returns_empty_for_user_with_none() {
 async fn list_tokens_shows_minted_token_without_plaintext() {
     let server = common::test_server();
     register_alice(&server).await;
-    let create = server.post("/auth/tokens").json(&json!({"name": "alice-bot"})).await;
+    let create = server
+        .post("/auth/tokens")
+        .json(&json!({"name": "alice-bot"}))
+        .await;
     create.assert_status(StatusCode::CREATED);
-    let plaintext = create.json::<serde_json::Value>()["token"].as_str().unwrap().to_string();
+    let plaintext = create.json::<serde_json::Value>()["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let resp = server.get("/auth/tokens").await;
     resp.assert_status(StatusCode::OK);

@@ -5,9 +5,13 @@
 //! binary doesn't reference are correctly flagged as dead code. Allow it.
 #![allow(dead_code)]
 
-use axum::{extract::connect_info::MockConnectInfo, routing::{delete, get, patch, post}, Router};
 #[allow(unused_imports)]
 use axum::routing::put;
+use axum::{
+    Router,
+    extract::connect_info::MockConnectInfo,
+    routing::{delete, get, patch, post},
+};
 use axum_test::{TestServer, TestServerConfig};
 use spades_server::{
     auth::{AuthState, mailer::LogMailer, oauth::OauthState, rate_limit::RateLimitState},
@@ -43,20 +47,44 @@ pub fn test_env() -> TestEnv {
         .route("/auth/logout", post(handlers_auth::logout))
         .route("/auth/me", get(handlers_auth::me))
         .route("/auth/verify-email", get(handlers_auth::verify_email))
-        .route("/auth/password-reset/request", post(handlers_auth::password_reset_request))
-        .route("/auth/password-reset/confirm", post(handlers_auth::password_reset_confirm))
-        .route("/auth/oauth/{provider}/login", get(handlers_auth::oauth_login))
-        .route("/auth/oauth/google/callback", get(handlers_auth::oauth_google_callback))
-        .route("/auth/oauth/github/callback", get(handlers_auth::oauth_github_callback))
+        .route(
+            "/auth/password-reset/request",
+            post(handlers_auth::password_reset_request),
+        )
+        .route(
+            "/auth/password-reset/confirm",
+            post(handlers_auth::password_reset_confirm),
+        )
+        .route(
+            "/auth/oauth/{provider}/login",
+            get(handlers_auth::oauth_login),
+        )
+        .route(
+            "/auth/oauth/google/callback",
+            get(handlers_auth::oauth_google_callback),
+        )
+        .route(
+            "/auth/oauth/github/callback",
+            get(handlers_auth::oauth_github_callback),
+        )
         .route("/auth/oauth/complete", post(handlers_auth::oauth_complete))
         // API token management (bot accounts)
         .route("/auth/tokens", post(handlers_auth::create_token))
         .route("/auth/tokens", get(handlers_auth::list_tokens))
-        .route("/auth/tokens/{token_id}", delete(handlers_auth::revoke_token))
+        .route(
+            "/auth/tokens/{token_id}",
+            delete(handlers_auth::revoke_token),
+        )
         // User profile endpoints (literal /users/me must come before the wildcard)
         .route("/users/me", patch(spades_server::handlers_users::patch_me))
-        .route("/users/{username}", get(spades_server::handlers_users::get_profile))
-        .route("/users/{username}/games", get(spades_server::handlers_users::get_profile_games))
+        .route(
+            "/users/{username}",
+            get(spades_server::handlers_users::get_profile),
+        )
+        .route(
+            "/users/{username}/games",
+            get(spades_server::handlers_users::get_profile_games),
+        )
         .with_state(auth);
 
     let session_store = MemoryStore::default();
@@ -67,12 +95,20 @@ pub fn test_env() -> TestEnv {
     let app = router
         .layer(session_layer)
         .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 0))));
-    let server = TestServer::new_with_config(app, TestServerConfig {
-        save_cookies: true,
-        ..Default::default()
-    }).unwrap();
+    let server = TestServer::new_with_config(
+        app,
+        TestServerConfig {
+            save_cookies: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
-    TestEnv { server, store, mailer }
+    TestEnv {
+        server,
+        store,
+        mailer,
+    }
 }
 
 /// Convenience: just the TestServer when store/mailer access is not needed.

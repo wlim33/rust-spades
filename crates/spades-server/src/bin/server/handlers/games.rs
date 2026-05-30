@@ -4,11 +4,11 @@ use axum::{
     response::Json,
 };
 use oasgen::oasgen;
+use spades::{GameTransition, decode_player_url, short_id_to_uuid, uuid_to_short_id};
 use spades_server::game_manager::{
     CreateGameResponse, GameManagerError, GameStateResponse, HandResponse,
 };
 use spades_server::validation::validate_player_name;
-use spades::{GameTransition, decode_player_url, short_id_to_uuid, uuid_to_short_id};
 use uuid::Uuid;
 
 use super::super::dto::{
@@ -16,7 +16,7 @@ use super::super::dto::{
     SetNameRequest, TransitionRequest, TransitionResponse, TransitionType,
 };
 use super::super::idempotency::CachedOutcome;
-use super::super::{parse_uuid_or_short_id, AppState};
+use super::super::{AppState, parse_uuid_or_short_id};
 
 pub async fn root() -> Json<serde_json::Value> {
     Json(serde_json::json!({
@@ -60,12 +60,16 @@ pub async fn create_game(
                 .game_manager
                 .create_game(request.max_points, request.timer_config)
                 .map_err(map_err)?;
-            state.presence.ensure_game(response.game_id, &response.player_ids);
+            state
+                .presence
+                .ensure_game(response.game_id, &response.player_ids);
             let identity_user = identity.user().map(|u| u.id);
             let anon = identity.anon_id();
             for (i, pid) in response.player_ids.iter().enumerate() {
                 let _ = state.auth.store.insert_game_seat(
-                    response.game_id, i as i32, *pid,
+                    response.game_id,
+                    i as i32,
+                    *pid,
                     spades_server::auth::game_seats::SeatOwner {
                         user_id: identity_user,
                         anon_user_id: Some(anon),
@@ -85,14 +89,21 @@ pub async fn create_game(
             let strategy = std::sync::Arc::new(spades::ai::RandomStrategy);
             let response = state
                 .game_manager
-                .create_ai_game(human_seats.clone(), request.max_points, request.timer_config, strategy)
+                .create_ai_game(
+                    human_seats.clone(),
+                    request.max_points,
+                    request.timer_config,
+                    strategy,
+                )
                 .map_err(map_err)?;
 
             let game_id = response.game_id;
             state.presence.ensure_game(game_id, &response.player_ids);
             for i in 0..4 {
                 if !human_seats.contains(&i) {
-                    state.presence.player_connected(game_id, response.player_ids[i]);
+                    state
+                        .presence
+                        .player_connected(game_id, response.player_ids[i]);
                 }
             }
 
@@ -122,7 +133,9 @@ pub async fn create_game(
             for (i, pid) in response.player_ids.iter().enumerate() {
                 let is_human = human_seats.contains(&i);
                 let _ = state.auth.store.insert_game_seat(
-                    game_id, i as i32, *pid,
+                    game_id,
+                    i as i32,
+                    *pid,
                     spades_server::auth::game_seats::SeatOwner {
                         user_id: if is_human { identity_user } else { None },
                         anon_user_id: if is_human { Some(anon) } else { None },
@@ -199,16 +212,34 @@ pub async fn get_game_by_player_url(
 ) -> Result<Json<PlayerUrlResponse>, (StatusCode, Json<ErrorResponse>)> {
     let (game_id, player_id) = decode_player_url(&url_id).ok_or((
         StatusCode::NOT_FOUND,
-        Json(ErrorResponse { error: "Invalid player URL".to_string() }),
+        Json(ErrorResponse {
+            error: "Invalid player URL".to_string(),
+        }),
     ))?;
-    let game = state.game_manager.get_game_state(game_id).await.map_err(|_| (
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse { error: "Game not found".to_string() }),
-    ))?;
-    let hand = state.game_manager.get_hand(game_id, player_id).await.map_err(|_| (
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse { error: "Player not found in game".to_string() }),
-    ))?;
+    let game = state
+        .game_manager
+        .get_game_state(game_id)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Game not found".to_string(),
+                }),
+            )
+        })?;
+    let hand = state
+        .game_manager
+        .get_hand(game_id, player_id)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Player not found in game".to_string(),
+                }),
+            )
+        })?;
     Ok(Json(PlayerUrlResponse {
         game_id,
         player_id,
@@ -239,7 +270,9 @@ pub async fn delete_game(
         if state.game_manager.get_game_state(game_id).await.is_err() {
             return Err((
                 StatusCode::NOT_FOUND,
-                Json(ErrorResponse { error: "Game not found".to_string() }),
+                Json(ErrorResponse {
+                    error: "Game not found".to_string(),
+                }),
             ));
         }
         return Err((
@@ -292,12 +325,13 @@ pub async fn make_transition(
     // would either error ("already played") on the second attempt or — if
     // the trick advanced in the meantime — silently apply the wrong card.
     if let Some(key) = &idempotency_key
-        && let Some(cached) = state.idempotency.get(game_id, user_id, key) {
-            return match cached {
-                CachedOutcome::Ok(resp) => Ok(Json(resp)),
-                CachedOutcome::Err(status, err) => Err((status, Json(err))),
-            };
-        }
+        && let Some(cached) = state.idempotency.get(game_id, user_id, key)
+    {
+        return match cached {
+            CachedOutcome::Ok(resp) => Ok(Json(resp)),
+            CachedOutcome::Err(status, err) => Err((status, Json(err))),
+        };
+    }
 
     let transition = match request.transition {
         TransitionType::Start => GameTransition::Start,
@@ -318,7 +352,12 @@ pub async fn make_transition(
                 GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
                 _ => StatusCode::BAD_REQUEST,
             };
-            (status, ErrorResponse { error: format!("{}", e) })
+            (
+                status,
+                ErrorResponse {
+                    error: format!("{}", e),
+                },
+            )
         });
 
     // Persist for retries — store both success and error outcomes so a retry
@@ -343,7 +382,9 @@ pub async fn get_hand(
 ) -> Result<Json<HandResponse>, (StatusCode, Json<ErrorResponse>)> {
     let player_id = parse_uuid_or_short_id(&player_id_raw).ok_or((
         StatusCode::BAD_REQUEST,
-        Json(ErrorResponse { error: "Invalid player ID".to_string() }),
+        Json(ErrorResponse {
+            error: "Invalid player ID".to_string(),
+        }),
     ))?;
 
     // Authorize: only the player who owns this seat can read its hand.
@@ -369,7 +410,9 @@ pub async fn get_hand(
         if state.game_manager.get_game_state(game_id).await.is_err() {
             return Err((
                 StatusCode::NOT_FOUND,
-                Json(ErrorResponse { error: "Game not found".to_string() }),
+                Json(ErrorResponse {
+                    error: "Game not found".to_string(),
+                }),
             ));
         }
         return Err((
@@ -460,7 +503,9 @@ pub async fn post_chat(
     if content.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse { error: "chat message must not be empty".to_string() }),
+            Json(ErrorResponse {
+                error: "chat message must not be empty".to_string(),
+            }),
         ));
     }
     if content.chars().count() > CHAT_MAX_LEN {
@@ -478,7 +523,9 @@ pub async fn post_chat(
     if content.is_inappropriate() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse { error: "chat message rejected by content filter".to_string() }),
+            Json(ErrorResponse {
+                error: "chat message rejected by content filter".to_string(),
+            }),
         ));
     }
 
@@ -487,7 +534,12 @@ pub async fn post_chat(
         .auth
         .store
         .game_seat_by_player_id(game_id, request.player_id)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e }),
+            )
+        })?;
     let Some(seat) = seat else {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -514,7 +566,12 @@ pub async fn post_chat(
                 GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
                 _ => StatusCode::BAD_REQUEST,
             };
-            (status, Json(ErrorResponse { error: format!("{}", e) }))
+            (
+                status,
+                Json(ErrorResponse {
+                    error: format!("{}", e),
+                }),
+            )
         })?;
     Ok(StatusCode::ACCEPTED)
 }
@@ -526,13 +583,22 @@ pub async fn get_replay(
     AxumState(state): AxumState<AppState>,
     Path(game_id): Path<Uuid>,
 ) -> Result<(StatusCode, axum::http::HeaderMap, String), (StatusCode, Json<ErrorResponse>)> {
-    let transcript = state.game_manager.get_transcript(game_id).await.map_err(|e| {
-        let status = match e {
-            GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        (status, Json(ErrorResponse { error: format!("{}", e) }))
-    })?;
+    let transcript = state
+        .game_manager
+        .get_transcript(game_id)
+        .await
+        .map_err(|e| {
+            let status = match e {
+                GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (
+                status,
+                Json(ErrorResponse {
+                    error: format!("{}", e),
+                }),
+            )
+        })?;
     let Some(transcript) = transcript else {
         return Err((
             StatusCode::FORBIDDEN,
@@ -557,11 +623,18 @@ pub async fn set_player_name(
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let player_id = parse_uuid_or_short_id(&player_id_raw).ok_or((
         StatusCode::BAD_REQUEST,
-        Json(ErrorResponse { error: "Invalid player ID".to_string() }),
+        Json(ErrorResponse {
+            error: "Invalid player ID".to_string(),
+        }),
     ))?;
     let validated_name = match request.name {
         Some(raw) => Some(validate_player_name(&raw).map_err(|e| {
-            (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() }))
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
         })?),
         None => None,
     };
@@ -574,12 +647,19 @@ pub async fn set_player_name(
         .auth
         .store
         .game_seat_by_player_id(game_id, player_id)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e }),
+            )
+        })?;
     let Some(seat) = seat else {
         if state.game_manager.get_game_state(game_id).await.is_err() {
             return Err((
                 StatusCode::NOT_FOUND,
-                Json(ErrorResponse { error: "Game not found".into() }),
+                Json(ErrorResponse {
+                    error: "Game not found".into(),
+                }),
             ));
         }
         return Err((
@@ -592,7 +672,9 @@ pub async fn set_player_name(
     if seat.is_bot {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(ErrorResponse { error: "bot seat name is server-managed".into() }),
+            Json(ErrorResponse {
+                error: "bot seat name is server-managed".into(),
+            }),
         ));
     }
     if seat.user_id.is_some() {
@@ -606,7 +688,9 @@ pub async fn set_player_name(
     if !seat_matches_identity(&seat, &identity) {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(ErrorResponse { error: "only the seat owner may rename this player".into() }),
+            Json(ErrorResponse {
+                error: "only the seat owner may rename this player".into(),
+            }),
         ));
     }
 
@@ -635,19 +719,33 @@ pub async fn get_presence(
     Path(game_id): Path<Uuid>,
 ) -> Result<Json<PresenceSnapshot>, (StatusCode, Json<ErrorResponse>)> {
     if state.presence.get_snapshot(game_id).is_none() {
-        let game_state = state.game_manager.get_game_state(game_id).await.map_err(|e| {
-            let status = match e {
-                GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            (status, Json(ErrorResponse { error: format!("{}", e) }))
-        })?;
-        let player_ids: Vec<Uuid> =
-            game_state.player_names.iter().map(|pn| pn.player_id).collect();
+        let game_state = state
+            .game_manager
+            .get_game_state(game_id)
+            .await
+            .map_err(|e| {
+                let status = match e {
+                    GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
+                    _ => StatusCode::INTERNAL_SERVER_ERROR,
+                };
+                (
+                    status,
+                    Json(ErrorResponse {
+                        error: format!("{}", e),
+                    }),
+                )
+            })?;
+        let player_ids: Vec<Uuid> = game_state
+            .player_names
+            .iter()
+            .map(|pn| pn.player_id)
+            .collect();
         state.presence.ensure_game(game_id, &player_ids);
     }
     state.presence.get_snapshot(game_id).map(Json).ok_or((
         StatusCode::NOT_FOUND,
-        Json(ErrorResponse { error: "Game not found".to_string() }),
+        Json(ErrorResponse {
+            error: "Game not found".to_string(),
+        }),
     ))
 }

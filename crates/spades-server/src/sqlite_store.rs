@@ -1,7 +1,7 @@
 use rusqlite::Connection;
+use spades::Game;
 use std::sync::Mutex;
 use uuid::Uuid;
-use spades::Game;
 
 /// A row from `api_tokens` minus the hash. Returned by `list_api_tokens`
 /// for UI display; the plaintext token is shown to the user exactly once,
@@ -23,32 +23,49 @@ impl SqliteStore {
     /// Open (or create) a SQLite database at the given path.
     pub fn open(path: &str) -> Result<Self, String> {
         let conn = Connection::open(path).map_err(|e| e.to_string())?;
-        conn.execute("PRAGMA foreign_keys = ON", []).map_err(|e| e.to_string())?;
-        conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(())).map_err(|e| e.to_string())?;
+        conn.execute("PRAGMA foreign_keys = ON", [])
+            .map_err(|e| e.to_string())?;
+        conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))
+            .map_err(|e| e.to_string())?;
         // 5s budget for the writer lock instead of failing fast with SQLITE_BUSY.
         // synchronous=NORMAL is safe under WAL and removes an fsync per commit.
-        conn.pragma_update(None, "busy_timeout", 5000_i64).map_err(|e| e.to_string())?;
-        conn.pragma_update(None, "synchronous", "NORMAL").map_err(|e| e.to_string())?;
+        conn.pragma_update(None, "busy_timeout", 5000_i64)
+            .map_err(|e| e.to_string())?;
+        conn.pragma_update(None, "synchronous", "NORMAL")
+            .map_err(|e| e.to_string())?;
 
         // Idempotent migration: a `users` table from before the Glicko-2
         // ratings work doesn't have these columns. `CREATE TABLE IF NOT
         // EXISTS` doesn't backfill; do it explicitly.
-        let table_exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='users')",
-            [],
-            |r| r.get(0),
-        ).unwrap_or(false);
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='users')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(false);
         if table_exists {
             for (col, ddl) in [
-                ("rating",     "ALTER TABLE users ADD COLUMN rating REAL NOT NULL DEFAULT 1500.0"),
-                ("rd",         "ALTER TABLE users ADD COLUMN rd REAL NOT NULL DEFAULT 350.0"),
-                ("volatility", "ALTER TABLE users ADD COLUMN volatility REAL NOT NULL DEFAULT 0.06"),
+                (
+                    "rating",
+                    "ALTER TABLE users ADD COLUMN rating REAL NOT NULL DEFAULT 1500.0",
+                ),
+                (
+                    "rd",
+                    "ALTER TABLE users ADD COLUMN rd REAL NOT NULL DEFAULT 350.0",
+                ),
+                (
+                    "volatility",
+                    "ALTER TABLE users ADD COLUMN volatility REAL NOT NULL DEFAULT 0.06",
+                ),
             ] {
-                let present: bool = conn.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM pragma_table_info('users') WHERE name = ?1)",
-                    rusqlite::params![col],
-                    |r| r.get(0),
-                ).unwrap_or(false);
+                let present: bool = conn
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('users') WHERE name = ?1)",
+                        rusqlite::params![col],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or(false);
                 if !present {
                     conn.execute(ddl, []).map_err(|e| e.to_string())?;
                 }
@@ -118,9 +135,12 @@ impl SqliteStore {
                 PRIMARY KEY (game_id, seat_index)
             );
             CREATE INDEX IF NOT EXISTS game_seats_user_id ON game_seats(user_id);
-            CREATE INDEX IF NOT EXISTS game_seats_anon_user_id ON game_seats(anon_user_id);"
-        ).map_err(|e| e.to_string())?;
-        Ok(SqliteStore { conn: Mutex::new(conn) })
+            CREATE INDEX IF NOT EXISTS game_seats_anon_user_id ON game_seats(anon_user_id);",
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(SqliteStore {
+            conn: Mutex::new(conn),
+        })
     }
 
     /// Load a single persisted game by id. Returns `Ok(None)` if the row
@@ -145,11 +165,15 @@ impl SqliteStore {
     /// Load all persisted games.
     pub fn load_all_games(&self) -> Result<Vec<Game>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let mut stmt = conn.prepare("SELECT data FROM games").map_err(|e| e.to_string())?;
-        let rows = stmt.query_map([], |row| {
-            let json: String = row.get(0)?;
-            Ok(json)
-        }).map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT data FROM games")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                let json: String = row.get(0)?;
+                Ok(json)
+            })
+            .map_err(|e| e.to_string())?;
 
         let mut games = Vec::new();
         for row in rows {
@@ -169,7 +193,8 @@ impl SqliteStore {
         conn.execute(
             "INSERT OR REPLACE INTO games (id, data) VALUES (?1, ?2)",
             rusqlite::params![id, json],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -189,7 +214,8 @@ impl SqliteStore {
         conn.execute(
             "UPDATE games SET data = ?2 WHERE id = ?1",
             rusqlite::params![id.to_string(), json],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -197,10 +223,8 @@ impl SqliteStore {
     pub fn delete_game(&self, game_id: Uuid) -> Result<(), String> {
         let id = game_id.to_string();
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute(
-            "DELETE FROM games WHERE id = ?1",
-            rusqlite::params![id],
-        ).map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM games WHERE id = ?1", rusqlite::params![id])
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -209,12 +233,18 @@ impl SqliteStore {
         insert_user_in(&conn, new)
     }
 
-    pub fn find_user_by_id(&self, id: uuid::Uuid) -> Result<Option<crate::auth::users::User>, String> {
+    pub fn find_user_by_id(
+        &self,
+        id: uuid::Uuid,
+    ) -> Result<Option<crate::auth::users::User>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         find_user_by_id_in(&conn, id)
     }
 
-    pub fn find_user_by_email(&self, email: &str) -> Result<Option<crate::auth::users::User>, String> {
+    pub fn find_user_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Option<crate::auth::users::User>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.query_row(
             "SELECT id, username, username_canon, email, email_verified, password_hash, token_version, created_at, last_login_at \
@@ -227,7 +257,10 @@ impl SqliteStore {
         })
     }
 
-    pub fn find_user_by_username(&self, username: &str) -> Result<Option<crate::auth::users::User>, String> {
+    pub fn find_user_by_username(
+        &self,
+        username: &str,
+    ) -> Result<Option<crate::auth::users::User>, String> {
         use crate::auth::users::canonicalize_username;
         let canon = canonicalize_username(username);
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
@@ -271,9 +304,11 @@ impl SqliteStore {
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         );
         match row {
-            Ok((rating, rd, volatility)) => {
-                Ok(Some(crate::ratings::Rating { rating, rd, volatility }))
-            }
+            Ok((rating, rd, volatility)) => Ok(Some(crate::ratings::Rating {
+                rating,
+                rd,
+                volatility,
+            })),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.to_string()),
         }
@@ -295,7 +330,8 @@ impl SqliteStore {
                 rating.rd,
                 rating.volatility,
             ],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -314,28 +350,29 @@ impl SqliteStore {
         conn.execute(
             "INSERT INTO api_tokens (id, user_id, token_hash, name) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![id.to_string(), user_id.to_string(), token_hash, name],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(id)
     }
 
-    pub fn list_api_tokens(
-        &self,
-        user_id: uuid::Uuid,
-    ) -> Result<Vec<ApiTokenRow>, String> {
+    pub fn list_api_tokens(&self, user_id: uuid::Uuid) -> Result<Vec<ApiTokenRow>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let mut stmt = conn.prepare(
-            "SELECT id, name, created_at, last_used_at FROM api_tokens WHERE user_id = ?1 \
-             ORDER BY created_at DESC"
-        ).map_err(|e| e.to_string())?;
-        let rows = stmt.query_map(
-            rusqlite::params![user_id.to_string()],
-            |r| Ok(ApiTokenRow {
-                id: uuid::Uuid::parse_str(&r.get::<_, String>(0)?).unwrap_or_default(),
-                name: r.get(1)?,
-                created_at: r.get(2)?,
-                last_used_at: r.get(3)?,
-            }),
-        ).map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, created_at, last_used_at FROM api_tokens WHERE user_id = ?1 \
+             ORDER BY created_at DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![user_id.to_string()], |r| {
+                Ok(ApiTokenRow {
+                    id: uuid::Uuid::parse_str(&r.get::<_, String>(0)?).unwrap_or_default(),
+                    name: r.get(1)?,
+                    created_at: r.get(2)?,
+                    last_used_at: r.get(3)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for row in rows {
             out.push(row.map_err(|e| e.to_string())?);
@@ -349,10 +386,12 @@ impl SqliteStore {
         user_id: uuid::Uuid,
     ) -> Result<bool, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let n = conn.execute(
-            "DELETE FROM api_tokens WHERE id = ?1 AND user_id = ?2",
-            rusqlite::params![token_id.to_string(), user_id.to_string()],
-        ).map_err(|e| e.to_string())?;
+        let n = conn
+            .execute(
+                "DELETE FROM api_tokens WHERE id = ?1 AND user_id = ?2",
+                rusqlite::params![token_id.to_string(), user_id.to_string()],
+            )
+            .map_err(|e| e.to_string())?;
         Ok(n > 0)
     }
 
@@ -363,15 +402,20 @@ impl SqliteStore {
         token_hash: &str,
     ) -> Result<Option<crate::auth::users::User>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let user_id: Option<String> = conn.query_row(
-            "SELECT user_id FROM api_tokens WHERE token_hash = ?1",
-            rusqlite::params![token_hash],
-            |r| r.get(0),
-        ).map(Some).or_else(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => Ok(None),
-            other => Err(other.to_string()),
-        })?;
-        let Some(user_id_s) = user_id else { return Ok(None) };
+        let user_id: Option<String> = conn
+            .query_row(
+                "SELECT user_id FROM api_tokens WHERE token_hash = ?1",
+                rusqlite::params![token_hash],
+                |r| r.get(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.to_string()),
+            })?;
+        let Some(user_id_s) = user_id else {
+            return Ok(None);
+        };
         // Bump last_used_at. Failures here are non-fatal.
         let _ = conn.execute(
             "UPDATE api_tokens SET last_used_at = datetime('now') WHERE token_hash = ?1",
@@ -400,9 +444,11 @@ impl SqliteStore {
         Ok(new_version)
     }
 
-    pub fn find_oauth_account(&self, provider: &str, provider_uid: &str)
-        -> Result<Option<uuid::Uuid>, String>
-    {
+    pub fn find_oauth_account(
+        &self,
+        provider: &str,
+        provider_uid: &str,
+    ) -> Result<Option<uuid::Uuid>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.query_row(
             "SELECT user_id FROM oauth_accounts WHERE provider = ?1 AND provider_uid = ?2",
@@ -411,21 +457,30 @@ impl SqliteStore {
                 let s: String = r.get(0)?;
                 Ok(s)
             },
-        ).map(|s| Some(uuid::Uuid::parse_str(&s).unwrap()))
-         .or_else(|e| match e {
-             rusqlite::Error::QueryReturnedNoRows => Ok(None),
-             other => Err(other.to_string()),
-         })
+        )
+        .map(|s| Some(uuid::Uuid::parse_str(&s).unwrap()))
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other.to_string()),
+        })
     }
 
-    pub fn insert_oauth_account(&self, provider: &str, provider_uid: &str, user_id: uuid::Uuid, email: &str)
-        -> Result<(), String>
-    {
+    pub fn insert_oauth_account(
+        &self,
+        provider: &str,
+        provider_uid: &str,
+        user_id: uuid::Uuid,
+        email: &str,
+    ) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         insert_oauth_account_in(&conn, provider, provider_uid, user_id, email)
     }
 
-    pub fn claim_anon_game_seats(&self, anon_id: uuid::Uuid, user_id: uuid::Uuid) -> Result<usize, String> {
+    pub fn claim_anon_game_seats(
+        &self,
+        anon_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+    ) -> Result<usize, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         claim_anon_game_seats_in(&conn, anon_id, user_id)
     }
@@ -447,7 +502,8 @@ impl SqliteStore {
             "SELECT locked_until FROM login_failures WHERE user_id = ?1",
             rusqlite::params![user_id.to_string()],
             |r| r.get::<_, Option<String>>(0),
-        ).or_else(|e| match e {
+        )
+        .or_else(|e| match e {
             rusqlite::Error::QueryReturnedNoRows => Ok(None),
             other => Err(other.to_string()),
         })
@@ -470,12 +526,15 @@ impl SqliteStore {
                     ELSE locked_until \
                 END",
             rusqlite::params![user_id.to_string()],
-        ).map_err(|e| e.to_string())?;
-        let n: i32 = conn.query_row(
-            "SELECT failure_count FROM login_failures WHERE user_id = ?1",
-            rusqlite::params![user_id.to_string()],
-            |r| r.get(0),
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
+        let n: i32 = conn
+            .query_row(
+                "SELECT failure_count FROM login_failures WHERE user_id = ?1",
+                rusqlite::params![user_id.to_string()],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
         Ok(n)
     }
 
@@ -484,7 +543,8 @@ impl SqliteStore {
         conn.execute(
             "UPDATE login_failures SET locked_until = datetime('now', ?2) WHERE user_id = ?1",
             rusqlite::params![user_id.to_string(), format!("+{secs} seconds")],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -493,23 +553,33 @@ impl SqliteStore {
         clear_login_failures_in(&conn, user_id)
     }
 
-    pub fn consume_auth_token(&self, token_hash: &str, expected_purpose: &str)
-        -> Result<crate::auth::tokens::ConsumedToken, String>
-    {
+    pub fn consume_auth_token(
+        &self,
+        token_hash: &str,
+        expected_purpose: &str,
+    ) -> Result<crate::auth::tokens::ConsumedToken, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         consume_auth_token_in(&conn, token_hash, expected_purpose)
     }
 
     pub fn cleanup_expired_tokens(&self) -> Result<usize, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let n = conn.execute(
-            "DELETE FROM auth_tokens WHERE expires_at < datetime('now') OR used_at IS NOT NULL",
-            [],
-        ).map_err(|e| e.to_string())?;
+        let n = conn
+            .execute(
+                "DELETE FROM auth_tokens WHERE expires_at < datetime('now') OR used_at IS NOT NULL",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
         Ok(n)
     }
 
-    pub fn insert_game_seat(&self, game_id: uuid::Uuid, seat_index: i32, player_id: uuid::Uuid, owner: crate::auth::game_seats::SeatOwner) -> Result<(), String> {
+    pub fn insert_game_seat(
+        &self,
+        game_id: uuid::Uuid,
+        seat_index: i32,
+        player_id: uuid::Uuid,
+        owner: crate::auth::game_seats::SeatOwner,
+    ) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute(
             "INSERT OR REPLACE INTO game_seats (game_id, seat_index, player_id, user_id, anon_user_id, is_bot) \
@@ -526,7 +596,12 @@ impl SqliteStore {
         Ok(())
     }
 
-    pub fn update_game_seat_owner(&self, game_id: uuid::Uuid, seat_index: i32, owner: crate::auth::game_seats::SeatOwner) -> Result<(), String> {
+    pub fn update_game_seat_owner(
+        &self,
+        game_id: uuid::Uuid,
+        seat_index: i32,
+        owner: crate::auth::game_seats::SeatOwner,
+    ) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute(
             "UPDATE game_seats SET user_id = ?3, anon_user_id = ?4, is_bot = ?5 \
@@ -538,7 +613,8 @@ impl SqliteStore {
                 owner.anon_user_id.map(|u| u.to_string()),
                 owner.is_bot as i32,
             ],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -558,37 +634,55 @@ impl SqliteStore {
              FROM game_seats WHERE game_id = ?1 AND player_id = ?2",
             rusqlite::params![game_id.to_string(), player_id.to_string()],
             seat_row,
-        ).map(Some).or_else(|e| match e {
+        )
+        .map(Some)
+        .or_else(|e| match e {
             rusqlite::Error::QueryReturnedNoRows => Ok(None),
             other => Err(other.to_string()),
         })
     }
 
-    pub fn game_seat(&self, game_id: uuid::Uuid, seat_index: i32) -> Result<Option<crate::auth::game_seats::SeatRow>, String> {
+    pub fn game_seat(
+        &self,
+        game_id: uuid::Uuid,
+        seat_index: i32,
+    ) -> Result<Option<crate::auth::game_seats::SeatRow>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.query_row(
             "SELECT game_id, seat_index, player_id, user_id, anon_user_id, is_bot \
              FROM game_seats WHERE game_id = ?1 AND seat_index = ?2",
             rusqlite::params![game_id.to_string(), seat_index],
             seat_row,
-        ).map(Some).or_else(|e| match e {
+        )
+        .map(Some)
+        .or_else(|e| match e {
             rusqlite::Error::QueryReturnedNoRows => Ok(None),
             other => Err(other.to_string()),
         })
     }
 
-    pub fn game_seats_for_user(&self, user_id: uuid::Uuid, limit: i64, offset: i64) -> Result<Vec<crate::auth::game_seats::SeatRow>, String> {
+    pub fn game_seats_for_user(
+        &self,
+        user_id: uuid::Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<crate::auth::game_seats::SeatRow>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let mut stmt = conn.prepare(
-            "SELECT game_id, seat_index, player_id, user_id, anon_user_id, is_bot \
+        let mut stmt = conn
+            .prepare(
+                "SELECT game_id, seat_index, player_id, user_id, anon_user_id, is_bot \
              FROM game_seats WHERE user_id = ?1 \
-             ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
-        ).map_err(|e| e.to_string())?;
-        let rows = stmt.query_map(
-            rusqlite::params![user_id.to_string(), limit, offset],
-            seat_row,
-        ).map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+             ORDER BY created_at DESC LIMIT ?2 OFFSET ?3",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(
+                rusqlite::params![user_id.to_string(), limit, offset],
+                seat_row,
+            )
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     }
 
     pub fn count_game_seats_for_user(&self, user_id: uuid::Uuid) -> Result<i64, String> {
@@ -597,7 +691,8 @@ impl SqliteStore {
             "SELECT COUNT(*) FROM game_seats WHERE user_id = ?1",
             rusqlite::params![user_id.to_string()],
             |r| r.get(0),
-        ).map_err(|e| e.to_string())
+        )
+        .map_err(|e| e.to_string())
     }
 
     /// Run `f` inside a SQLite transaction. The closure receives the
@@ -677,12 +772,14 @@ pub(crate) fn update_user_password_in(
     user_id: uuid::Uuid,
     new_hash: &str,
 ) -> Result<i32, String> {
-    let new_version: i32 = conn.query_row(
-        "UPDATE users SET password_hash = ?1, token_version = token_version + 1 \
+    let new_version: i32 = conn
+        .query_row(
+            "UPDATE users SET password_hash = ?1, token_version = token_version + 1 \
          WHERE id = ?2 RETURNING token_version",
-        rusqlite::params![new_hash, user_id.to_string()],
-        |r| r.get(0),
-    ).map_err(|e| e.to_string())?;
+            rusqlite::params![new_hash, user_id.to_string()],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
     Ok(new_version)
 }
 
@@ -693,18 +790,17 @@ pub(crate) fn set_user_email_verified_in(
     conn.execute(
         "UPDATE users SET email_verified = 1 WHERE id = ?1",
         rusqlite::params![user_id.to_string()],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub(crate) fn touch_user_login_in(
-    conn: &Connection,
-    user_id: uuid::Uuid,
-) -> Result<(), String> {
+pub(crate) fn touch_user_login_in(conn: &Connection, user_id: uuid::Uuid) -> Result<(), String> {
     conn.execute(
         "UPDATE users SET last_login_at = datetime('now') WHERE id = ?1",
         rusqlite::params![user_id.to_string()],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -727,10 +823,12 @@ pub(crate) fn claim_anon_game_seats_in(
     anon_id: uuid::Uuid,
     user_id: uuid::Uuid,
 ) -> Result<usize, String> {
-    let n = conn.execute(
-        "UPDATE game_seats SET user_id = ?1 WHERE anon_user_id = ?2 AND user_id IS NULL",
-        rusqlite::params![user_id.to_string(), anon_id.to_string()],
-    ).map_err(|e| e.to_string())?;
+    let n = conn
+        .execute(
+            "UPDATE game_seats SET user_id = ?1 WHERE anon_user_id = ?2 AND user_id IS NULL",
+            rusqlite::params![user_id.to_string(), anon_id.to_string()],
+        )
+        .map_err(|e| e.to_string())?;
     Ok(n)
 }
 
@@ -744,8 +842,14 @@ pub(crate) fn insert_auth_token_in(
     conn.execute(
         "INSERT INTO auth_tokens (token_hash, user_id, purpose, expires_at) \
          VALUES (?1, ?2, ?3, datetime('now', ?4))",
-        rusqlite::params![token_hash, user_id.to_string(), purpose, format!("+{ttl_secs} seconds")],
-    ).map_err(|e| e.to_string())?;
+        rusqlite::params![
+            token_hash,
+            user_id.to_string(),
+            purpose,
+            format!("+{ttl_secs} seconds")
+        ],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -756,7 +860,8 @@ pub(crate) fn clear_login_failures_in(
     conn.execute(
         "DELETE FROM login_failures WHERE user_id = ?1",
         rusqlite::params![user_id.to_string()],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -765,27 +870,37 @@ pub(crate) fn consume_auth_token_in(
     token_hash: &str,
     expected_purpose: &str,
 ) -> Result<crate::auth::tokens::ConsumedToken, String> {
-    let row: Option<(String, String, String, Option<String>)> = conn.query_row(
-        "SELECT user_id, purpose, expires_at, used_at FROM auth_tokens WHERE token_hash = ?1",
-        rusqlite::params![token_hash],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
-    ).map(Some).or_else(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => Ok(None),
-        other => Err(other.to_string()),
-    })?;
+    let row: Option<(String, String, String, Option<String>)> = conn
+        .query_row(
+            "SELECT user_id, purpose, expires_at, used_at FROM auth_tokens WHERE token_hash = ?1",
+            rusqlite::params![token_hash],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .map(Some)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other.to_string()),
+        })?;
     let Some((user_id_s, purpose, expires_at, used_at)) = row else {
         return Err("token_invalid".into());
     };
-    if used_at.is_some() { return Err("token_invalid".into()); }
-    if purpose != expected_purpose { return Err("token_invalid".into()); }
+    if used_at.is_some() {
+        return Err("token_invalid".into());
+    }
+    if purpose != expected_purpose {
+        return Err("token_invalid".into());
+    }
     let now = chrono::Utc::now().naive_utc();
     if let Ok(when) = chrono::NaiveDateTime::parse_from_str(&expires_at, "%Y-%m-%d %H:%M:%S") {
-        if when < now { return Err("token_invalid".into()); }
+        if when < now {
+            return Err("token_invalid".into());
+        }
     }
     conn.execute(
         "UPDATE auth_tokens SET used_at = datetime('now') WHERE token_hash = ?1",
         rusqlite::params![token_hash],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     let user_id = uuid::Uuid::parse_str(&user_id_s).map_err(|e| e.to_string())?;
     Ok(crate::auth::tokens::ConsumedToken { user_id, purpose })
 }
@@ -807,9 +922,9 @@ fn seat_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<crate::auth::game_seats::
 
 fn row_to_user(r: &rusqlite::Row<'_>) -> rusqlite::Result<crate::auth::users::User> {
     let id_s: String = r.get(0)?;
-    let id = uuid::Uuid::parse_str(&id_s).map_err(|e| rusqlite::Error::FromSqlConversionFailure(
-        0, rusqlite::types::Type::Text, Box::new(e),
-    ))?;
+    let id = uuid::Uuid::parse_str(&id_s).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
+    })?;
     Ok(crate::auth::users::User {
         id,
         username: r.get(1)?,
@@ -830,7 +945,12 @@ mod tests {
     fn make_game() -> Game {
         Game::new(
             Uuid::new_v4(),
-            [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()],
+            [
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+            ],
             500,
             None,
         )
@@ -925,12 +1045,20 @@ mod tests {
     fn auth_tables_created() {
         let store = SqliteStore::open(":memory:").unwrap();
         let conn = store.conn.lock().unwrap();
-        for table in ["users", "oauth_accounts", "auth_tokens", "login_failures", "game_seats"] {
-            let exists: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
-                rusqlite::params![table],
-                |r| r.get(0),
-            ).unwrap();
+        for table in [
+            "users",
+            "oauth_accounts",
+            "auth_tokens",
+            "login_failures",
+            "game_seats",
+        ] {
+            let exists: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    rusqlite::params![table],
+                    |r| r.get(0),
+                )
+                .unwrap();
             assert_eq!(exists, 1, "table {} not created", table);
         }
     }
@@ -964,7 +1092,9 @@ mod tests {
     #[test]
     fn insert_and_find_user() {
         let store = SqliteStore::open(":memory:").unwrap();
-        let id = store.insert_user(&new_user("Alice", "alice@x.com")).unwrap();
+        let id = store
+            .insert_user(&new_user("Alice", "alice@x.com"))
+            .unwrap();
         let u = store.find_user_by_id(id).unwrap().unwrap();
         assert_eq!(u.username, "Alice");
         assert_eq!(u.username_canon, "alice");
@@ -975,7 +1105,9 @@ mod tests {
     #[test]
     fn find_by_email_and_username_works() {
         let store = SqliteStore::open(":memory:").unwrap();
-        store.insert_user(&new_user("Alice", "alice@x.com")).unwrap();
+        store
+            .insert_user(&new_user("Alice", "alice@x.com"))
+            .unwrap();
         let by_email = store.find_user_by_email("alice@x.com").unwrap().unwrap();
         let by_username = store.find_user_by_username("ALICE").unwrap().unwrap();
         assert_eq!(by_email.id, by_username.id);
@@ -985,7 +1117,9 @@ mod tests {
     fn duplicate_username_rejected() {
         let store = SqliteStore::open(":memory:").unwrap();
         store.insert_user(&new_user("Alice", "a1@x.com")).unwrap();
-        let err = store.insert_user(&new_user("alice", "a2@x.com")).unwrap_err();
+        let err = store
+            .insert_user(&new_user("alice", "a2@x.com"))
+            .unwrap_err();
         assert_eq!(err, "username_taken");
     }
 
@@ -1000,7 +1134,9 @@ mod tests {
     #[test]
     fn password_update_bumps_token_version() {
         let store = SqliteStore::open(":memory:").unwrap();
-        let id = store.insert_user(&new_user("Alice", "alice@x.com")).unwrap();
+        let id = store
+            .insert_user(&new_user("Alice", "alice@x.com"))
+            .unwrap();
         let v1 = store.update_user_password(id, "$argon2id$new").unwrap();
         let v2 = store.update_user_password(id, "$argon2id$newer").unwrap();
         assert_eq!(v1, 1);
@@ -1010,7 +1146,9 @@ mod tests {
     #[test]
     fn email_verify_and_touch_login() {
         let store = SqliteStore::open(":memory:").unwrap();
-        let id = store.insert_user(&new_user("Alice", "alice@x.com")).unwrap();
+        let id = store
+            .insert_user(&new_user("Alice", "alice@x.com"))
+            .unwrap();
         store.set_user_email_verified(id).unwrap();
         store.touch_user_login(id).unwrap();
         let u = store.find_user_by_id(id).unwrap().unwrap();
@@ -1021,10 +1159,14 @@ mod tests {
     #[test]
     fn login_failure_count_resets_after_lockout_expires() {
         let store = SqliteStore::open(":memory:").unwrap();
-        let id = store.insert_user(&new_user("Alice", "alice@x.com")).unwrap();
+        let id = store
+            .insert_user(&new_user("Alice", "alice@x.com"))
+            .unwrap();
 
         // Bump to 5 failures and lock.
-        for _ in 0..5 { store.bump_login_failure(id).unwrap(); }
+        for _ in 0..5 {
+            store.bump_login_failure(id).unwrap();
+        }
         store.set_lockout(id, 1).unwrap();
 
         // Sleep past the lockout (1 second).
@@ -1035,19 +1177,31 @@ mod tests {
         assert_eq!(n, 1, "failure count should reset after lockout expiry");
 
         let locked = store.get_lockout(id).unwrap();
-        assert!(locked.is_none() || locked.as_deref() == Some(""), "locked_until should be NULL after reset");
+        assert!(
+            locked.is_none() || locked.as_deref() == Some(""),
+            "locked_until should be NULL after reset"
+        );
     }
 
     #[test]
     fn user_rating_round_trips_with_defaults() {
         let store = SqliteStore::open(":memory:").unwrap();
-        let uid = store.insert_user(&new_user("Alice", "alice@x.com")).unwrap();
-        let r = store.get_user_rating(uid).unwrap().expect("freshly created user has a rating");
+        let uid = store
+            .insert_user(&new_user("Alice", "alice@x.com"))
+            .unwrap();
+        let r = store
+            .get_user_rating(uid)
+            .unwrap()
+            .expect("freshly created user has a rating");
         assert_eq!(r.rating, 1500.0);
         assert_eq!(r.rd, 350.0);
         assert!((r.volatility - 0.06).abs() < 1e-9);
 
-        let new = crate::ratings::Rating { rating: 1623.4, rd: 142.7, volatility: 0.0598 };
+        let new = crate::ratings::Rating {
+            rating: 1623.4,
+            rd: 142.7,
+            volatility: 0.0598,
+        };
         store.set_user_rating(uid, &new).unwrap();
         let back = store.get_user_rating(uid).unwrap().unwrap();
         assert!((back.rating - new.rating).abs() < 1e-9);
@@ -1072,8 +1226,14 @@ mod tests {
                 Ok(uid)
             })
             .unwrap();
-        let user = store.find_user_by_id(user_id).unwrap().expect("user persisted");
-        assert!(user.email_verified, "both writes inside the tx are visible after commit");
+        let user = store
+            .find_user_by_id(user_id)
+            .unwrap()
+            .expect("user persisted");
+        assert!(
+            user.email_verified,
+            "both writes inside the tx are visible after commit"
+        );
     }
 
     #[test]
@@ -1100,7 +1260,9 @@ mod tests {
         // by player → list by user → count by user. All operations target
         // the per-(game, seat) row that auth-gates hand reads and chat.
         let store = SqliteStore::open(":memory:").unwrap();
-        let alice = store.insert_user(&new_user("alice", "alice@x.com")).unwrap();
+        let alice = store
+            .insert_user(&new_user("alice", "alice@x.com"))
+            .unwrap();
         let bob = store.insert_user(&new_user("bob", "bob@x.com")).unwrap();
 
         let game_id = Uuid::new_v4();
@@ -1108,46 +1270,74 @@ mod tests {
         let bob_player = Uuid::new_v4();
 
         // Insert seats for both users at seats 0 and 1.
-        store.insert_game_seat(
-            game_id, 0, alice_player,
-            crate::auth::game_seats::SeatOwner {
-                user_id: Some(alice), anon_user_id: None, is_bot: false,
-            },
-        ).unwrap();
-        store.insert_game_seat(
-            game_id, 1, bob_player,
-            crate::auth::game_seats::SeatOwner {
-                user_id: Some(bob), anon_user_id: None, is_bot: false,
-            },
-        ).unwrap();
+        store
+            .insert_game_seat(
+                game_id,
+                0,
+                alice_player,
+                crate::auth::game_seats::SeatOwner {
+                    user_id: Some(alice),
+                    anon_user_id: None,
+                    is_bot: false,
+                },
+            )
+            .unwrap();
+        store
+            .insert_game_seat(
+                game_id,
+                1,
+                bob_player,
+                crate::auth::game_seats::SeatOwner {
+                    user_id: Some(bob),
+                    anon_user_id: None,
+                    is_bot: false,
+                },
+            )
+            .unwrap();
 
         // Lookups round-trip:
         let s = store.game_seat(game_id, 0).unwrap().unwrap();
         assert_eq!(s.seat_index, 0);
         assert_eq!(s.user_id, Some(alice));
-        let s = store.game_seat_by_player_id(game_id, bob_player).unwrap().unwrap();
+        let s = store
+            .game_seat_by_player_id(game_id, bob_player)
+            .unwrap()
+            .unwrap();
         assert_eq!(s.seat_index, 1);
 
         // Missing rows return None, not error:
         assert!(store.game_seat(game_id, 2).unwrap().is_none());
-        assert!(store.game_seat_by_player_id(game_id, Uuid::new_v4()).unwrap().is_none());
+        assert!(
+            store
+                .game_seat_by_player_id(game_id, Uuid::new_v4())
+                .unwrap()
+                .is_none()
+        );
 
         // Update Bob's seat to anon ownership (e.g., he logged out mid-game).
         let new_anon = Uuid::new_v4();
-        store.update_game_seat_owner(
-            game_id, 1,
-            crate::auth::game_seats::SeatOwner {
-                user_id: None, anon_user_id: Some(new_anon), is_bot: false,
-            },
-        ).unwrap();
+        store
+            .update_game_seat_owner(
+                game_id,
+                1,
+                crate::auth::game_seats::SeatOwner {
+                    user_id: None,
+                    anon_user_id: Some(new_anon),
+                    is_bot: false,
+                },
+            )
+            .unwrap();
         let s = store.game_seat(game_id, 1).unwrap().unwrap();
         assert_eq!(s.user_id, None);
         assert_eq!(s.anon_user_id, Some(new_anon));
 
         // Per-user pagination + count:
         assert_eq!(store.count_game_seats_for_user(alice).unwrap(), 1);
-        assert_eq!(store.count_game_seats_for_user(bob).unwrap(), 0,
-                   "bob's seat ownership was transferred away");
+        assert_eq!(
+            store.count_game_seats_for_user(bob).unwrap(),
+            0,
+            "bob's seat ownership was transferred away"
+        );
         let alice_seats = store.game_seats_for_user(alice, 10, 0).unwrap();
         assert_eq!(alice_seats.len(), 1);
         assert_eq!(alice_seats[0].game_id, game_id);
@@ -1158,20 +1348,41 @@ mod tests {
     #[test]
     fn oauth_account_insert_and_find() {
         let store = SqliteStore::open(":memory:").unwrap();
-        let alice = store.insert_user(&new_user("alice", "alice@x.com")).unwrap();
+        let alice = store
+            .insert_user(&new_user("alice", "alice@x.com"))
+            .unwrap();
 
         // No row before insertion.
-        assert!(store.find_oauth_account("google", "google-uid-123").unwrap().is_none());
+        assert!(
+            store
+                .find_oauth_account("google", "google-uid-123")
+                .unwrap()
+                .is_none()
+        );
 
-        store.insert_oauth_account("google", "google-uid-123", alice, "alice@x.com").unwrap();
+        store
+            .insert_oauth_account("google", "google-uid-123", alice, "alice@x.com")
+            .unwrap();
 
         // Round-trip works.
-        let found = store.find_oauth_account("google", "google-uid-123").unwrap();
+        let found = store
+            .find_oauth_account("google", "google-uid-123")
+            .unwrap();
         assert_eq!(found, Some(alice));
 
         // Unknown provider/uid still returns None.
-        assert!(store.find_oauth_account("github", "google-uid-123").unwrap().is_none());
-        assert!(store.find_oauth_account("google", "other-uid").unwrap().is_none());
+        assert!(
+            store
+                .find_oauth_account("github", "google-uid-123")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .find_oauth_account("google", "other-uid")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -1180,11 +1391,19 @@ mod tests {
         // be expired, one consumed. Sweep removes the latter two and leaves
         // the valid one untouched.
         let store = SqliteStore::open(":memory:").unwrap();
-        let alice = store.insert_user(&new_user("alice", "alice@x.com")).unwrap();
+        let alice = store
+            .insert_user(&new_user("alice", "alice@x.com"))
+            .unwrap();
 
-        store.insert_auth_token("hash-valid", alice, "verify_email", 3600).unwrap();
-        store.insert_auth_token("hash-expired", alice, "verify_email", 3600).unwrap();
-        store.insert_auth_token("hash-consumed", alice, "verify_email", 3600).unwrap();
+        store
+            .insert_auth_token("hash-valid", alice, "verify_email", 3600)
+            .unwrap();
+        store
+            .insert_auth_token("hash-expired", alice, "verify_email", 3600)
+            .unwrap();
+        store
+            .insert_auth_token("hash-consumed", alice, "verify_email", 3600)
+            .unwrap();
         // Backdate `hash-expired` by direct SQL — the public API only
         // accepts non-negative TTLs.
         store.with_tx(|conn| {
@@ -1194,15 +1413,25 @@ mod tests {
             ).map_err(|e| e.to_string())?;
             Ok(())
         }).unwrap();
-        store.consume_auth_token("hash-consumed", "verify_email").unwrap();
+        store
+            .consume_auth_token("hash-consumed", "verify_email")
+            .unwrap();
 
         let removed = store.cleanup_expired_tokens().unwrap();
         assert_eq!(removed, 2, "sweep removes expired + consumed");
 
         // Consuming an already-swept token errors out (no row found).
-        assert!(store.consume_auth_token("hash-expired", "verify_email").is_err());
+        assert!(
+            store
+                .consume_auth_token("hash-expired", "verify_email")
+                .is_err()
+        );
         // The valid one still works.
-        assert!(store.consume_auth_token("hash-valid", "verify_email").is_ok());
+        assert!(
+            store
+                .consume_auth_token("hash-valid", "verify_email")
+                .is_ok()
+        );
     }
 
     #[test]
@@ -1213,7 +1442,9 @@ mod tests {
         let store = SqliteStore::open(":memory:").unwrap();
         // Pre-existing user — their username will collide with the one we
         // attempt to insert inside the tx.
-        let _alice = store.insert_user(&new_user("Alice", "alice@x.com")).unwrap();
+        let _alice = store
+            .insert_user(&new_user("Alice", "alice@x.com"))
+            .unwrap();
 
         let result: Result<(), String> = store.with_tx(|conn| {
             // First write: insert a different user, which would succeed alone.
@@ -1225,9 +1456,13 @@ mod tests {
         });
         assert_eq!(result.unwrap_err(), "username_taken");
         // Bob's insert must have been rolled back — only Alice remains.
-        assert!(store.find_user_by_username("Bob").unwrap().is_none(),
-                "first insert rolled back when second one failed");
-        assert!(store.find_user_by_username("Alice").unwrap().is_some(),
-                "pre-existing user still present");
+        assert!(
+            store.find_user_by_username("Bob").unwrap().is_none(),
+            "first insert rolled back when second one failed"
+        );
+        assert!(
+            store.find_user_by_username("Alice").unwrap().is_some(),
+            "pre-existing user still present"
+        );
     }
 }

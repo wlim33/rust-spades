@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use crate::cards::{get_trick_winner, Card};
+use crate::cards::{Card, get_trick_winner};
 use crate::{Game, State};
 
 use super::format::{card_to_str, escape_tag_value};
@@ -255,7 +255,12 @@ mod tests {
     fn header_not_started_no_names_no_timer() {
         let g = Game::new(
             fixed_uuid(1),
-            [fixed_uuid(10), fixed_uuid(11), fixed_uuid(12), fixed_uuid(13)],
+            [
+                fixed_uuid(10),
+                fixed_uuid(11),
+                fixed_uuid(12),
+                fixed_uuid(13),
+            ],
             500,
             None,
         );
@@ -277,12 +282,22 @@ mod tests {
     fn header_with_names_and_timer() {
         let mut g = Game::new(
             fixed_uuid(1),
-            [fixed_uuid(10), fixed_uuid(11), fixed_uuid(12), fixed_uuid(13)],
+            [
+                fixed_uuid(10),
+                fixed_uuid(11),
+                fixed_uuid(12),
+                fixed_uuid(13),
+            ],
             300,
-            Some(TimerConfig { initial_time_secs: 300, increment_secs: 5 }),
+            Some(TimerConfig {
+                initial_time_secs: 300,
+                increment_secs: 5,
+            }),
         );
-        g.set_player_name(fixed_uuid(10), Some("Alice".into())).unwrap();
-        g.set_player_name(fixed_uuid(12), Some("Carol \"Q\"".into())).unwrap();
+        g.set_player_name(fixed_uuid(10), Some("Alice".into()))
+            .unwrap();
+        g.set_player_name(fixed_uuid(12), Some("Carol \"Q\"".into()))
+            .unwrap();
         let s = encode(&g);
         assert!(s.contains("[Name0 \"Alice\"]\n"));
         assert!(s.contains("[Name2 \"Carol \\\"Q\\\"\"]\n"));
@@ -316,7 +331,12 @@ mod tests {
     fn encode_mid_first_bet() {
         let mut g = Game::new(
             fixed_uuid(1),
-            [fixed_uuid(10), fixed_uuid(11), fixed_uuid(12), fixed_uuid(13)],
+            [
+                fixed_uuid(10),
+                fixed_uuid(11),
+                fixed_uuid(12),
+                fixed_uuid(13),
+            ],
             500,
             None,
         );
@@ -325,7 +345,11 @@ mod tests {
 
         let s = encode(&g);
         assert!(s.contains("[Round \"1\"]\n"), "should have Round 1 block");
-        assert!(s.contains("[Bets \"3 3\"]\n"), "should have 2 bets, got:\n{}", s);
+        assert!(
+            s.contains("[Bets \"3 3\"]\n"),
+            "should have 2 bets, got:\n{}",
+            s
+        );
         for line in s.lines() {
             assert!(
                 !line.starts_with("1. ") && !line.starts_with("2. "),
@@ -340,7 +364,12 @@ mod tests {
         // Low max_points so the game finishes in 1-2 rounds.
         let mut g = Game::new(
             fixed_uuid(1),
-            [fixed_uuid(10), fixed_uuid(11), fixed_uuid(12), fixed_uuid(13)],
+            [
+                fixed_uuid(10),
+                fixed_uuid(11),
+                fixed_uuid(12),
+                fixed_uuid(13),
+            ],
             50,
             None,
         );
@@ -365,7 +394,12 @@ mod tests {
     fn hands_are_sorted() {
         let mut g = Game::new(
             fixed_uuid(1),
-            [fixed_uuid(10), fixed_uuid(11), fixed_uuid(12), fixed_uuid(13)],
+            [
+                fixed_uuid(10),
+                fixed_uuid(11),
+                fixed_uuid(12),
+                fixed_uuid(13),
+            ],
             500,
             None,
         );
@@ -389,13 +423,22 @@ mod tests {
     fn aborted_from_not_started_emits_no_rounds() {
         let mut g = Game::new(
             fixed_uuid(1),
-            [fixed_uuid(10), fixed_uuid(11), fixed_uuid(12), fixed_uuid(13)],
+            [
+                fixed_uuid(10),
+                fixed_uuid(11),
+                fixed_uuid(12),
+                fixed_uuid(13),
+            ],
             500,
             None,
         );
         g.set_state(State::Aborted);
         let s = encode(&g);
         assert!(s.contains("[Termination \"Aborted\"]\n"));
-        assert!(!s.contains("[Round "), "no rounds should be emitted, got:\n{}", s);
+        assert!(
+            !s.contains("[Round "),
+            "no rounds should be emitted, got:\n{}",
+            s
+        );
     }
 }

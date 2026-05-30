@@ -27,10 +27,10 @@ use tracing::error;
 use uuid::Uuid;
 
 use crate::game_manager::{
-    AiPlayerConfig, GameEvent, GameManagerError, GameStateResponse, HandResponse,
-    PlayerNameEntry, Subscription, epoch_ms_now, event_seq,
+    AiPlayerConfig, GameEvent, GameManagerError, GameStateResponse, HandResponse, PlayerNameEntry,
+    Subscription, epoch_ms_now, event_seq,
 };
-use crate::ratings::{self, Rating, DEFAULT_RATING};
+use crate::ratings::{self, DEFAULT_RATING, Rating};
 use crate::sqlite_store::SqliteStore;
 
 /// Per-game broadcast buffer capacity. The corresponding `Lagged` is
@@ -86,9 +86,7 @@ pub enum GameCmd {
     /// subsequent transition (the spawn-to-mailbox-send hop is not
     /// synchronous with command processing, so `JoinHandle::abort` may
     /// land *after* the timer's sleep completed).
-    TimerFired {
-        generation: u64,
-    },
+    TimerFired { generation: u64 },
 }
 
 /// A clonable handle to a `GameActor`. Methods are async — each command
@@ -106,7 +104,10 @@ impl GameHandle {
     ) -> Result<TransitionSuccess, GameManagerError> {
         let (tx, rx) = oneshot::channel();
         self.sender
-            .send(GameCmd::ApplyTransition { transition, reply: tx })
+            .send(GameCmd::ApplyTransition {
+                transition,
+                reply: tx,
+            })
             .map_err(|_| GameManagerError::GameNotFound)?;
         rx.await.map_err(|_| GameManagerError::GameNotFound)?
     }
@@ -122,7 +123,10 @@ impl GameHandle {
     pub async fn get_hand(&self, player_id: Uuid) -> Result<HandResponse, GameManagerError> {
         let (tx, rx) = oneshot::channel();
         self.sender
-            .send(GameCmd::GetHand { player_id, reply: tx })
+            .send(GameCmd::GetHand {
+                player_id,
+                reply: tx,
+            })
             .map_err(|_| GameManagerError::GameNotFound)?;
         rx.await.map_err(|_| GameManagerError::GameNotFound)?
     }
@@ -134,7 +138,11 @@ impl GameHandle {
     ) -> Result<(), GameManagerError> {
         let (tx, rx) = oneshot::channel();
         self.sender
-            .send(GameCmd::SetPlayerName { player_id, name, reply: tx })
+            .send(GameCmd::SetPlayerName {
+                player_id,
+                name,
+                reply: tx,
+            })
             .map_err(|_| GameManagerError::GameNotFound)?;
         rx.await.map_err(|_| GameManagerError::GameNotFound)?
     }
@@ -164,7 +172,11 @@ impl GameHandle {
     ) -> Result<(), GameManagerError> {
         let (tx, rx) = oneshot::channel();
         self.sender
-            .send(GameCmd::SendChat { player_id, content, reply: tx })
+            .send(GameCmd::SendChat {
+                player_id,
+                content,
+                reply: tx,
+            })
             .map_err(|_| GameManagerError::GameNotFound)?;
         rx.await.map_err(|_| GameManagerError::GameNotFound)
     }
@@ -227,7 +239,10 @@ impl GameActor {
             self_tx: cmd_tx.clone(),
         };
         tokio::spawn(actor.run(cmd_rx));
-        GameHandle { game_id, sender: cmd_tx }
+        GameHandle {
+            game_id,
+            sender: cmd_tx,
+        }
     }
 
     async fn run(mut self, mut inbox: mpsc::UnboundedReceiver<GameCmd>) {
@@ -257,11 +272,18 @@ impl GameActor {
                 let res = self
                     .game
                     .get_hand_by_player_id(player_id)
-                    .map(|cards| HandResponse { player_id, cards: cards.clone() })
+                    .map(|cards| HandResponse {
+                        player_id,
+                        cards: cards.clone(),
+                    })
                     .map_err(GameManagerError::from);
                 let _ = reply.send(res);
             }
-            GameCmd::SetPlayerName { player_id, name, reply } => {
+            GameCmd::SetPlayerName {
+                player_id,
+                name,
+                reply,
+            } => {
                 let res = self.handle_set_player_name(player_id, name);
                 let _ = reply.send(res);
             }
@@ -277,7 +299,11 @@ impl GameActor {
                 };
                 let _ = reply.send(out);
             }
-            GameCmd::SendChat { player_id, content, reply } => {
+            GameCmd::SendChat {
+                player_id,
+                content,
+                reply,
+            } => {
                 self.broadcast(GameEvent::ChatMessage {
                     seq: 0,
                     game_id: self.game_id,
@@ -324,15 +350,19 @@ impl GameActor {
         if is_timed && !is_start {
             let (elapsed_ms, prev_idx) = self.cancel_timer();
             let increment_ms = if !is_timeout {
-                self.game.get_timer_config().map(|tc| tc.increment_secs * 1000).unwrap_or(0)
+                self.game
+                    .get_timer_config()
+                    .map(|tc| tc.increment_secs * 1000)
+                    .unwrap_or(0)
             } else {
                 0
             };
             if let Some(idx) = prev_idx
-                && let Some(clocks) = self.game.get_player_clocks_mut() {
-                    clocks.remaining_ms[idx] =
-                        clocks.remaining_ms[idx].saturating_sub(elapsed_ms) + increment_ms;
-                }
+                && let Some(clocks) = self.game.get_player_clocks_mut()
+            {
+                clocks.remaining_ms[idx] =
+                    clocks.remaining_ms[idx].saturating_sub(elapsed_ms) + increment_ms;
+            }
         }
 
         let success = self.game.play(transition)?;
@@ -371,7 +401,10 @@ impl GameActor {
         }
 
         let state_response = self.build_state_response();
-        self.broadcast(GameEvent::StateChanged { seq: 0, state: state_response });
+        self.broadcast(GameEvent::StateChanged {
+            seq: 0,
+            state: state_response,
+        });
 
         // If this transition was the one that completed the game, fire
         // the Glicko-2 rating update in the background. Aborted games
@@ -411,7 +444,10 @@ impl GameActor {
         self.game.set_player_name(player_id, name)?;
         self.persist_async();
         let state_response = self.build_state_response();
-        self.broadcast(GameEvent::StateChanged { seq: 0, state: state_response });
+        self.broadcast(GameEvent::StateChanged {
+            seq: 0,
+            state: state_response,
+        });
         Ok(())
     }
 
@@ -424,8 +460,11 @@ impl GameActor {
             Some(t) if t.generation == generation => {}
             _ => return,
         }
-        let expected_player_index =
-            self.active_timer.as_ref().map(|t| t.expected_player_index).unwrap_or(0);
+        let expected_player_index = self
+            .active_timer
+            .as_ref()
+            .map(|t| t.expected_player_index)
+            .unwrap_or(0);
         let player_idx = self.game.get_current_player_index_num();
         if expected_player_index != player_idx {
             return;
@@ -497,7 +536,8 @@ impl GameActor {
             }
         };
         tokio::spawn(async move {
-            let res = tokio::task::spawn_blocking(move || db.update_game_serialized(game_id, json)).await;
+            let res =
+                tokio::task::spawn_blocking(move || db.update_game_serialized(game_id, json)).await;
             match res {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => error!(game_id = %game_id, error = %e, "persist update failed"),
@@ -584,8 +624,12 @@ impl GameActor {
             return None;
         }
         match self.game.get_state() {
-            State::Betting(_) => Some(GameTransition::Bet(cfg.strategy.choose_bet(&self.game, player_idx))),
-            State::Trick(_) => Some(GameTransition::Card(cfg.strategy.choose_card(&self.game, player_idx))),
+            State::Betting(_) => Some(GameTransition::Bet(
+                cfg.strategy.choose_bet(&self.game, player_idx),
+            )),
+            State::Trick(_) => Some(GameTransition::Card(
+                cfg.strategy.choose_card(&self.game, player_idx),
+            )),
             _ => None,
         }
     }
@@ -619,10 +663,22 @@ impl GameActor {
             team_b_bags: self.game.get_team_b_bags().ok().copied(),
             current_player_id: self.game.get_current_player_id().ok().copied(),
             player_names: [
-                PlayerNameEntry { player_id: names[0].0, name: names[0].1.map(String::from) },
-                PlayerNameEntry { player_id: names[1].0, name: names[1].1.map(String::from) },
-                PlayerNameEntry { player_id: names[2].0, name: names[2].1.map(String::from) },
-                PlayerNameEntry { player_id: names[3].0, name: names[3].1.map(String::from) },
+                PlayerNameEntry {
+                    player_id: names[0].0,
+                    name: names[0].1.map(String::from),
+                },
+                PlayerNameEntry {
+                    player_id: names[1].0,
+                    name: names[1].1.map(String::from),
+                },
+                PlayerNameEntry {
+                    player_id: names[2].0,
+                    name: names[2].1.map(String::from),
+                },
+                PlayerNameEntry {
+                    player_id: names[3].0,
+                    name: names[3].1.map(String::from),
+                },
             ],
             timer_config,
             player_clocks_ms,
@@ -660,7 +716,12 @@ impl GameActor {
                 }
             }
         };
-        Subscription { rx, current_seq, initial_state, catch_up }
+        Subscription {
+            rx,
+            current_seq,
+            initial_state,
+            catch_up,
+        }
     }
 }
 
@@ -691,7 +752,9 @@ fn apply_glicko_update(db: &SqliteStore, game_id: Uuid, team_a_won: bool) {
     // Spades partnership: seats 0+2 are team A, 1+3 are team B.
     for (i, seat) in seats.iter().enumerate() {
         let Some(seat) = seat else { continue };
-        let Some(user_id) = seat.user_id else { continue };
+        let Some(user_id) = seat.user_id else {
+            continue;
+        };
         let on_team_a = (i % 2) == 0;
         let opponents_idx: [usize; 2] = if on_team_a { [1, 3] } else { [0, 2] };
         let outcome = if on_team_a == team_a_won { 1.0 } else { 0.0 };

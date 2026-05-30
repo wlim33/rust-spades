@@ -1,15 +1,15 @@
+use crate::game_manager::GameManager;
+use crate::matchmaking::MatchResult;
+use serde::{Deserialize, Serialize};
+use spades::GameTransition;
+use spades::TimerConfig;
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
-use uuid::Uuid;
-use serde::{Serialize, Deserialize};
 use tokio::sync::broadcast;
-use crate::game_manager::GameManager;
-use crate::matchmaking::MatchResult;
-use spades::GameTransition;
-use spades::TimerConfig;
+use uuid::Uuid;
 
 /// A seat position in a 4-player spades game. Teams: A+C vs B+D.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, oasgen::OaSchema)]
@@ -218,10 +218,26 @@ enum ChallengeStatusKindInternal {
 impl Challenge {
     fn seats_snapshot(&self) -> [Option<SeatInfo>; 4] {
         [
-            self.seats[0].as_ref().map(|o| SeatInfo { seat: Seat::A, player_id: o.player_id, name: o.name.clone() }),
-            self.seats[1].as_ref().map(|o| SeatInfo { seat: Seat::B, player_id: o.player_id, name: o.name.clone() }),
-            self.seats[2].as_ref().map(|o| SeatInfo { seat: Seat::C, player_id: o.player_id, name: o.name.clone() }),
-            self.seats[3].as_ref().map(|o| SeatInfo { seat: Seat::D, player_id: o.player_id, name: o.name.clone() }),
+            self.seats[0].as_ref().map(|o| SeatInfo {
+                seat: Seat::A,
+                player_id: o.player_id,
+                name: o.name.clone(),
+            }),
+            self.seats[1].as_ref().map(|o| SeatInfo {
+                seat: Seat::B,
+                player_id: o.player_id,
+                name: o.name.clone(),
+            }),
+            self.seats[2].as_ref().map(|o| SeatInfo {
+                seat: Seat::C,
+                player_id: o.player_id,
+                name: o.name.clone(),
+            }),
+            self.seats[3].as_ref().map(|o| SeatInfo {
+                seat: Seat::D,
+                player_id: o.player_id,
+                name: o.name.clone(),
+            }),
         ]
     }
 
@@ -232,7 +248,9 @@ impl Challenge {
     fn to_status_kind(&self) -> ChallengeStatusKind {
         match &self.status {
             ChallengeStatusKindInternal::Open => ChallengeStatusKind::Open,
-            ChallengeStatusKindInternal::Started { game_id } => ChallengeStatusKind::Started { game_id: *game_id },
+            ChallengeStatusKindInternal::Started { game_id } => {
+                ChallengeStatusKind::Started { game_id: *game_id }
+            }
             ChallengeStatusKindInternal::Cancelled => ChallengeStatusKind::Cancelled,
             ChallengeStatusKindInternal::Expired => ChallengeStatusKind::Expired,
         }
@@ -307,7 +325,10 @@ impl ChallengeManager {
             expiry_handle: None,
         };
 
-        let mut challenges = self.challenges.write().map_err(|_| ChallengeError::LockError)?;
+        let mut challenges = self
+            .challenges
+            .write()
+            .map_err(|_| ChallengeError::LockError)?;
         challenges.insert(challenge_id, challenge);
         drop(challenges);
 
@@ -318,7 +339,10 @@ impl ChallengeManager {
             mgr.expire_challenge(challenge_id);
         });
 
-        let mut challenges = self.challenges.write().map_err(|_| ChallengeError::LockError)?;
+        let mut challenges = self
+            .challenges
+            .write()
+            .map_err(|_| ChallengeError::LockError)?;
         if let Some(c) = challenges.get_mut(&challenge_id) {
             c.expiry_handle = Some(handle);
         }
@@ -346,8 +370,13 @@ impl ChallengeManager {
         }
 
         let (player_id, rx, ready) = {
-            let mut challenges = self.challenges.write().map_err(|_| ChallengeError::LockError)?;
-            let challenge = challenges.get_mut(&challenge_id).ok_or(ChallengeError::NotFound)?;
+            let mut challenges = self
+                .challenges
+                .write()
+                .map_err(|_| ChallengeError::LockError)?;
+            let challenge = challenges
+                .get_mut(&challenge_id)
+                .ok_or(ChallengeError::NotFound)?;
 
             if !matches!(challenge.status, ChallengeStatusKindInternal::Open) {
                 return Err(ChallengeError::NotOpen);
@@ -360,10 +389,7 @@ impl ChallengeManager {
 
             let player_id = Uuid::new_v4();
             let rx = challenge.broadcast_tx.subscribe();
-            challenge.seats[idx] = Some(SeatOccupant {
-                player_id,
-                name,
-            });
+            challenge.seats[idx] = Some(SeatOccupant { player_id, name });
 
             let seats_snapshot = challenge.seats_snapshot();
             let _ = challenge.broadcast_tx.send(ChallengeEvent::SeatUpdate {
@@ -410,24 +436,39 @@ impl ChallengeManager {
             max_points,
             timer_config,
             broadcast_tx,
-        }) = ready {
-            match self.game_manager.create_game_with_players(player_ids, max_points, timer_config) {
+        }) = ready
+        {
+            match self
+                .game_manager
+                .create_game_with_players(player_ids, max_points, timer_config)
+            {
                 Ok(response) => {
-                    if self.game_manager.make_transition(response.game_id, GameTransition::Start).await.is_err() {
+                    if self
+                        .game_manager
+                        .make_transition(response.game_id, GameTransition::Start)
+                        .await
+                        .is_err()
+                    {
                         let _ = self.game_manager.remove_game(response.game_id);
                     } else {
                         // Set player names
                         for (i, name) in player_names.iter().enumerate() {
                             if name.is_some() {
-                                let _ = self.game_manager.set_player_name(response.game_id, player_ids[i], name.clone()).await;
+                                let _ = self
+                                    .game_manager
+                                    .set_player_name(response.game_id, player_ids[i], name.clone())
+                                    .await;
                             }
                         }
 
                         // Update challenge status
                         if let Ok(mut challenges) = self.challenges.write()
-                            && let Some(c) = challenges.get_mut(&challenge_id) {
-                                c.status = ChallengeStatusKindInternal::Started { game_id: response.game_id };
-                            }
+                            && let Some(c) = challenges.get_mut(&challenge_id)
+                        {
+                            c.status = ChallengeStatusKindInternal::Started {
+                                game_id: response.game_id,
+                            };
+                        }
 
                         let _ = broadcast_tx.send(ChallengeEvent::GameStart(MatchResult {
                             game_id: response.game_id,
@@ -466,20 +507,30 @@ impl ChallengeManager {
 
         let idx = seat.to_index();
         if let Some(occupant) = &challenge.seats[idx]
-            && occupant.player_id == player_id {
-                challenge.seats[idx] = None;
-                let seats_snapshot = challenge.seats_snapshot();
-                let _ = challenge.broadcast_tx.send(ChallengeEvent::SeatUpdate {
-                    challenge_id,
-                    seats: seats_snapshot,
-                });
-            }
+            && occupant.player_id == player_id
+        {
+            challenge.seats[idx] = None;
+            let seats_snapshot = challenge.seats_snapshot();
+            let _ = challenge.broadcast_tx.send(ChallengeEvent::SeatUpdate {
+                challenge_id,
+                seats: seats_snapshot,
+            });
+        }
     }
 
     /// Cancel a challenge. Only the creator can cancel it.
-    pub fn cancel_challenge(&self, challenge_id: Uuid, requester_id: Uuid) -> Result<(), ChallengeError> {
-        let mut challenges = self.challenges.write().map_err(|_| ChallengeError::LockError)?;
-        let challenge = challenges.get_mut(&challenge_id).ok_or(ChallengeError::NotFound)?;
+    pub fn cancel_challenge(
+        &self,
+        challenge_id: Uuid,
+        requester_id: Uuid,
+    ) -> Result<(), ChallengeError> {
+        let mut challenges = self
+            .challenges
+            .write()
+            .map_err(|_| ChallengeError::LockError)?;
+        let challenge = challenges
+            .get_mut(&challenge_id)
+            .ok_or(ChallengeError::NotFound)?;
 
         if !matches!(challenge.status, ChallengeStatusKindInternal::Open) {
             return Err(ChallengeError::NotOpen);
@@ -513,8 +564,13 @@ impl ChallengeManager {
         requester_anon_id: Uuid,
         requester_user_id: Option<Uuid>,
     ) -> Result<(), ChallengeError> {
-        let mut challenges = self.challenges.write().map_err(|_| ChallengeError::LockError)?;
-        let challenge = challenges.get_mut(&challenge_id).ok_or(ChallengeError::NotFound)?;
+        let mut challenges = self
+            .challenges
+            .write()
+            .map_err(|_| ChallengeError::LockError)?;
+        let challenge = challenges
+            .get_mut(&challenge_id)
+            .ok_or(ChallengeError::NotFound)?;
 
         if !matches!(challenge.status, ChallengeStatusKindInternal::Open) {
             return Err(ChallengeError::NotOpen);
@@ -543,8 +599,13 @@ impl ChallengeManager {
 
     /// Get the full status of a challenge.
     pub fn get_status(&self, challenge_id: Uuid) -> Result<ChallengeStatus, ChallengeError> {
-        let challenges = self.challenges.read().map_err(|_| ChallengeError::LockError)?;
-        let challenge = challenges.get(&challenge_id).ok_or(ChallengeError::NotFound)?;
+        let challenges = self
+            .challenges
+            .read()
+            .map_err(|_| ChallengeError::LockError)?;
+        let challenge = challenges
+            .get(&challenge_id)
+            .ok_or(ChallengeError::NotFound)?;
 
         Ok(ChallengeStatus {
             challenge_id: challenge.challenge_id,
@@ -558,7 +619,10 @@ impl ChallengeManager {
     }
 
     /// Resolve a Sqids short ID to a challenge UUID and return the challenge status.
-    pub fn get_challenge_by_short_id(&self, short_id: &str) -> Result<ChallengeStatus, ChallengeError> {
+    pub fn get_challenge_by_short_id(
+        &self,
+        short_id: &str,
+    ) -> Result<ChallengeStatus, ChallengeError> {
         let uuid = spades::short_id_to_uuid(short_id).ok_or(ChallengeError::NotFound)?;
         self.get_status(uuid)
     }
@@ -650,7 +714,10 @@ mod tests {
 
         let status = cm.get_status(challenge_id).unwrap();
         assert!(status.seats[0].is_some());
-        assert_eq!(status.seats[0].as_ref().unwrap().name.as_deref(), Some("Alice"));
+        assert_eq!(
+            status.seats[0].as_ref().unwrap().name.as_deref(),
+            Some("Alice")
+        );
         assert_eq!(status.seats[0].as_ref().unwrap().seat, Seat::A);
         assert!(status.seats[1].is_none());
     }
@@ -668,12 +735,17 @@ mod tests {
 
         let (challenge_id, _, _rx) = cm.create_challenge(config).unwrap();
 
-        let result = cm.join_challenge(challenge_id, Seat::B, Some("Bob".to_string())).await;
+        let result = cm
+            .join_challenge(challenge_id, Seat::B, Some("Bob".to_string()))
+            .await;
         assert!(result.is_ok());
 
         let status = cm.get_status(challenge_id).unwrap();
         assert!(status.seats[1].is_some());
-        assert_eq!(status.seats[1].as_ref().unwrap().name.as_deref(), Some("Bob"));
+        assert_eq!(
+            status.seats[1].as_ref().unwrap().name.as_deref(),
+            Some("Bob")
+        );
     }
 
     #[tokio::test]
@@ -689,7 +761,9 @@ mod tests {
 
         let (challenge_id, _, _rx) = cm.create_challenge(config).unwrap();
 
-        let result = cm.join_challenge(challenge_id, Seat::A, Some("Bob".to_string())).await;
+        let result = cm
+            .join_challenge(challenge_id, Seat::A, Some("Bob".to_string()))
+            .await;
         assert!(matches!(result, Err(ChallengeError::SeatTaken)));
     }
 
@@ -708,7 +782,10 @@ mod tests {
 
         let mut _rxs = Vec::new();
         for (seat, name) in [(Seat::B, "Bob"), (Seat::C, "Carol"), (Seat::D, "Dave")] {
-            let (_pid, rx) = cm.join_challenge(challenge_id, seat, Some(name.to_string())).await.unwrap();
+            let (_pid, rx) = cm
+                .join_challenge(challenge_id, seat, Some(name.to_string()))
+                .await
+                .unwrap();
             _rxs.push(rx);
         }
 
@@ -836,7 +913,10 @@ mod tests {
 
         let (challenge_id, _, _rx) = cm.create_challenge(config).unwrap();
 
-        let (player_id, _join_rx) = cm.join_challenge(challenge_id, Seat::B, Some("Bob".to_string())).await.unwrap();
+        let (player_id, _join_rx) = cm
+            .join_challenge(challenge_id, Seat::B, Some("Bob".to_string()))
+            .await
+            .unwrap();
 
         cm.vacate_seat(challenge_id, Seat::B, player_id);
 
@@ -856,7 +936,8 @@ mod tests {
         };
 
         let (challenge_id, creator_id, _rx) = cm.create_challenge(config).unwrap();
-        cm.cancel_challenge(challenge_id, creator_id.unwrap()).unwrap();
+        cm.cancel_challenge(challenge_id, creator_id.unwrap())
+            .unwrap();
 
         let result = cm.join_challenge(challenge_id, Seat::B, None).await;
         assert!(matches!(result, Err(ChallengeError::NotOpen)));
@@ -927,7 +1008,10 @@ mod tests {
         };
 
         let (challenge_id, _, _rx) = cm.create_challenge(config).unwrap();
-        let (_player_id, _join_rx) = cm.join_challenge(challenge_id, Seat::B, Some("Bob".to_string())).await.unwrap();
+        let (_player_id, _join_rx) = cm
+            .join_challenge(challenge_id, Seat::B, Some("Bob".to_string()))
+            .await
+            .unwrap();
 
         // Try to vacate with wrong player_id — should be a no-op
         cm.vacate_seat(challenge_id, Seat::B, Uuid::new_v4());
@@ -948,7 +1032,8 @@ mod tests {
         };
 
         let (challenge_id, creator_id, _rx) = cm.create_challenge(config).unwrap();
-        cm.cancel_challenge(challenge_id, creator_id.unwrap()).unwrap();
+        cm.cancel_challenge(challenge_id, creator_id.unwrap())
+            .unwrap();
 
         // Vacating on a cancelled challenge is a no-op
         cm.vacate_seat(challenge_id, Seat::A, creator_id.unwrap());
@@ -971,7 +1056,8 @@ mod tests {
         };
 
         let (challenge_id, creator_id, _rx) = cm.create_challenge(config).unwrap();
-        cm.cancel_challenge(challenge_id, creator_id.unwrap()).unwrap();
+        cm.cancel_challenge(challenge_id, creator_id.unwrap())
+            .unwrap();
 
         // Cancelling again should fail with NotOpen
         let result = cm.cancel_challenge(challenge_id, creator_id.unwrap());
@@ -1025,13 +1111,31 @@ mod tests {
 
     #[test]
     fn test_challenge_error_display() {
-        assert_eq!(format!("{}", ChallengeError::NotFound), "Challenge not found");
-        assert_eq!(format!("{}", ChallengeError::SeatTaken), "Seat is already taken");
-        assert_eq!(format!("{}", ChallengeError::NotOpen), "Challenge is not open");
-        assert_eq!(format!("{}", ChallengeError::NotCreator), "Only the creator can cancel this challenge");
+        assert_eq!(
+            format!("{}", ChallengeError::NotFound),
+            "Challenge not found"
+        );
+        assert_eq!(
+            format!("{}", ChallengeError::SeatTaken),
+            "Seat is already taken"
+        );
+        assert_eq!(
+            format!("{}", ChallengeError::NotOpen),
+            "Challenge is not open"
+        );
+        assert_eq!(
+            format!("{}", ChallengeError::NotCreator),
+            "Only the creator can cancel this challenge"
+        );
         assert_eq!(format!("{}", ChallengeError::InvalidSeat), "Invalid seat");
-        assert_eq!(format!("{}", ChallengeError::LockError), "Internal lock error");
-        assert_eq!(format!("{}", ChallengeError::GameCreationFailed("oops".to_string())), "Game creation failed: oops");
+        assert_eq!(
+            format!("{}", ChallengeError::LockError),
+            "Internal lock error"
+        );
+        assert_eq!(
+            format!("{}", ChallengeError::GameCreationFailed("oops".to_string())),
+            "Game creation failed: oops"
+        );
     }
 
     #[tokio::test]

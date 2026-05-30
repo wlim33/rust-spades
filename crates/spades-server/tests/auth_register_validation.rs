@@ -19,7 +19,10 @@ async fn assert_register_rejects(body: serde_json::Value, expected_detail_fragme
     let b: serde_json::Value = resp.json();
     assert_eq!(b["error"], "validation");
     assert!(
-        b["details"].as_str().unwrap_or("").contains(expected_detail_fragment),
+        b["details"]
+            .as_str()
+            .unwrap_or("")
+            .contains(expected_detail_fragment),
         "expected details to contain {expected_detail_fragment:?}, got {:?}",
         b["details"],
     );
@@ -30,7 +33,8 @@ async fn register_rejects_username_too_short() {
     assert_register_rejects(
         json!({"username": "a", "email": "a@b.c", "password": "hunter2-strong"}),
         "username must be",
-    ).await;
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -38,7 +42,8 @@ async fn register_rejects_username_too_long() {
     assert_register_rejects(
         json!({"username": "a".repeat(21), "email": "a@b.c", "password": "hunter2-strong"}),
         "username must be",
-    ).await;
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -46,7 +51,8 @@ async fn register_rejects_username_with_invalid_chars() {
     assert_register_rejects(
         json!({"username": "alice!", "email": "a@b.c", "password": "hunter2-strong"}),
         "letters, digits",
-    ).await;
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -54,7 +60,8 @@ async fn register_rejects_username_with_leading_hyphen() {
     assert_register_rejects(
         json!({"username": "-alice", "email": "a@b.c", "password": "hunter2-strong"}),
         "hyphen",
-    ).await;
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -62,7 +69,8 @@ async fn register_rejects_reserved_username() {
     assert_register_rejects(
         json!({"username": "admin", "email": "a@b.c", "password": "hunter2-strong"}),
         "reserved",
-    ).await;
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -70,7 +78,8 @@ async fn register_rejects_email_missing_at() {
     assert_register_rejects(
         json!({"username": "alice", "email": "noatsign", "password": "hunter2-strong"}),
         "invalid email",
-    ).await;
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -78,7 +87,8 @@ async fn register_rejects_email_without_domain_tld() {
     assert_register_rejects(
         json!({"username": "alice", "email": "alice@local", "password": "hunter2-strong"}),
         "invalid email",
-    ).await;
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -86,19 +96,27 @@ async fn register_rejects_short_password() {
     assert_register_rejects(
         json!({"username": "alice", "email": "alice@example.com", "password": "short"}),
         "password",
-    ).await;
+    )
+    .await;
 }
 
 #[tokio::test]
 async fn register_rejects_duplicate_email() {
     let server = common::test_server();
-    server.post("/auth/register").json(&json!({
-        "username": "Alice", "email": "alice@example.com", "password": "hunter2-strong",
-    })).await.assert_status(StatusCode::CREATED);
+    server
+        .post("/auth/register")
+        .json(&json!({
+            "username": "Alice", "email": "alice@example.com", "password": "hunter2-strong",
+        }))
+        .await
+        .assert_status(StatusCode::CREATED);
 
-    let dup = server.post("/auth/register").json(&json!({
-        "username": "Bob", "email": "alice@example.com", "password": "hunter2-strong",
-    })).await;
+    let dup = server
+        .post("/auth/register")
+        .json(&json!({
+            "username": "Bob", "email": "alice@example.com", "password": "hunter2-strong",
+        }))
+        .await;
     dup.assert_status(StatusCode::CONFLICT);
     let body: serde_json::Value = dup.json();
     assert_eq!(body["error"], "email_taken");

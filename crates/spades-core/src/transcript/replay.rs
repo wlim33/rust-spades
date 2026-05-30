@@ -1,4 +1,4 @@
-use crate::cards::{get_trick_winner, Card};
+use crate::cards::{Card, get_trick_winner};
 use crate::{Game, GameTransition, State};
 
 use super::{ReplayError, Termination, Transcript};
@@ -46,12 +46,13 @@ pub fn replay(t: &Transcript) -> Result<Game, ReplayError> {
 
     for (r_idx, round) in t.rounds.iter().enumerate() {
         for (i, &b) in round.bets.iter().enumerate() {
-            game.play(GameTransition::Bet(b)).map_err(|e| ReplayError::Transition {
-                round: r_idx,
-                trick: None,
-                seat: i,
-                err: e,
-            })?;
+            game.play(GameTransition::Bet(b))
+                .map_err(|e| ReplayError::Transition {
+                    round: r_idx,
+                    trick: None,
+                    seat: i,
+                    err: e,
+                })?;
         }
 
         if round.bets.len() < 4 {
@@ -68,17 +69,19 @@ pub fn replay(t: &Transcript) -> Result<Game, ReplayError> {
         for (t_idx, trick) in round.tricks.iter().enumerate() {
             for (i, &card) in trick.iter().enumerate() {
                 let seat = (lead + i) % 4;
-                game.play(GameTransition::Card(card)).map_err(|e| {
-                    ReplayError::Transition {
+                game.play(GameTransition::Card(card))
+                    .map_err(|e| ReplayError::Transition {
                         round: r_idx,
                         trick: Some(t_idx),
                         seat,
                         err: e,
-                    }
-                })?;
+                    })?;
             }
             if trick.len() == 4 {
-                let mut by_seat = [Card { rank: crate::cards::Rank::Two, suit: crate::cards::Suit::Club }; 4];
+                let mut by_seat = [Card {
+                    rank: crate::cards::Rank::Two,
+                    suit: crate::cards::Suit::Club,
+                }; 4];
                 for i in 0..4 {
                     by_seat[(lead + i) % 4] = trick[i];
                 }
@@ -151,7 +154,7 @@ mod tests {
         g
     }
 
-#[test]
+    #[test]
     fn replay_one_round_round_trip() {
         let g = build_short_game();
         let encoded = encode(&g);
@@ -252,7 +255,10 @@ mod tests {
             rank: crate::cards::Rank::Ace,
             suit: crate::cards::Suit::Spade,
         };
-        assert!(matches!(replay(&parsed), Err(ReplayError::Transition { .. })));
+        assert!(matches!(
+            replay(&parsed),
+            Err(ReplayError::Transition { .. })
+        ));
     }
 
     #[test]
@@ -284,7 +290,11 @@ mod tests {
         let parsed = decode(&encoded).unwrap();
         let replayed = replay(&parsed).unwrap();
         assert_eq!(replayed.get_state(), g.get_state());
-        assert_eq!(encode(&replayed), encoded, "round-trip idempotence for nil-bid game");
+        assert_eq!(
+            encode(&replayed),
+            encoded,
+            "round-trip idempotence for nil-bid game"
+        );
     }
 
     #[test]
@@ -327,7 +337,15 @@ mod tests {
         parsed.rounds[0].bets.push(3);
 
         let err = replay(&parsed).expect_err("replay should reject 5th bet");
-        assert!(matches!(err, ReplayError::Transition { round: 0, trick: None, seat: 4, err: crate::TransitionError::BetInTrickStage }));
+        assert!(matches!(
+            err,
+            ReplayError::Transition {
+                round: 0,
+                trick: None,
+                seat: 4,
+                err: crate::TransitionError::BetInTrickStage
+            }
+        ));
     }
 
     #[test]
@@ -347,7 +365,8 @@ mod tests {
     fn replay_preserves_player_names() {
         let mut g = Game::new(u(1), [u(10), u(11), u(12), u(13)], 500, None);
         g.set_player_name(u(10), Some("Alice".into())).unwrap();
-        g.set_player_name(u(12), Some("Carol \"Q\"".into())).unwrap();
+        g.set_player_name(u(12), Some("Carol \"Q\"".into()))
+            .unwrap();
         let encoded = encode(&g);
         let parsed = decode(&encoded).unwrap();
         let replayed = replay(&parsed).unwrap();
@@ -387,13 +406,22 @@ mod tests {
         let g = rig_game_with_fixed_hands();
         let encoded = encode(&g);
         let mut parsed = decode(&encoded).unwrap();
-        let two_c = Card { rank: Rank::Two, suit: Suit::Club };
-        let six_d = Card { rank: Rank::Six, suit: Suit::Diamond };
+        let two_c = Card {
+            rank: Rank::Two,
+            suit: Suit::Club,
+        };
+        let six_d = Card {
+            rank: Rank::Six,
+            suit: Suit::Diamond,
+        };
         parsed.rounds[0].tricks.push(vec![two_c, six_d]);
         let err = replay(&parsed).expect_err("replay should reject off-suit follow");
         assert!(matches!(
             err,
-            ReplayError::Transition { err: crate::TransitionError::CardIncorrectSuit, .. }
+            ReplayError::Transition {
+                err: crate::TransitionError::CardIncorrectSuit,
+                ..
+            }
         ));
     }
 
@@ -403,12 +431,18 @@ mod tests {
         let g = rig_game_with_fixed_hands();
         let encoded = encode(&g);
         let mut parsed = decode(&encoded).unwrap();
-        let two_s = Card { rank: Rank::Two, suit: Suit::Spade };
+        let two_s = Card {
+            rank: Rank::Two,
+            suit: Suit::Spade,
+        };
         parsed.rounds[0].tricks.push(vec![two_s]);
         let err = replay(&parsed).expect_err("replay should reject spade lead");
         assert!(matches!(
             err,
-            ReplayError::Transition { err: crate::TransitionError::SpadesNotBroken, .. }
+            ReplayError::Transition {
+                err: crate::TransitionError::SpadesNotBroken,
+                ..
+            }
         ));
     }
 
@@ -419,11 +453,18 @@ mod tests {
         // sees actual=Completed and declared=InProgress.
         let g = build_short_game();
         let encoded = encode(&g)
-            .replace("[Termination \"Completed\"]", "[Termination \"InProgress\"]")
-            .replace(&format!("[Result \"{} {}\"]",
-                g.get_team_a_score().unwrap(),
-                g.get_team_b_score().unwrap()),
-                "[Result \"*\"]");
+            .replace(
+                "[Termination \"Completed\"]",
+                "[Termination \"InProgress\"]",
+            )
+            .replace(
+                &format!(
+                    "[Result \"{} {}\"]",
+                    g.get_team_a_score().unwrap(),
+                    g.get_team_b_score().unwrap()
+                ),
+                "[Result \"*\"]",
+            );
         let parsed = decode(&encoded).unwrap();
         assert_eq!(parsed.termination, Termination::InProgress);
         assert!(matches!(

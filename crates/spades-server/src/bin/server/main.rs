@@ -2,7 +2,7 @@
     clippy::collapsible_if,
     clippy::collapsible_match,
     clippy::large_enum_variant,
-    clippy::too_many_arguments,
+    clippy::too_many_arguments
 )]
 
 mod dto;
@@ -16,8 +16,8 @@ use handlers::challenges::{
     get_challenge_handler, join_challenge_handler, list_challenges_handler,
 };
 use handlers::games::{
-    create_game, delete_game, get_game_by_player_url, get_game_by_short_id_handler,
-    get_game_state, get_hand, get_presence, get_replay, make_transition, post_chat, root, set_player_name,
+    create_game, delete_game, get_game_by_player_url, get_game_by_short_id_handler, get_game_state,
+    get_hand, get_presence, get_replay, make_transition, post_chat, root, set_player_name,
 };
 use handlers::matchmaking::{list_seeks_handler, queue_sizes_handler, seek};
 use handlers::players::{get_player, set_display_name};
@@ -25,11 +25,11 @@ use presence::PresenceTracker;
 use ws::game_ws;
 
 use axum::{
-    routing::{delete, get, post, put},
     Router,
+    routing::{delete, get, post, put},
 };
-use spades_server::game_manager::GameManager;
 use spades_server::challenges::ChallengeManager;
+use spades_server::game_manager::GameManager;
 use spades_server::matchmaking::Matchmaker;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -40,8 +40,8 @@ use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetReques
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 use tower_sessions::{Expiry, SessionManagerLayer};
-use tracing::{info, warn};
 use tower_sessions_sqlx_store::SqliteStore as SessionSqliteStore;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -63,7 +63,9 @@ impl axum::extract::FromRef<AppState> for spades_server::auth::AuthState {
 pub const SESSION_USER_KEY: &str = "user";
 
 pub fn parse_uuid_or_short_id(s: &str) -> Option<Uuid> {
-    Uuid::parse_str(s).ok().or_else(|| spades::short_id_to_uuid(s))
+    Uuid::parse_str(s)
+        .ok()
+        .or_else(|| spades::short_id_to_uuid(s))
 }
 
 pub fn build_router(state: AppState) -> Router {
@@ -80,7 +82,10 @@ pub fn build_router(state: AppState) -> Router {
         .get("/games/{game_id}", get_game_state)
         .post("/games/{game_id}/transition", make_transition)
         .get("/games/{game_id}/players/{player_id}/hand", get_hand)
-        .get("/games/by-short-id/{short_id}", get_game_by_short_id_handler)
+        .get(
+            "/games/by-short-id/{short_id}",
+            get_game_by_short_id_handler,
+        )
         .get("/games/by-player-url/{url_id}", get_game_by_player_url)
         .get("/games/{game_id}/presence", get_presence)
         // Matchmaking
@@ -89,7 +94,10 @@ pub fn build_router(state: AppState) -> Router {
         // Challenges
         .get("/challenges", list_challenges_handler)
         .get("/challenges/{challenge_id}", get_challenge_handler)
-        .get("/challenges/by-short-id/{short_id}", get_challenge_by_short_id_handler)
+        .get(
+            "/challenges/by-short-id/{short_id}",
+            get_challenge_by_short_id_handler,
+        )
         // Spec endpoints
         .route_json_spec("/openapi.json")
         .route_yaml_spec("/openapi.yaml")
@@ -104,40 +112,82 @@ pub fn build_router(state: AppState) -> Router {
         .route("/games", post(create_game))
         // Handlers returning StatusCode (not JSON body — oasgen needs Json responses)
         .route("/games/{game_id}", delete(delete_game))
-        .route("/games/{game_id}/players/{player_id}/name", put(set_player_name))
+        .route(
+            "/games/{game_id}/players/{player_id}/name",
+            put(set_player_name),
+        )
         // Replay returns text/plain (oasgen wants JSON responses).
         .route("/games/{game_id}/replay", get(get_replay))
         // Chat: POST sends a message; subscribers see it via WS.
         .route("/games/{game_id}/chat", post(post_chat))
-        .route("/challenges/{challenge_id}", delete(cancel_challenge_handler))
+        .route(
+            "/challenges/{challenge_id}",
+            delete(cancel_challenge_handler),
+        )
         // Session-based (oasgen can't handle Session extractor)
         .route("/player", get(get_player))
         .route("/player/name", put(set_display_name))
         // SSE endpoints
         .route("/matchmaking/seek", post(seek))
         .route("/challenges", post(create_challenge_handler))
-        .route("/challenges/{challenge_id}/join/{seat}", post(join_challenge_handler))
+        .route(
+            "/challenges/{challenge_id}/join/{seat}",
+            post(join_challenge_handler),
+        )
         // WebSocket
         .route("/games/{game_id}/ws", get(game_ws))
         // Auth endpoints
         .route("/auth/register", post(handlers::auth::register))
         .route("/auth/login", post(handlers::auth::login))
         .route("/auth/logout", post(handlers::auth::logout))
-        .route("/auth/tokens", post(spades_server::handlers_auth::create_token))
-        .route("/auth/tokens", get(spades_server::handlers_auth::list_tokens))
-        .route("/auth/tokens/{token_id}", axum::routing::delete(spades_server::handlers_auth::revoke_token))
+        .route(
+            "/auth/tokens",
+            post(spades_server::handlers_auth::create_token),
+        )
+        .route(
+            "/auth/tokens",
+            get(spades_server::handlers_auth::list_tokens),
+        )
+        .route(
+            "/auth/tokens/{token_id}",
+            axum::routing::delete(spades_server::handlers_auth::revoke_token),
+        )
         .route("/auth/me", get(handlers::auth::me))
         .route("/auth/verify-email", get(handlers::auth::verify_email))
-        .route("/auth/password-reset/request", post(handlers::auth::password_reset_request))
-        .route("/auth/password-reset/confirm", post(handlers::auth::password_reset_confirm))
-        .route("/auth/oauth/{provider}/login", get(handlers::auth::oauth_login))
-        .route("/auth/oauth/google/callback", get(handlers::auth::oauth_google_callback))
-        .route("/auth/oauth/github/callback", get(handlers::auth::oauth_github_callback))
+        .route(
+            "/auth/password-reset/request",
+            post(handlers::auth::password_reset_request),
+        )
+        .route(
+            "/auth/password-reset/confirm",
+            post(handlers::auth::password_reset_confirm),
+        )
+        .route(
+            "/auth/oauth/{provider}/login",
+            get(handlers::auth::oauth_login),
+        )
+        .route(
+            "/auth/oauth/google/callback",
+            get(handlers::auth::oauth_google_callback),
+        )
+        .route(
+            "/auth/oauth/github/callback",
+            get(handlers::auth::oauth_github_callback),
+        )
         .route("/auth/oauth/complete", post(handlers::auth::oauth_complete))
         // User profile endpoints (literal /users/me must come before the wildcard)
-        .route("/users/me", axum::routing::patch(spades_server::handlers_users::patch_me))
-        .route("/users/{username}", get(spades_server::handlers_users::get_profile))
-        .route("/users/{username}/games", get(spades_server::handlers_users::get_profile_games))
+        .route(
+            "/users/me",
+            axum::routing::patch(spades_server::handlers_users::patch_me),
+        )
+        .route(
+            "/users/{username}",
+            get(spades_server::handlers_users::get_profile),
+        )
+        .route(
+            "/users/{username}/games",
+            get(spades_server::handlers_users::get_profile_games),
+        )
         // Operational endpoints — outside the oasgen-managed schema.
         .route("/health", get(health))
         .route("/readyz", get(readyz))
@@ -191,7 +241,10 @@ use clap::Parser;
 
 /// spades-server command-line + environment configuration.
 #[derive(Parser, Debug)]
-#[command(version, about = "Spades game server (HTTP/WebSocket + matchmaking + challenges)")]
+#[command(
+    version,
+    about = "Spades game server (HTTP/WebSocket + matchmaking + challenges)"
+)]
 struct Args {
     /// Port to listen on.
     #[arg(long, env = "PORT", default_value_t = 3000)]
@@ -206,7 +259,11 @@ struct Args {
     insecure_cookies: bool,
 
     /// Allowed CORS origin(s); repeatable, or comma-separated via CORS_ALLOW_ORIGIN.
-    #[arg(long = "cors-allow-origin", env = "CORS_ALLOW_ORIGIN", value_delimiter = ',')]
+    #[arg(
+        long = "cors-allow-origin",
+        env = "CORS_ALLOW_ORIGIN",
+        value_delimiter = ','
+    )]
     cors_allow_origin: Vec<String>,
 }
 
@@ -227,9 +284,16 @@ mod config_tests {
     #[test]
     fn explicit_flags() {
         let a = Args::try_parse_from([
-            "spades-server", "--port", "4000", "--db", "x.sqlite",
-            "--insecure-cookies", "--cors-allow-origin", "http://a",
-            "--cors-allow-origin", "http://b",
+            "spades-server",
+            "--port",
+            "4000",
+            "--db",
+            "x.sqlite",
+            "--insecure-cookies",
+            "--cors-allow-origin",
+            "http://a",
+            "--cors-allow-origin",
+            "http://b",
         ])
         .unwrap();
         assert_eq!(a.port, 4000);
@@ -240,7 +304,8 @@ mod config_tests {
 
     #[test]
     fn comma_separated_cors() {
-        let a = Args::try_parse_from(["spades-server", "--cors-allow-origin", "http://a,http://b"]).unwrap();
+        let a = Args::try_parse_from(["spades-server", "--cors-allow-origin", "http://a,http://b"])
+            .unwrap();
         assert_eq!(a.cors_allow_origin, ["http://a", "http://b"]);
     }
 
@@ -269,7 +334,9 @@ async fn main() {
             GameManager::with_db(path).expect("Failed to open database")
         }
         None => {
-            warn!("running in-memory mode (no --db or DATABASE_URL set) — state will not persist across restarts");
+            warn!(
+                "running in-memory mode (no --db or DATABASE_URL set) — state will not persist across restarts"
+            );
             GameManager::new()
         }
     };
@@ -306,12 +373,17 @@ async fn main() {
     // drain task lives for the runtime's lifetime; on shutdown, any
     // not-yet-delivered emails are lost — both verify-email and password-
     // reset flows are recoverable by re-requesting.
-    let mailer: std::sync::Arc<dyn spades_server::auth::mailer::Mailer> =
-        std::sync::Arc::new(spades_server::auth::mailer::MailerQueue::new(backing_mailer));
+    let mailer: std::sync::Arc<dyn spades_server::auth::mailer::Mailer> = std::sync::Arc::new(
+        spades_server::auth::mailer::MailerQueue::new(backing_mailer),
+    );
 
     let oauth = std::sync::Arc::new(spades_server::auth::oauth::OauthState::from_env());
-    if oauth.google.is_some() { info!("OAuth: Google enabled"); }
-    if oauth.github.is_some() { info!("OAuth: GitHub enabled"); }
+    if oauth.google.is_some() {
+        info!("OAuth: Google enabled");
+    }
+    if oauth.github.is_some() {
+        info!("OAuth: GitHub enabled");
+    }
 
     let rate = std::sync::Arc::new(spades_server::auth::rate_limit::RateLimitState::new());
 
@@ -407,7 +479,10 @@ async fn main() {
         .await
         .expect("Failed to connect session SQLite pool");
     let session_store = SessionSqliteStore::new(session_pool);
-    session_store.migrate().await.expect("Failed to migrate session store");
+    session_store
+        .migrate()
+        .await
+        .expect("Failed to migrate session store");
 
     let session_layer = SessionManagerLayer::new(session_store)
         .with_name("spades_session")
@@ -423,7 +498,9 @@ async fn main() {
         app = app.layer(cors);
         info!(origins = %cors_origins.join(", "), "CORS enabled");
     } else {
-        info!("CORS layer not configured (set --cors-allow-origin <origin> or CORS_ALLOW_ORIGIN env)");
+        info!(
+            "CORS layer not configured (set --cors-allow-origin <origin> or CORS_ALLOW_ORIGIN env)"
+        );
     }
 
     let port = args.port;
@@ -437,13 +514,18 @@ async fn main() {
     );
 
     if insecure_cookies {
-        warn!("--insecure-cookies enabled — session cookie lacks Secure flag; DO NOT use in production");
+        warn!(
+            "--insecure-cookies enabled — session cookie lacks Secure flag; DO NOT use in production"
+        );
     }
 
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .unwrap();
 }
 
 /// Surface partial config at startup with loud warnings so operators don't
@@ -486,7 +568,9 @@ fn collect_config_warnings(get: impl Fn(&str) -> Option<String>) -> Vec<String> 
         let sec_set = get(secret_var).is_some();
         if id_set ^ sec_set {
             let missing = if id_set { secret_var } else { id_var };
-            warnings.push(format!("partial OAuth config — {missing} missing; provider will be disabled"));
+            warnings.push(format!(
+                "partial OAuth config — {missing} missing; provider will be disabled"
+            ));
         }
     }
 
@@ -509,9 +593,8 @@ fn collect_config_warnings(get: impl Fn(&str) -> Option<String>) -> Vec<String> 
 /// Initialize the tracing subscriber. Log level defaults to `info`; override
 /// with `RUST_LOG` (e.g. `RUST_LOG=spades_server=debug,tower_http=info`).
 fn init_tracing() {
-    use tracing_subscriber::{fmt, EnvFilter};
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    use tracing_subscriber::{EnvFilter, fmt};
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     // try_init so tests / parallel runs that already initialized a subscriber
     // don't panic on double-init.
     let _ = fmt().with_env_filter(filter).try_init();
@@ -563,7 +646,7 @@ mod tests {
         let challenge_manager = ChallengeManager::new(game_manager.clone());
 
         let auth_store = std::sync::Arc::new(
-            spades_server::sqlite_store::SqliteStore::open(":memory:").unwrap()
+            spades_server::sqlite_store::SqliteStore::open(":memory:").unwrap(),
         );
         let auth_state = spades_server::auth::AuthState {
             store: auth_store,
@@ -583,8 +666,7 @@ mod tests {
         };
 
         let session_store = MemoryStore::default();
-        let session_layer = SessionManagerLayer::new(session_store)
-            .with_secure(false);
+        let session_layer = SessionManagerLayer::new(session_store).with_secure(false);
 
         let app = build_router(state)
             .layer(session_layer)
@@ -624,7 +706,7 @@ mod tests {
                 "password": "supersecret-passphrase",
             }))
             .await;
-            assert_eq!(register.status_code(), StatusCode::CREATED);
+        assert_eq!(register.status_code(), StatusCode::CREATED);
         let create_token = server
             .post("/auth/tokens")
             .json(&serde_json::json!({"name": "my bot"}))
@@ -654,9 +736,7 @@ mod tests {
             }))
             .await
             .assert_status_ok();
-        let revoke = server
-            .delete(&format!("/auth/tokens/{token_id}"))
-            .await;
+        let revoke = server.delete(&format!("/auth/tokens/{token_id}")).await;
         assert_eq!(revoke.status_code(), StatusCode::NO_CONTENT);
 
         // Now Bearer with the same (revoked) token: 401.
@@ -753,7 +833,10 @@ mod tests {
         assert_eq!(resp.status_code(), StatusCode::BAD_REQUEST);
         let body: serde_json::Value = resp.json();
         assert!(
-            body["error"].as_str().unwrap_or("").contains("content filter"),
+            body["error"]
+                .as_str()
+                .unwrap_or("")
+                .contains("content filter"),
             "expected content-filter error, got: {:?}",
             body["error"],
         );
@@ -813,7 +896,9 @@ mod tests {
     #[tokio::test]
     async fn replay_returns_404_for_missing_game() {
         let server = test_app();
-        let resp = server.get(&format!("/games/{}/replay", Uuid::new_v4())).await;
+        let resp = server
+            .get(&format!("/games/{}/replay", Uuid::new_v4()))
+            .await;
         assert_eq!(resp.status_code(), StatusCode::NOT_FOUND);
     }
 
@@ -876,7 +961,10 @@ mod tests {
         let body = resp.text();
         assert!(!body.is_empty(), "transcript should be non-empty");
         // Sanity check: real transcripts include header lines.
-        assert!(body.contains("\n"), "transcript looks structurally suspect: {body:?}");
+        assert!(
+            body.contains("\n"),
+            "transcript looks structurally suspect: {body:?}"
+        );
     }
 
     #[tokio::test]
@@ -920,12 +1008,11 @@ mod tests {
             .json(&serde_json::json!({"max_points": 500}))
             .await
             .json();
-        let path = format!("/games/{}/ws?player_id={}", create.game_id, create.player_ids[0]);
-        let mut ws = server
-            .get_websocket(&path)
-            .await
-            .into_websocket()
-            .await;
+        let path = format!(
+            "/games/{}/ws?player_id={}",
+            create.game_id, create.player_ids[0]
+        );
+        let mut ws = server.get_websocket(&path).await.into_websocket().await;
 
         // Initial snapshot: seq 0, state NotStarted.
         let snap = ws_recv_event_of(&mut ws, "state_changed").await;
@@ -974,11 +1061,7 @@ mod tests {
             "/games/{}/ws?player_id={}&since=0",
             create.game_id, create.player_ids[0],
         );
-        let mut ws = server
-            .get_websocket(&path)
-            .await
-            .into_websocket()
-            .await;
+        let mut ws = server.get_websocket(&path).await.into_websocket().await;
 
         let event = ws_recv_event_of(&mut ws, "state_changed").await;
         assert_eq!(event["seq"], 0);
@@ -1003,11 +1086,7 @@ mod tests {
             "/games/{}/ws?player_id={}&since=999",
             create.game_id, create.player_ids[0],
         );
-        let mut ws = server
-            .get_websocket(&path)
-            .await
-            .into_websocket()
-            .await;
+        let mut ws = server.get_websocket(&path).await.into_websocket().await;
         let snap = ws_recv_event_of(&mut ws, "state_changed").await;
         // Fresh snapshot delivers the current state, which is still NotStarted.
         assert_eq!(snap["state"], "NotStarted");
@@ -1022,11 +1101,7 @@ mod tests {
             .await
             .json();
         let path = format!("/games/{}/ws", create.game_id);
-        let mut ws = server
-            .get_websocket(&path)
-            .await
-            .into_websocket()
-            .await;
+        let mut ws = server.get_websocket(&path).await.into_websocket().await;
 
         // Spectator's connect should drive presence to include
         // `spectator_count: 1`. The first `presence_changed` after connect
@@ -1050,12 +1125,11 @@ mod tests {
             .json(&serde_json::json!({"max_points": 500}))
             .await
             .json();
-        let path = format!("/games/{}/ws?player_id={}", create.game_id, create.player_ids[0]);
-        let mut ws = server
-            .get_websocket(&path)
-            .await
-            .into_websocket()
-            .await;
+        let path = format!(
+            "/games/{}/ws?player_id={}",
+            create.game_id, create.player_ids[0]
+        );
+        let mut ws = server.get_websocket(&path).await.into_websocket().await;
 
         // Wait for the initial snapshot before sending chat so the chat
         // arrives during the WS streaming loop.
@@ -1185,7 +1259,11 @@ mod tests {
             .send()
             .await
             .expect("post failed");
-        assert!(resp.status().is_success(), "SSE POST not 2xx: {}", resp.status());
+        assert!(
+            resp.status().is_success(),
+            "SSE POST not 2xx: {}",
+            resp.status()
+        );
         let mut buf = String::new();
         while let Some(chunk) = resp.chunk().await.expect("chunk read failed") {
             buf.push_str(&String::from_utf8_lossy(&chunk));
@@ -1235,7 +1313,6 @@ mod tests {
             .assert_status(StatusCode::FORBIDDEN);
     }
 
-
     #[tokio::test]
     async fn get_challenge_by_short_id_returns_full_status_on_match() {
         let server = test_app();
@@ -1272,8 +1349,12 @@ mod tests {
         use axum::routing::get;
         use tower_http::catch_panic::CatchPanicLayer;
 
-        async fn healthy() -> &'static str { "ok" }
-        async fn boom() -> &'static str { panic!("intentional test panic") }
+        async fn healthy() -> &'static str {
+            "ok"
+        }
+        async fn boom() -> &'static str {
+            panic!("intentional test panic")
+        }
 
         let app: Router = Router::new()
             .route("/healthy", get(healthy))
@@ -1312,7 +1393,9 @@ mod tests {
         use axum::routing::post;
         use tower_http::limit::RequestBodyLimitLayer;
 
-        async fn echo(_body: axum::body::Bytes) -> &'static str { "ok" }
+        async fn echo(_body: axum::body::Bytes) -> &'static str {
+            "ok"
+        }
 
         let app: Router = Router::new()
             .route("/echo", post(echo))
@@ -1349,7 +1432,9 @@ mod tests {
     #[test]
     fn server_event_resync_serializes_with_tag() {
         use crate::dto::ServerEvent;
-        let event = ServerEvent::Resync { reason: "lagged 5".to_string() };
+        let event = ServerEvent::Resync {
+            reason: "lagged 5".to_string(),
+        };
         let json = serde_json::to_string(&event).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["event"], "resync");
@@ -1370,10 +1455,22 @@ mod tests {
             team_b_bags: None,
             current_player_id: None,
             player_names: [
-                spades_server::game_manager::PlayerNameEntry { player_id: Uuid::nil(), name: None },
-                spades_server::game_manager::PlayerNameEntry { player_id: Uuid::nil(), name: None },
-                spades_server::game_manager::PlayerNameEntry { player_id: Uuid::nil(), name: None },
-                spades_server::game_manager::PlayerNameEntry { player_id: Uuid::nil(), name: None },
+                spades_server::game_manager::PlayerNameEntry {
+                    player_id: Uuid::nil(),
+                    name: None,
+                },
+                spades_server::game_manager::PlayerNameEntry {
+                    player_id: Uuid::nil(),
+                    name: None,
+                },
+                spades_server::game_manager::PlayerNameEntry {
+                    player_id: Uuid::nil(),
+                    name: None,
+                },
+                spades_server::game_manager::PlayerNameEntry {
+                    player_id: Uuid::nil(),
+                    name: None,
+                },
             ],
             timer_config: None,
             player_clocks_ms: None,
@@ -1385,7 +1482,8 @@ mod tests {
             last_completed_trick: None,
         };
         let event = ServerEvent::StateChanged { seq: 42, state };
-        let parsed: serde_json::Value = serde_json::from_str(&serde_json::to_string(&event).unwrap()).unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&event).unwrap()).unwrap();
         assert_eq!(parsed["event"], "state_changed");
         assert_eq!(parsed["seq"], 42);
         // GameStateResponse is flattened — its fields appear at the top level.
@@ -1399,18 +1497,25 @@ mod tests {
         // This is what the WS handler now translates into a `Resync` close
         // frame; the WS plumbing itself is too involved to unit-test here, so
         // we cover the broadcast layer plus the wire-format Resync separately.
-        use spades_server::game_manager::{GameManager, GameEvent};
         use spades::GameTransition;
+        use spades_server::game_manager::{GameEvent, GameManager};
         use tokio::sync::broadcast;
 
         let manager = GameManager::new();
         let response = manager.create_game(500, None).unwrap();
         let mut sub = manager.subscribe(response.game_id, None).await.unwrap();
 
-        manager.make_transition(response.game_id, GameTransition::Start).await.unwrap();
+        manager
+            .make_transition(response.game_id, GameTransition::Start)
+            .await
+            .unwrap();
         for i in 0..80 {
             manager
-                .set_player_name(response.game_id, response.player_ids[0], Some(format!("p{i}")))
+                .set_player_name(
+                    response.game_id,
+                    response.player_ids[0],
+                    Some(format!("p{i}")),
+                )
                 .await
                 .unwrap();
         }
@@ -1421,11 +1526,17 @@ mod tests {
                 Ok(GameEvent::StateChanged { .. })
                 | Ok(GameEvent::GameAborted { .. })
                 | Ok(GameEvent::ChatMessage { .. }) => continue,
-                Err(broadcast::error::TryRecvError::Lagged(_)) => { saw_lagged = true; break; }
+                Err(broadcast::error::TryRecvError::Lagged(_)) => {
+                    saw_lagged = true;
+                    break;
+                }
                 Err(_) => break,
             }
         }
-        assert!(saw_lagged, "expected Lagged after overflowing the broadcast buffer");
+        assert!(
+            saw_lagged,
+            "expected Lagged after overflowing the broadcast buffer"
+        );
     }
 
     fn env_map<const N: usize>(pairs: [(&str, &str); N]) -> impl Fn(&str) -> Option<String> {
@@ -1463,20 +1574,20 @@ mod tests {
             ("SMTP_PASS", "p"),
             ("SMTP_FROM", "noreply@example.com"),
         ]));
-        assert!(warnings.is_empty(), "no warnings when all SMTP vars set; got {warnings:?}");
+        assert!(
+            warnings.is_empty(),
+            "no warnings when all SMTP vars set; got {warnings:?}"
+        );
     }
 
     #[test]
     fn config_warnings_partial_oauth_flags_missing_side() {
-        let warnings = super::collect_config_warnings(env_map([
-            ("GOOGLE_OAUTH_CLIENT_ID", "abc"),
-        ]));
+        let warnings = super::collect_config_warnings(env_map([("GOOGLE_OAUTH_CLIENT_ID", "abc")]));
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("GOOGLE_OAUTH_CLIENT_SECRET"));
 
-        let warnings = super::collect_config_warnings(env_map([
-            ("GITHUB_OAUTH_CLIENT_SECRET", "xyz"),
-        ]));
+        let warnings =
+            super::collect_config_warnings(env_map([("GITHUB_OAUTH_CLIENT_SECRET", "xyz")]));
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("GITHUB_OAUTH_CLIENT_ID"));
     }
@@ -1487,25 +1598,31 @@ mod tests {
             ("GOOGLE_OAUTH_CLIENT_ID", "g_id"),
             ("GOOGLE_OAUTH_CLIENT_SECRET", "g_sec"),
         ]));
-        assert!(warnings.is_empty(), "no warnings when both sides set; got {warnings:?}");
+        assert!(
+            warnings.is_empty(),
+            "no warnings when both sides set; got {warnings:?}"
+        );
     }
 
     #[test]
     fn config_warnings_redirect_url_must_have_http_scheme() {
-        let warnings = super::collect_config_warnings(env_map([
-            ("OAUTH_REDIRECT_BASE_URL", "example.com/cb"),
-        ]));
+        let warnings = super::collect_config_warnings(env_map([(
+            "OAUTH_REDIRECT_BASE_URL",
+            "example.com/cb",
+        )]));
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("OAUTH_REDIRECT_BASE_URL"));
 
-        let warnings = super::collect_config_warnings(env_map([
-            ("OAUTH_REDIRECT_BASE_URL", "http://example.com"),
-        ]));
+        let warnings = super::collect_config_warnings(env_map([(
+            "OAUTH_REDIRECT_BASE_URL",
+            "http://example.com",
+        )]));
         assert!(warnings.is_empty());
 
-        let warnings = super::collect_config_warnings(env_map([
-            ("OAUTH_REDIRECT_BASE_URL", "https://example.com"),
-        ]));
+        let warnings = super::collect_config_warnings(env_map([(
+            "OAUTH_REDIRECT_BASE_URL",
+            "https://example.com",
+        )]));
         assert!(warnings.is_empty());
     }
 
@@ -1640,7 +1757,9 @@ mod tests {
             .await
             .json();
 
-        let response = server.delete(&format!("/games/{}", create_resp.game_id)).await;
+        let response = server
+            .delete(&format!("/games/{}", create_resp.game_id))
+            .await;
         response.assert_status(StatusCode::NO_CONTENT);
 
         // Verify it's gone — subsequent GET returns 404.
@@ -1949,9 +2068,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_challenge_not_found() {
         let server = test_app();
-        let response = server
-            .get(&format!("/challenges/{}", Uuid::new_v4()))
-            .await;
+        let response = server.get(&format!("/challenges/{}", Uuid::new_v4())).await;
         response.assert_status(StatusCode::NOT_FOUND);
     }
 
@@ -2170,10 +2287,7 @@ mod tests {
             .await;
         response.assert_status_ok();
         let body: CreateGameResponse = response.json();
-        let state: GameStateResponse = app
-            .get(&format!("/games/{}", body.game_id))
-            .await
-            .json();
+        let state: GameStateResponse = app.get(&format!("/games/{}", body.game_id)).await.json();
         // After auto-start, the game progressed past NotStarted.
         assert_ne!(state.state, spades::State::NotStarted);
     }
@@ -2199,11 +2313,10 @@ mod tests {
             .json(&serde_json::json!({ "max_points": 500 }))
             .await
             .json();
-        let state: GameStateResponse = app
-            .get(&format!("/games/{}", body.game_id))
-            .await
-            .json();
-        let resp = app.get(&format!("/games/by-short-id/{}", state.short_id)).await;
+        let state: GameStateResponse = app.get(&format!("/games/{}", body.game_id)).await.json();
+        let resp = app
+            .get(&format!("/games/by-short-id/{}", state.short_id))
+            .await;
         resp.assert_status_ok();
         let again: GameStateResponse = resp.json();
         assert_eq!(again.game_id, body.game_id);
@@ -2233,9 +2346,7 @@ mod tests {
         response.assert_status_ok();
         let body: CreateGameResponse = response.json();
 
-        let state_response = app
-            .get(&format!("/games/{}", body.game_id))
-            .await;
+        let state_response = app.get(&format!("/games/{}", body.game_id)).await;
         state_response.assert_status_ok();
         let state: GameStateResponse = state_response.json();
         // Human is player 0 — after auto-start and AI betting, it should be the human's turn
@@ -2456,10 +2567,16 @@ mod tests {
         assert_eq!(snap.players.len(), 4);
         // Player 0 is human (disconnected), players 1-3 are AI (connected)
         let human_pid = create_resp.player_ids[0];
-        let human_entry = snap.players.iter().find(|p| p.player_id == human_pid).unwrap();
+        let human_entry = snap
+            .players
+            .iter()
+            .find(|p| p.player_id == human_pid)
+            .unwrap();
         assert!(!human_entry.connected);
         // All 3 AI players should be connected
-        let ai_connected: Vec<_> = snap.players.iter()
+        let ai_connected: Vec<_> = snap
+            .players
+            .iter()
             .filter(|p| p.player_id != human_pid && p.connected)
             .collect();
         assert_eq!(ai_connected.len(), 3);
