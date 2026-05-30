@@ -117,6 +117,9 @@ main#root {
   background: var(--danger);
   color: #fff;
 }
+.btn--danger:hover {
+  background: color-mix(in oklab, var(--danger) 85%, var(--fg));
+}
 .btn[disabled] {
   opacity: 0.45;
   cursor: not-allowed;
@@ -234,7 +237,7 @@ main#root {
       transparent 0 6px,
       color-mix(in oklab, var(--accent) 45%, transparent) 6px 7px
     ),
-    color-mix(in oklab, var(--card-face) 82%, var(--accent) 6%);
+    color-mix(in oklab, var(--card-face) 93%, var(--accent) 7%);
 }
 .trick-placeholder {
   background: transparent;
