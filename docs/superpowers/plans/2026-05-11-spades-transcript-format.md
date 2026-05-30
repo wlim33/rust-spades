@@ -139,7 +139,7 @@ In `crates/spades-core/src/lib.rs`, inside `impl Game { ... }` (after `get_legal
     /// True when the game is in (or just finished) a betting phase rather than
     /// a trick phase. Combined with `get_state()` this disambiguates Aborted
     /// games.
-    pub fn get_in_betting_stage(&self) -> bool {
+    pub fn is_in_betting_stage(&self) -> bool {
         self.scoring.in_betting_stage
     }
 ```
@@ -834,7 +834,7 @@ fn num_rounds_to_emit(g: &Game) -> usize {
             let no_play = history.len() <= 1 && history.iter().all(|t| t.iter().all(|c| c.is_none()));
             let no_bets = g.get_all_bets().first().copied().unwrap_or([0; 4]) == [0; 4]
                 && g.get_round_index() == 0
-                && g.get_in_betting_stage();
+                && g.is_in_betting_stage();
             if no_play && no_bets {
                 0
             } else {
@@ -955,7 +955,7 @@ fn bets_for_round(g: &Game, round_idx: usize) -> Vec<i32> {
     let row = all.get(round_idx).copied().unwrap_or([0; 4]);
     let count = match g.get_state() {
         State::Betting(k) if g.get_round_index() == round_idx => *k,
-        State::Aborted if g.get_round_index() == round_idx && g.get_in_betting_stage() => {
+        State::Aborted if g.get_round_index() == round_idx && g.is_in_betting_stage() => {
             // Aborted from betting: we can't recover k exactly. Emit the
             // longest prefix that contains no trailing default-0 in a slot
             // that hasn't been written. Heuristic: emit all 4 if any later
@@ -2306,4 +2306,4 @@ git commit -m "transcript: exhaustive decode error coverage"
 
 - **Spec coverage:** every section of the design doc maps to a task. Headers + tag-value escaping → tasks 5 + 4. Round body (hands/bets/tricks) → tasks 6 + 8. Mid-game / Aborted → tasks 6, 7, 9. Replay → task 9. Round-trip property → task 10. Decode error variants → tasks 7, 8, 11. Engine prereq (history retention + accessors) → task 1.
 - **Placeholder scan:** every code block is complete; no "implement later" except the `parse_rounds` stub in task 7 which is filled in task 8 and the `encode_rounds` stub in task 5 filled in task 6 — both serve as TDD scaffolds.
-- **Type consistency:** `Headers`, `Round`, `Transcript`, `Termination`, `DecodeError`, `ReplayError` defined once in task 2; all later tasks reference identical signatures. `get_max_points`, `get_history`, `get_all_bets`, `get_round_index`, `get_in_betting_stage` accessor names are used consistently from task 1 through task 11.
+- **Type consistency:** `Headers`, `Round`, `Transcript`, `Termination`, `DecodeError`, `ReplayError` defined once in task 2; all later tasks reference identical signatures. `get_max_points`, `get_history`, `get_all_bets`, `get_round_index`, `is_in_betting_stage` accessor names are used consistently from task 1 through task 11.
