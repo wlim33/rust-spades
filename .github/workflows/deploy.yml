@@ -12,6 +12,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  lint:
+    name: lint + format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+        working-directory: web
+
+      - name: eslint
+        run: pnpm lint
+        working-directory: web
+      - name: prettier --check
+        run: pnpm format:check
+        working-directory: web
+      - name: openapi schema in sync
+        run: pnpm openapi:check
+        working-directory: web
+
   ci:
     name: test + build frontend
     runs-on: ubuntu-latest
@@ -104,9 +145,39 @@ jobs:
       - name: coverage gate
         run: hooks/coverage-check.sh
 
+  audit:
+    name: dependency audit (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Advisory only: new advisories should surface without blocking a deploy.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: cargo audit
+        run: cargo audit
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+        working-directory: web
+      - name: pnpm audit
+        run: pnpm audit --audit-level=high
+        working-directory: web
+
   ship:
     name: ship
-    needs: [ci, e2e, coverage]
+    needs: [lint, ci, e2e, coverage]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 20

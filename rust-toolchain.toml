@@ -1,0 +1,5 @@
+# Pin the toolchain so local builds match CI (dtolnay/rust-toolchain@stable).
+# The workspace uses edition 2024, which requires a recent stable Rust.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

@@ -7,3 +7,6 @@
 
 # Local dev database (created by `make dev`).
 /dev.sqlite*
+
+# Cloudflare Wrangler local cache (not for version control).
+/.wrangler/
