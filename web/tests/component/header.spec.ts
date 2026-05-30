@@ -3,6 +3,8 @@ import { render } from 'lit-html';
 import { header } from '../../src/ui/components/header';
 import { session } from '../../src/state/session';
 import type { User } from '../../src/state/user-types';
+import { icon } from '../../src/ui/icon'; // ensure icon module resolves in this suite
+import { themeState } from '../../src/state/theme';
 
 describe('header', () => {
   beforeEach(() => {
@@ -40,5 +42,23 @@ describe('header', () => {
     expect(document.querySelector('[data-testid=avatar-menu] summary')?.textContent?.trim()).toBe(
       'alice',
     );
+  });
+});
+
+describe('header theme toggle', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<main id="root"></main>';
+    themeState.set('light');
+  });
+
+  it('renders a theme toggle button', () => {
+    render(header(), document.getElementById('root')!);
+    expect(document.querySelector('[data-testid=theme-toggle]')).not.toBeNull();
+  });
+
+  it('clicking the toggle flips the theme on <html>', () => {
+    render(header(), document.getElementById('root')!);
+    (document.querySelector('[data-testid=theme-toggle]') as HTMLButtonElement).click();
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   });
 });

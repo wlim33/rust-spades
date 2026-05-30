@@ -50,7 +50,7 @@ describe('home route', () => {
 
     expect(document.body.textContent).toContain('Finding players');
 
-    const cancelBtn = document.querySelector<HTMLButtonElement>('button');
+    const cancelBtn = document.querySelector<HTMLButtonElement>('.quickplay-wait button');
     expect(cancelBtn).not.toBeNull();
     cancelBtn!.click();
 
