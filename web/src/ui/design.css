@@ -869,3 +869,14 @@ button.seat-open {
     min-height: 32px;
   }
 }
+
+/* Icon sizing */
+.icon {
+  display: inline-flex;
+  line-height: 0;
+}
+.icon svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+}
