@@ -41,3 +41,17 @@ test('AI lifecycle: bet, play all 13 tricks, advance to the next hand', async ({
     expect(nextHandDealt || gameOver).toBe(true);
   }).toPass({ timeout: 20_000 });
 });
+
+test('Keyboard: a legal card can be played with Enter', async ({ page }) => {
+  const game = await createAiGame(page.request);
+  await seedAiSession(page, game);
+  await page.goto(`/play/${game.shortId}`);
+
+  const g = new GamePage(page);
+  await g.waitForBetting();
+  await g.bet(3);
+  await expect(g.hand()).toHaveCount(13, { timeout: 20_000 });
+
+  await g.playFirstLegalCardByKeyboard();
+  await expect(g.hand()).toHaveCount(12, { timeout: 20_000 });
+});

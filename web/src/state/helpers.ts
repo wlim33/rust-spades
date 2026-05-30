@@ -76,7 +76,7 @@ export function getLeadSuit(
 ): Suit | null {
   let n = 0;
   for (const c of tableCards) {
-    if (c && (c as { suit?: string }).suit !== 'Blank') n++;
+    if (c) n++;
   }
   if (n === 0) return null;
   const leaderSeat = (((currentPlayerSeatIdx - n) % 4) + 4) % 4;
@@ -120,6 +120,6 @@ export function oppCardCount(
       : 0;
   let count = 13 - trickNum;
   const tc = tableCards[seatIdx];
-  if (tc && (tc as { suit?: string }).suit !== 'Blank') count--;
+  if (tc) count--;
   return Math.max(0, count);
 }

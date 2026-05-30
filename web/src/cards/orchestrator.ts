@@ -5,6 +5,8 @@ import { animateTo } from './animation';
 import { HandManager, type Seat, type Containers } from './hand-manager';
 import { TrickManager } from './trick-manager';
 import { attachDrag } from './drag';
+import { attachKeyboard } from './keyboard';
+import { announce } from '../ui/announce';
 
 type WinnerOffset = { x: number; y: number };
 const TRICK_OFFSETS: Record<Seat, WinnerOffset> = {
@@ -12,6 +14,13 @@ const TRICK_OFFSETS: Record<Seat, WinnerOffset> = {
   north: { x: 0, y: -60 },
   west: { x: -80, y: 0 },
   east: { x: 80, y: 0 },
+};
+
+const SEAT_LABEL: Record<Seat, string> = {
+  south: 'You',
+  north: 'North',
+  west: 'West',
+  east: 'East',
 };
 
 export type OrchestratorOpts = {
@@ -57,15 +66,13 @@ export class CardOrchestrator {
       [args.eastIdx]: 'east',
     };
     this.trick.clear();
-    const n = args.tableCards.filter(
-      (tc) => tc && (tc as { suit?: string }).suit !== 'Blank',
-    ).length;
+    const n = args.tableCards.filter((tc) => tc != null).length;
     const leaderSeat = (((args.currentPlayerSeatIdx - n) % 4) + 4) % 4;
     for (let i = 0; i < 4; i++) {
       const absIdx = (leaderSeat + i) % 4;
       const tc = args.tableCards[absIdx];
       const seat = seatMap[absIdx];
-      if (tc && (tc as { suit?: string }).suit !== 'Blank' && seat) {
+      if (tc && seat) {
         this.trick.fillNextSlot(tc, seat);
       }
     }
@@ -123,6 +130,7 @@ export class CardOrchestrator {
   playOpponentCardToCenter(card: Card, seat: Exclude<Seat, 'south'>): void {
     this.hand.popOpponentBack(seat);
     this.trick.fillNextSlot(card, seat);
+    announce(`${SEAT_LABEL[seat]} played ${card.rank} of ${card.suit}s`);
   }
 
   /** Force-place a card that should be in the trick (used to backfill on AI fast-play). */
@@ -135,6 +143,7 @@ export class CardOrchestrator {
     if (this.trick.count() === 0) return;
     if (this.collectingTrick) return;
     this.collectingTrick = true;
+    announce(`${SEAT_LABEL[winnerSeat]} won the trick`);
     try {
       const container = this.containers.trick;
       const containerRect = container.getBoundingClientRect();
@@ -230,6 +239,7 @@ export class CardOrchestrator {
         entry.el.classList.add('cm-clickable');
         entry.el.classList.remove('cm-invalid');
         entry.el.style.opacity = '';
+        entry.el.removeAttribute('aria-disabled');
         const card = entry.card;
         const cleanup = attachDrag(entry.el, {
           threshold: 60,
@@ -239,10 +249,13 @@ export class CardOrchestrator {
           },
         });
         this.dragCleanups.push(cleanup);
+        // Keyboard parity: Tab to a legal card, Enter/Space to play it.
+        this.dragCleanups.push(attachKeyboard(entry.el, () => onPlay(card)));
       } else {
         entry.el.classList.remove('cm-clickable');
         entry.el.classList.add('cm-invalid');
         entry.el.style.opacity = '0.35';
+        entry.el.setAttribute('aria-disabled', 'true');
       }
     }
   }
@@ -259,6 +272,8 @@ export class CardOrchestrator {
       entry.el.style.width = '';
       entry.el.style.height = '';
       entry.el.style.transform = '';
+      entry.el.removeAttribute('aria-disabled');
+      entry.el.removeAttribute('tabindex');
     }
   }
 

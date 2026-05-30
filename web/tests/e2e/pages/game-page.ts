@@ -26,7 +26,9 @@ export class GamePage {
   /** Waits for our bet turn (bet buttons render only on our turn) and bets `n`. */
   async bet(n: number): Promise<void> {
     await expect(this.bets()).toBeVisible({ timeout: 15_000 });
-    await this.bets().getByRole('button', { name: String(n), exact: true }).click();
+    await this.bets()
+      .getByRole('button', { name: String(n), exact: true })
+      .click();
   }
 
   /** Resolves when at least one legal card is clickable (i.e., it is our turn to play). */
@@ -37,6 +39,14 @@ export class GamePage {
   async playFirstLegalCard(): Promise<void> {
     await this.waitForPlayable();
     await this.clickableCards().first().click();
+  }
+
+  /** Plays the first legal card using only the keyboard (Tab-focus + Enter). */
+  async playFirstLegalCardByKeyboard(): Promise<void> {
+    await this.waitForPlayable();
+    const card = this.clickableCards().first();
+    await card.focus();
+    await card.press('Enter');
   }
 
   /**
