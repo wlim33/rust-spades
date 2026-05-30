@@ -53,8 +53,8 @@ fn encode_headers(out: &mut String, g: &Game) {
 
     let result = match g.get_state() {
         State::Completed | State::Aborted => {
-            let a = g.get_team_a_score().copied().unwrap_or(0);
-            let b = g.get_team_b_score().copied().unwrap_or(0);
+            let a = g.get_team_a_score().unwrap_or(0);
+            let b = g.get_team_b_score().unwrap_or(0);
             format!("{} {}", a, b)
         }
         _ => "*".to_string(),

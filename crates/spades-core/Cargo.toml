@@ -20,6 +20,7 @@ uuid.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqids = "0.4"
+thiserror = "1"
 oasgen = { version = "0.25", features = ["uuid"], optional = true }
 
 [features]

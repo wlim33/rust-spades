@@ -174,7 +174,7 @@ fn lead_spade_allowed_after_spades_broken() {
     .unwrap();
     // Player B (only spade played) wins and leads the next trick.
     assert!(matches!(g.get_state(), State::Trick(0)));
-    assert_eq!(g.get_current_player_id().unwrap(), &g.players[1].id);
+    assert_eq!(g.get_current_player_id().unwrap(), g.players[1].id);
     // Spades broken — leading with spade now allowed.
     assert_eq!(
         g.play(GameTransition::Card(Card {

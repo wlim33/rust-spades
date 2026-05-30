@@ -117,8 +117,8 @@ fn finalize(game: &mut Game, t: &Transcript) -> Result<(), ReplayError> {
         });
     }
     if let Some(declared) = t.result {
-        let a = game.get_team_a_score().copied().unwrap_or(0);
-        let b = game.get_team_b_score().copied().unwrap_or(0);
+        let a = game.get_team_a_score().unwrap_or(0);
+        let b = game.get_team_b_score().unwrap_or(0);
         if (a, b) != declared {
             return Err(ReplayError::ResultMismatch {
                 declared,
@@ -163,12 +163,12 @@ mod tests {
 
         assert_eq!(replayed.get_id(), g.get_id());
         assert_eq!(
-            replayed.get_team_a_score().copied().unwrap_or(0),
-            g.get_team_a_score().copied().unwrap_or(0)
+            replayed.get_team_a_score().unwrap_or(0),
+            g.get_team_a_score().unwrap_or(0)
         );
         assert_eq!(
-            replayed.get_team_b_score().copied().unwrap_or(0),
-            g.get_team_b_score().copied().unwrap_or(0)
+            replayed.get_team_b_score().unwrap_or(0),
+            g.get_team_b_score().unwrap_or(0)
         );
         assert_eq!(replayed.get_state(), g.get_state());
         let re_encoded = encode(&replayed);

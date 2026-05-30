@@ -1,6 +1,6 @@
 use crate::cards::{Card, Rank, Suit};
 use crate::game_state::State;
-use crate::result::{GetError, TransitionError};
+use crate::result::{GetError, TransitionError, TransitionSuccess};
 use crate::{Game, GameTransition, TimerConfig};
 use ntest::test_case;
 use uuid::Uuid;
@@ -112,28 +112,6 @@ fn test_get_current_trick_cards_in_trick() {
     assert_eq!(cards.len(), 4); // 4-element array
 }
 
-// ── get_hand (deprecated) ──
-
-#[test_case(0)]
-#[test_case(1)]
-#[test_case(2)]
-#[test_case(3)]
-fn deprecated_get_hand(player_idx: usize) {
-    let (g, _) = make_started_game();
-    #[allow(deprecated)]
-    let result = g.get_hand(player_idx);
-    assert!(result.is_ok());
-    assert_eq!(result.unwrap().len(), 13);
-}
-
-#[test]
-fn deprecated_get_hand_out_of_range_returns_invalid_uuid() {
-    let (g, _) = make_started_game();
-    #[allow(deprecated)]
-    let result = g.get_hand(99);
-    assert_eq!(result, Err(GetError::InvalidUuid));
-}
-
 // ── get_winner_ids ──
 
 #[test]
@@ -155,8 +133,8 @@ fn test_get_winner_ids_team_a_wins() {
     g.scoring.team_a.cumulative_points = 500;
     g.scoring.team_b.cumulative_points = 100;
     let (w1, w2) = g.get_winner_ids().unwrap();
-    assert_eq!(*w1, pids[0]);
-    assert_eq!(*w2, pids[2]);
+    assert_eq!(w1, pids[0]);
+    assert_eq!(w2, pids[2]);
 }
 
 #[test]
@@ -172,8 +150,8 @@ fn test_get_winner_ids_team_b_wins() {
     g.scoring.team_a.cumulative_points = 100;
     g.scoring.team_b.cumulative_points = 500;
     let (w1, w2) = g.get_winner_ids().unwrap();
-    assert_eq!(*w1, pids[1]);
-    assert_eq!(*w2, pids[3]);
+    assert_eq!(w1, pids[1]);
+    assert_eq!(w2, pids[3]);
 }
 
 #[test]
@@ -183,6 +161,47 @@ fn test_get_winner_ids_tie_returns_error() {
     g.scoring.team_a.cumulative_points = 500;
     g.scoring.team_b.cumulative_points = 500;
     assert_eq!(g.get_winner_ids(), Err(GetError::GameNotCompleted));
+}
+
+// ── GameTransition::Abort ──
+
+#[test]
+fn abort_from_not_started() {
+    let mut g = Game::new(Uuid::new_v4(), [Uuid::new_v4(); 4], 500, None);
+    assert_eq!(g.play(GameTransition::Abort), Ok(TransitionSuccess::Aborted));
+    assert_eq!(*g.get_state(), State::Aborted);
+}
+
+#[test]
+fn abort_from_betting() {
+    let (mut g, _) = make_started_game();
+    assert!(matches!(*g.get_state(), State::Betting(_)));
+    assert_eq!(g.play(GameTransition::Abort), Ok(TransitionSuccess::Aborted));
+    assert_eq!(*g.get_state(), State::Aborted);
+}
+
+#[test]
+fn abort_from_trick() {
+    let (mut g, _) = make_game_in_trick_state();
+    assert_eq!(g.play(GameTransition::Abort), Ok(TransitionSuccess::Aborted));
+    assert_eq!(*g.get_state(), State::Aborted);
+}
+
+#[test]
+fn abort_rejected_from_terminal_states() {
+    let mut completed = Game::new(Uuid::new_v4(), [Uuid::new_v4(); 4], 500, None);
+    completed.set_state(State::Completed);
+    assert_eq!(
+        completed.play(GameTransition::Abort),
+        Err(TransitionError::CompletedGame)
+    );
+
+    let mut aborted = Game::new(Uuid::new_v4(), [Uuid::new_v4(); 4], 500, None);
+    aborted.set_state(State::Aborted);
+    assert_eq!(
+        aborted.play(GameTransition::Abort),
+        Err(TransitionError::CompletedGame)
+    );
 }
 
 // ── get_legal_cards ──

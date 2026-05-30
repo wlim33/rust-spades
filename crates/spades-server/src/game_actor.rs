@@ -425,8 +425,8 @@ impl GameActor {
     fn fire_rating_update(&self) {
         let Some(db) = self.db.clone() else { return };
         let game_id = self.game_id;
-        let team_a_score = self.game.get_team_a_score().ok().copied().unwrap_or(0);
-        let team_b_score = self.game.get_team_b_score().ok().copied().unwrap_or(0);
+        let team_a_score = self.game.get_team_a_score().ok().unwrap_or(0);
+        let team_b_score = self.game.get_team_b_score().ok().unwrap_or(0);
         let team_a_won = team_a_score > team_b_score;
         tokio::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
@@ -481,7 +481,7 @@ impl GameActor {
         self.active_timer = None;
 
         if is_first_round_betting {
-            self.game.set_state(State::Aborted);
+            let _ = self.game.play(GameTransition::Abort);
             self.game.set_turn_started_at_epoch_ms(None);
             self.persist_async();
             self.broadcast(GameEvent::GameAborted {
@@ -659,11 +659,11 @@ impl GameActor {
             game_id: self.game_id,
             short_id: spades::uuid_to_short_id(self.game_id),
             state: *self.game.get_state(),
-            team_a_score: self.game.get_team_a_score().ok().copied(),
-            team_b_score: self.game.get_team_b_score().ok().copied(),
-            team_a_bags: self.game.get_team_a_bags().ok().copied(),
-            team_b_bags: self.game.get_team_b_bags().ok().copied(),
-            current_player_id: self.game.get_current_player_id().ok().copied(),
+            team_a_score: self.game.get_team_a_score().ok(),
+            team_b_score: self.game.get_team_b_score().ok(),
+            team_a_bags: self.game.get_team_a_bags().ok(),
+            team_b_bags: self.game.get_team_b_bags().ok(),
+            current_player_id: self.game.get_current_player_id().ok(),
             player_names: [
                 PlayerNameEntry {
                     player_id: names[0].0,

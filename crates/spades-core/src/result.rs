@@ -1,6 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::error::Error;
-use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TransitionSuccess {
@@ -10,94 +8,43 @@ pub enum TransitionSuccess {
     PlayCard,
     GameOver,
     Start,
+    /// The game was abandoned via a `GameTransition::Abort`.
+    Aborted,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, thiserror::Error)]
 pub enum GetError {
+    #[error("Error: Attempted to retrieve by an invalid Uuid")]
     InvalidUuid,
+    #[error("Error: Game not started yet.")]
     GameNotStarted,
+    #[error("Error: Game is completed.")]
     GameCompleted,
+    #[error("Error: Game is still ongoing.")]
     GameNotCompleted,
+    #[error("Error: Unknown get error occurred.")]
     Unknown,
 }
 
-impl fmt::Display for GetError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self {
-            GetError::InvalidUuid => {
-                write!(f, "Error: Attempted to retrieve by an invalid Uuid")
-            }
-            GetError::GameNotStarted => {
-                write!(f, "Error: Game not started yet.")
-            }
-            GetError::GameCompleted => {
-                write!(f, "Error: Game is completed.")
-            }
-            GetError::GameNotCompleted => {
-                write!(f, "Error: Game is still ongoing.")
-            }
-            GetError::Unknown => {
-                write!(f, "Error: Unknown get error occurred.")
-            }
-        }
-    }
-}
-
-impl Error for GetError {}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, thiserror::Error)]
 pub enum TransitionError {
+    #[error("Error: Attempted to start a game already started.")]
     AlreadyStarted,
+    #[error("Error: Attempted to play a game not started yet.")]
     NotStarted,
+    #[error("Error: Attempted to play a card while game is in betting stage.")]
     CardInBettingStage,
+    #[error("Error: Attempted to place a bet while game is in trick stage.")]
     BetInTrickStage,
+    #[error("Error: Attempted to play a completed game.")]
     CompletedGame,
+    #[error("Error: Attempted to play a card not in hand.")]
     CardNotInHand,
+    #[error("Error: Attempted to play a card of the wrong suit.")]
     CardIncorrectSuit,
+    #[error("Error: Cannot lead a spade until spades have been broken.")]
     SpadesNotBroken,
 }
-
-impl fmt::Display for TransitionError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self {
-            TransitionError::AlreadyStarted => {
-                write!(f, "Error: Attempted to start a game already started.")
-            }
-            TransitionError::NotStarted => {
-                write!(f, "Error: Attempted to play a game not started yet.")
-            }
-            TransitionError::CardInBettingStage => {
-                write!(
-                    f,
-                    "Error: Attempted to play a card while game is in betting stage."
-                )
-            }
-            TransitionError::BetInTrickStage => {
-                write!(
-                    f,
-                    "Error: Attempted to place a bet while game is in trick stage."
-                )
-            }
-            TransitionError::CompletedGame => {
-                write!(f, "Error: Attempted to play a completed game.")
-            }
-            TransitionError::CardNotInHand => {
-                write!(f, "Error: Attempted to play a card not in hand.")
-            }
-            TransitionError::CardIncorrectSuit => {
-                write!(f, "Error: Attempted to play a card of the wrong suit.")
-            }
-            TransitionError::SpadesNotBroken => {
-                write!(
-                    f,
-                    "Error: Cannot lead a spade until spades have been broken."
-                )
-            }
-        }
-    }
-}
-
-impl Error for TransitionError {}
 
 #[cfg(test)]
 mod tests {

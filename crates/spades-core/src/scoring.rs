@@ -15,23 +15,8 @@ struct PartnerOutcome {
     took_trick: bool,
 }
 
-fn deser_tricks_won<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i32, D::Error> {
-    use serde::Deserialize;
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum Repr {
-        Scalar(i32),
-        Array(Vec<i32>),
-    }
-    Ok(match Repr::deserialize(d)? {
-        Repr::Scalar(n) => n,
-        Repr::Array(v) => v.iter().sum(),
-    })
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TeamState {
-    #[serde(deserialize_with = "deser_tricks_won")]
     pub current_round_tricks_won: i32,
     pub bags: i32,
     pub cumulative_points: i32,

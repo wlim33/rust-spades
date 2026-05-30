@@ -45,51 +45,6 @@ fn test_game_json_roundtrip_after_start() {
     );
 }
 
-/// Legacy SQLite rows used per-player fields (player_a, player_b, ...).
-/// Our deserializer must still accept that shape.
-#[test]
-fn test_game_json_deserialize_legacy_player_fields() {
-    let id = Uuid::new_v4();
-    let pid_a = Uuid::new_v4();
-    let pid_b = Uuid::new_v4();
-    let pid_c = Uuid::new_v4();
-    let pid_d = Uuid::new_v4();
-    // Legacy SQLite rows (pre-2.0) used player_a/b/c/d fields and an array for
-    // current_round_tricks_won. Verify backward-compat for those bits even though
-    // the Suit::Blank/Rank::Blank sentinels were removed in 2.0 (the legacy row
-    // we test here represents a NotStarted game so its hands_played is empty).
-    let legacy = serde_json::json!({
-        "id": id,
-        "state": "NotStarted",
-        "scoring": {
-            "config": {"max_points": 500},
-            "team_a": {"current_round_tricks_won": [0,0,0,0,0,0,0,0,0,0,0,0,0], "bags": 0, "cumulative_points": 0},
-            "team_b": {"current_round_tricks_won": [0,0,0,0,0,0,0,0,0,0,0,0,0], "bags": 0, "cumulative_points": 0},
-            "in_betting_stage": true,
-            "bets_placed": [[0,0,0,0]],
-            "is_over": false,
-            "round": 0,
-            "trick": 0,
-            "nil_check": [false, false, false, false],
-            "player_tricks_won": [0,0,0,0]
-        },
-        "current_player_index": 0,
-        "deck": [],
-        "hands_played": [[null, null, null, null]],
-        "leading_suit": null,
-        "player_a": {"id": pid_a, "hand": []},
-        "player_b": {"id": pid_b, "hand": []},
-        "player_c": {"id": pid_c, "hand": []},
-        "player_d": {"id": pid_d, "hand": []}
-    });
-    let g: Game = serde_json::from_value(legacy).unwrap();
-    assert_eq!(*g.get_id(), id);
-    assert_eq!(g.get_player_names()[0].0, pid_a);
-    assert_eq!(g.get_player_names()[1].0, pid_b);
-    assert_eq!(g.get_player_names()[2].0, pid_c);
-    assert_eq!(g.get_player_names()[3].0, pid_d);
-}
-
 #[test]
 fn test_game_json_roundtrip_after_bets() {
     let player_ids = [

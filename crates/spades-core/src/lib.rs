@@ -109,6 +109,9 @@ pub enum GameTransition {
     Bet(i32),
     Card(Card),
     Start,
+    /// Abandon the game, moving it to [`State::Aborted`]. Rejected if the game
+    /// has already reached a terminal state (`Completed`/`Aborted`).
+    Abort,
 }
 
 /// Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).
@@ -144,7 +147,7 @@ impl Player {
 }
 
 /// Primary game state. Internally manages player rotation, scoring, and cards.
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Game {
     id: Uuid,
     state: State,
@@ -154,87 +157,18 @@ pub struct Game {
     hands_played: Vec<[Option<cards::Card>; 4]>,
     leading_suit: Option<Suit>,
     players: [Player; 4],
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     timer_config: Option<TimerConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     player_clocks: Option<PlayerClocks>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     turn_started_at_epoch_ms: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     last_trick_winner: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     last_completed_trick: Option<[cards::Card; 4]>,
     #[serde(default)]
     spades_broken: bool,
-}
-
-impl<'de> serde::Deserialize<'de> for Game {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        use serde::de::Error as _;
-        #[derive(serde::Deserialize)]
-        struct GameShim {
-            id: Uuid,
-            state: State,
-            scoring: scoring::Scoring,
-            current_player_index: usize,
-            deck: Vec<cards::Card>,
-            hands_played: Vec<[Option<cards::Card>; 4]>,
-            leading_suit: Option<Suit>,
-            #[serde(default)]
-            players: Option<[Player; 4]>,
-            #[serde(default)]
-            player_a: Option<Player>,
-            #[serde(default)]
-            player_b: Option<Player>,
-            #[serde(default)]
-            player_c: Option<Player>,
-            #[serde(default)]
-            player_d: Option<Player>,
-            #[serde(default)]
-            timer_config: Option<TimerConfig>,
-            #[serde(default)]
-            player_clocks: Option<PlayerClocks>,
-            #[serde(default)]
-            turn_started_at_epoch_ms: Option<u64>,
-            #[serde(default)]
-            last_trick_winner: Option<usize>,
-            #[serde(default)]
-            last_completed_trick: Option<[cards::Card; 4]>,
-            #[serde(default)]
-            spades_broken: bool,
-        }
-        let s = GameShim::deserialize(d)?;
-        let players = if let Some(ps) = s.players {
-            ps
-        } else {
-            [
-                s.player_a
-                    .ok_or_else(|| D::Error::missing_field("players or player_a"))?,
-                s.player_b
-                    .ok_or_else(|| D::Error::missing_field("player_b"))?,
-                s.player_c
-                    .ok_or_else(|| D::Error::missing_field("player_c"))?,
-                s.player_d
-                    .ok_or_else(|| D::Error::missing_field("player_d"))?,
-            ]
-        };
-        Ok(Game {
-            id: s.id,
-            state: s.state,
-            scoring: s.scoring,
-            current_player_index: s.current_player_index,
-            deck: s.deck,
-            hands_played: s.hands_played,
-            leading_suit: s.leading_suit,
-            players,
-            timer_config: s.timer_config,
-            player_clocks: s.player_clocks,
-            turn_started_at_epoch_ms: s.turn_started_at_epoch_ms,
-            last_trick_winner: s.last_trick_winner,
-            last_completed_trick: s.last_completed_trick,
-            spades_broken: s.spades_broken,
-        })
-    }
 }
 
 impl Game {
@@ -302,33 +236,33 @@ impl Game {
     }
 
     /// Team A's (seats 0 & 2) cumulative score. `Err` before the game has started.
-    pub fn get_team_a_score(&self) -> Result<&i32, GetError> {
+    pub fn get_team_a_score(&self) -> Result<i32, GetError> {
         self.require_started()?;
-        Ok(&self.scoring.team_a.cumulative_points)
+        Ok(self.scoring.team_a.cumulative_points)
     }
 
     /// Team B's (seats 1 & 3) cumulative score. `Err` before the game has started.
-    pub fn get_team_b_score(&self) -> Result<&i32, GetError> {
+    pub fn get_team_b_score(&self) -> Result<i32, GetError> {
         self.require_started()?;
-        Ok(&self.scoring.team_b.cumulative_points)
+        Ok(self.scoring.team_b.cumulative_points)
     }
 
     /// Team A's accumulated bags (overtricks). `Err` before the game has started.
-    pub fn get_team_a_bags(&self) -> Result<&i32, GetError> {
+    pub fn get_team_a_bags(&self) -> Result<i32, GetError> {
         self.require_started()?;
-        Ok(&self.scoring.team_a.bags)
+        Ok(self.scoring.team_a.bags)
     }
 
     /// Team B's accumulated bags (overtricks). `Err` before the game has started.
-    pub fn get_team_b_bags(&self) -> Result<&i32, GetError> {
+    pub fn get_team_b_bags(&self) -> Result<i32, GetError> {
         self.require_started()?;
-        Ok(&self.scoring.team_b.bags)
+        Ok(self.scoring.team_b.bags)
     }
 
     /// Returns `GetError` when the current game is not in the Betting or Trick stages.
-    pub fn get_current_player_id(&self) -> Result<&Uuid, GetError> {
+    pub fn get_current_player_id(&self) -> Result<Uuid, GetError> {
         self.require_active()?;
-        Ok(&self.players[self.current_player_index].id)
+        Ok(self.players[self.current_player_index].id)
     }
 
     /// Returns a `GetError::InvalidUuid` if the game does not contain a player with the given `Uuid`.
@@ -367,27 +301,16 @@ impl Game {
         }
     }
 
-    #[deprecated(
-        since = "1.0.0",
-        note = "Please use `get_current_hand` or `get_hand_by_player_id`"
-    )]
-    pub fn get_hand(&self, player: usize) -> Result<&Vec<Card>, GetError> {
-        self.players
-            .get(player)
-            .map(|p| &p.hand)
-            .ok_or(GetError::InvalidUuid)
-    }
-
     /// The ids of the two players on the winning team. `Err` unless the game has completed.
-    pub fn get_winner_ids(&self) -> Result<(&Uuid, &Uuid), GetError> {
+    pub fn get_winner_ids(&self) -> Result<(Uuid, Uuid), GetError> {
         match self.state {
             State::Completed => {
                 if self.scoring.team_a.cumulative_points > self.scoring.team_b.cumulative_points {
-                    Ok((&self.players[0].id, &self.players[2].id))
+                    Ok((self.players[0].id, self.players[2].id))
                 } else if self.scoring.team_b.cumulative_points
                     > self.scoring.team_a.cumulative_points
                 {
-                    Ok((&self.players[1].id, &self.players[3].id))
+                    Ok((self.players[1].id, self.players[3].id))
                 } else {
                     // Unreachable: Scoring keeps is_over = false on a tie at max_points,
                     // so the game never transitions to State::Completed with equal scores.
@@ -513,6 +436,13 @@ impl Game {
                 self.state = State::Betting(0);
                 Ok(TransitionSuccess::Start)
             }
+            GameTransition::Abort => match self.state {
+                State::Completed | State::Aborted => Err(TransitionError::CompletedGame),
+                _ => {
+                    self.state = State::Aborted;
+                    Ok(TransitionSuccess::Aborted)
+                }
+            },
         }
     }
 
@@ -602,8 +532,9 @@ impl Game {
         self.last_completed_trick.as_ref()
     }
 
-    /// Set the game state directly (used by GameManager for abort).
-    pub fn set_state(&mut self, state: State) {
+    /// Set the game state directly. Crate-internal escape hatch for transcript
+    /// replay and tests; external callers abort via [`GameTransition::Abort`].
+    pub(crate) fn set_state(&mut self, state: State) {
         self.state = state;
     }
 

@@ -77,64 +77,68 @@ impl fmt::Display for Termination {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DecodeError {
+    #[error("unexpected end of input")]
     UnexpectedEof,
+    #[error("malformed tag on line {line}: {found:?}")]
     BadTag { line: usize, found: String },
+    #[error("duplicate tag {key:?} on line {line}")]
     DuplicateTag { line: usize, key: String },
+    #[error("missing required tag {key:?}")]
     MissingRequiredTag { key: &'static str },
+    #[error("invalid card token {token:?} on line {line}")]
     BadCard { line: usize, token: String },
+    #[error("non-monotonic round number: expected {expected}, found {found}")]
     NonMonotonicRound { expected: usize, found: usize },
+    #[error("too many tricks in round {round}")]
     TooManyTricks { round: usize },
+    #[error("too many bets in round {round}")]
     TooManyBets { round: usize },
+    #[error("too many cards in round {round} trick {trick}")]
     TooManyCardsInTrick { round: usize, trick: usize },
+    #[error("invalid result value {value:?} on line {line}")]
     BadResult { line: usize, value: String },
+    #[error("invalid termination value {value:?} on line {line}")]
     BadTermination { line: usize, value: String },
+    #[error("invalid UUID {value:?} on line {line}")]
     BadUuid { line: usize, value: String },
+    #[error("invalid integer {value:?} on line {line}")]
     BadInteger { line: usize, value: String },
+    #[error("invalid escape sequence in {value:?} on line {line}")]
     BadEscape { line: usize, value: String },
+    #[error("trailing content on line {line}")]
     TrailingContent { line: usize },
 }
 
-impl fmt::Display for DecodeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "transcript decode error: {:?}", self)
-    }
-}
-
-impl std::error::Error for DecodeError {}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ReplayError {
     /// `Game::play` rejected a transition synthesized from the transcript.
+    #[error("illegal transition at round {round} trick {trick:?} seat {seat}: {err}")]
     Transition {
         round: usize,
         trick: Option<usize>,
         seat: usize,
+        #[source]
         err: TransitionError,
     },
     /// Header `Termination` doesn't match the state the replayed game ended in.
+    #[error("termination mismatch: declared {declared}, replayed {actual}")]
     TerminationMismatch {
         declared: Termination,
         actual: Termination,
     },
     /// Header `Result` doesn't match replayed cumulative scores.
+    #[error("result mismatch: declared {declared:?}, replayed {actual:?}")]
     ResultMismatch {
         declared: (i32, i32),
         actual: (i32, i32),
     },
     /// `Bets` line had a count not matching the state when termination is final
     /// (e.g. Completed transcript with < 4 bets in a round).
+    #[error("inconsistent bet count in round {round}: found {found}")]
     InconsistentBetCount { round: usize, found: usize },
 }
-
-impl fmt::Display for ReplayError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "transcript replay error: {:?}", self)
-    }
-}
-
-impl std::error::Error for ReplayError {}
 
 #[cfg(test)]
 mod display_tests {
@@ -149,20 +153,35 @@ mod display_tests {
     }
 
     #[test]
-    fn decode_error_display_prefix() {
-        let err = DecodeError::UnexpectedEof;
-        assert!(err.to_string().starts_with("transcript decode error:"));
+    fn decode_error_display_is_descriptive() {
+        assert_eq!(
+            DecodeError::UnexpectedEof.to_string(),
+            "unexpected end of input"
+        );
+        assert_eq!(
+            DecodeError::BadCard {
+                line: 3,
+                token: "ZZ".into(),
+            }
+            .to_string(),
+            "invalid card token \"ZZ\" on line 3"
+        );
     }
 
     #[test]
-    fn replay_error_display_prefix() {
+    fn replay_error_display_includes_transition() {
         let err = ReplayError::Transition {
             round: 0,
             trick: None,
             seat: 0,
             err: TransitionError::NotStarted,
         };
-        assert!(err.to_string().starts_with("transcript replay error:"));
+        let s = err.to_string();
+        assert!(s.contains("illegal transition"), "{s}");
+        assert!(
+            s.contains("Attempted to play a game not started yet"),
+            "{s}"
+        );
     }
 }
 
