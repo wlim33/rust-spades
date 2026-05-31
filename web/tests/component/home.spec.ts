@@ -54,8 +54,9 @@ describe('home route', () => {
     await Promise.resolve();
 
     expect(document.body.textContent).toContain('Finding players');
+    expect(document.body.textContent).toContain('of 4 seated');
 
-    const cancelBtn = document.querySelector<HTMLButtonElement>('.quickplay-wait button');
+    const cancelBtn = document.querySelector<HTMLButtonElement>('.home-searching button');
     expect(cancelBtn).not.toBeNull();
     cancelBtn!.click();
 

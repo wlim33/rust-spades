@@ -13,7 +13,7 @@ import type { TemplateResult } from 'lit-html';
 
 type TimerCfg = { initial_time_secs: number; increment_secs: number } | null;
 
-type QuickplayState = { waiting: number; cancel: () => void } | null;
+type QuickplayState = { waiting: number; cancel: () => void; tier: string } | null;
 
 export const quickplay = signal<QuickplayState>(null);
 
@@ -46,7 +46,7 @@ const TIER_ICON: Record<string, string> = {
   classic: 'hourglass-fill',
 };
 
-function onSeek(timer: TimerCfg): void {
+function onSeek(timer: TimerCfg, tier: string): void {
   if (quickplay.value) return;
   let handle: ReturnType<typeof openSse> | null = null;
   const cancel = (): void => {
@@ -61,7 +61,7 @@ function onSeek(timer: TimerCfg): void {
         try {
           const parsed = JSON.parse(data) as Record<string, unknown>;
           if (eventType === 'queue_status') {
-            quickplay.value = { waiting: parsed.waiting as number, cancel };
+            quickplay.value = { waiting: parsed.waiting as number, cancel, tier };
           } else if (eventType === 'game_start') {
             const shortId =
               (parsed.short_id as string | undefined) ??
@@ -87,7 +87,7 @@ function onSeek(timer: TimerCfg): void {
       },
     },
   );
-  quickplay.value = { waiting: 0, cancel };
+  quickplay.value = { waiting: 0, cancel, tier };
 }
 
 function onFriends(): void {
@@ -111,8 +111,10 @@ function template(): TemplateResult {
   if (quickplay.value) {
     const q = quickplay.value;
     return appShell(html`
-      <div class="quickplay-wait">
-        <p>Finding players… (${q.waiting}/4)</p>
+      <div class="home-searching" data-testid="home-searching">
+        <div class="home-searching__dots" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <p class="home-searching__msg">Finding players…</p>
+        <p class="home-searching__sub">${q.waiting} of 4 seated · ${q.tier}</p>
         ${button({ label: 'Cancel', onClick: q.cancel, variant: 'secondary' })}
       </div>
     `);
@@ -129,7 +131,7 @@ function template(): TemplateResult {
         ${QUICKPLAY_TIMERS.map((t) => {
           const count = t.value ? queueCountFor(t.value) : 0;
           return html`<div class="quickplay-col quickplay-col--${t.key}">
-            <button class="quickplay-tile" type="button" @click=${() => onSeek(t.value)}>
+            <button class="quickplay-tile" type="button" @click=${() => onSeek(t.value, t.tier)}>
               ${icon(TIER_ICON[t.key]!)}
               <span class="quickplay-tile__time">${t.label}</span>
             </button>
