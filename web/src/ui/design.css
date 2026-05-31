@@ -196,13 +196,7 @@ main#root {
   border-radius: var(--radius-card);
   background: var(--card-face);
   border: 1px solid var(--card-edge);
-  color: var(--card-ink);
   box-shadow: var(--shadow-card);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: 14px;
   user-select: none;
   position: relative;
   overflow: hidden;
