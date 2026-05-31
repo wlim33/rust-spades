@@ -25,7 +25,9 @@ describe('card-el', () => {
   it('setFront swaps the face image + aria-label on an existing element', () => {
     const el = createBack();
     setFront(el, { suit: 'Diamond', rank: 'Two' });
-    expect((el.querySelector('img.card-face') as HTMLImageElement).getAttribute('src')).toBe('/cards/2D.svg');
+    expect((el.querySelector('img.card-face') as HTMLImageElement).getAttribute('src')).toBe(
+      '/cards/2D.svg',
+    );
     expect(el.getAttribute('aria-label')).toBe('Two of Diamonds');
   });
 });

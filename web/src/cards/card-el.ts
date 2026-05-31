@@ -1,8 +1,19 @@
 import type { Card, Rank, Suit } from '../state/helpers';
 
 const RANK_FILE: Record<Rank, string> = {
-  Two: '2', Three: '3', Four: '4', Five: '5', Six: '6', Seven: '7', Eight: '8',
-  Nine: '9', Ten: 'T', Jack: 'J', Queen: 'Q', King: 'K', Ace: 'A',
+  Two: '2',
+  Three: '3',
+  Four: '4',
+  Five: '5',
+  Six: '6',
+  Seven: '7',
+  Eight: '8',
+  Nine: '9',
+  Ten: 'T',
+  Jack: 'J',
+  Queen: 'Q',
+  King: 'K',
+  Ace: 'A',
 };
 const SUIT_FILE: Record<Suit, string> = { Spade: 'S', Heart: 'H', Diamond: 'D', Club: 'C' };
 
