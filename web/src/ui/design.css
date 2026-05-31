@@ -169,13 +169,21 @@ main#root {
   --row-accent: var(--accent-2);
 }
 .menu__row-icon {
-  display: inline-flex;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
   flex: none;
-  color: var(--row-accent, var(--fg));
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--row-accent, var(--accent)) 14%, transparent);
+  color: var(--row-accent, var(--accent));
+  font-size: 1.4rem;
 }
-.menu__row-icon svg {
-  width: 24px;
-  height: 24px;
+.menu__row-go {
+  margin-left: auto;
+  color: var(--fg-subtle);
+  font-size: 1.3rem;
+  display: inline-flex;
 }
 .menu__row-text {
   display: flex;
@@ -586,14 +594,14 @@ button.seat-open {
 .quickplay-tile:hover {
   border-color: var(--tier, var(--fg));
 }
-.quickplay-tile svg {
-  width: 22px;
-  height: 22px;
+.quickplay-tile .icon {
+  font-size: 1.6rem;
   color: var(--tier, var(--fg));
 }
 .quickplay-tile__time {
+  font-family: var(--font-display);
   font-weight: 600;
-  font-size: var(--text-lg);
+  font-size: 1.35rem;
 }
 .quickplay-tile__tier {
   font-size: 0.7rem;
@@ -988,4 +996,63 @@ h3 {
   display: block;
   height: 100%;
   background: var(--accent);
+}
+
+.home-searching {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8);
+  width: 100%;
+  max-width: 360px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.home-searching__dots {
+  display: flex;
+  gap: var(--space-2);
+}
+.home-searching__dots i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.3;
+}
+.home-searching__msg {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  margin: 0;
+}
+.home-searching__sub {
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .home-searching__dots i {
+    animation: home-dot 1.2s infinite;
+  }
+  .home-searching__dots i:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  .home-searching__dots i:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+  .home-searching__dots i:nth-child(4) {
+    animation-delay: 0.6s;
+  }
+  @keyframes home-dot {
+    0%,
+    100% {
+      opacity: 0.25;
+      transform: scale(0.85);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
 }
