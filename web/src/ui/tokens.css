@@ -31,6 +31,7 @@
   --card-edge: rgba(27, 35, 48, 0.16);
   --felt: #2f6f62;
   --felt-ink: #eaf3ee;
+  --felt-edge: #25564c;
 
   /* effects */
   --focus: #1f8f80;
@@ -113,6 +114,7 @@
   --card-edge: rgba(0, 0, 0, 0.4);
   --felt: #143029;
   --felt-ink: #d9e8e0;
+  --felt-edge: #0d211c;
 
   --focus: #3cc3b0;
   --shadow-color: 0 0 0;
