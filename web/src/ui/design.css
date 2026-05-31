@@ -205,25 +205,16 @@ main#root {
   font-size: 14px;
   user-select: none;
   position: relative;
+  overflow: hidden;
 }
-.card-red {
-  color: var(--card-red);
-}
-.card-black {
-  color: var(--card-ink);
-}
-.card-front::before {
-  content: attr(data-rank) '\A' attr(data-suit);
-  white-space: pre;
+.card-face {
   position: absolute;
-  top: 2px;
-  left: 3px;
-  font-size: 9px;
-  line-height: 1;
-  font-weight: 600;
-  color: inherit;
-  text-align: center;
-  letter-spacing: -0.02em;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  display: block;
+  pointer-events: none;
 }
 .card-back {
   background:
@@ -266,6 +257,19 @@ main#root {
   width: 100%;
   max-width: 720px;
   min-height: 480px;
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  color: var(--felt-ink);
+  background: radial-gradient(
+    120% 90% at 50% 38%,
+    color-mix(in oklab, var(--felt) 78%, #fff 8%),
+    var(--felt) 70%,
+    var(--felt-edge)
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.07),
+    inset 0 0 60px rgb(0 0 0 / 0.28),
+    var(--shadow-3);
 }
 .seat-north {
   grid-area: north;
@@ -289,6 +293,7 @@ main#root {
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--felt-ink);
 }
 
 .card-container {
@@ -298,7 +303,19 @@ main#root {
   justify-content: center;
 }
 .hand-container {
-  gap: 4px;
+  gap: 0;
+  padding-left: 22px;
+}
+.hand-container .card {
+  margin-left: -22px;
+  transition: transform var(--dur) var(--ease);
+}
+.hand-container .card:first-child {
+  margin-left: 0;
+}
+.hand-container .card.cm-clickable:hover {
+  transform: translateY(-16px);
+  z-index: 5;
 }
 .trick-container {
   display: grid;
@@ -334,7 +351,32 @@ main#root {
   max-width: 480px;
 }
 .spades-bet {
-  padding: var(--space-2);
+  appearance: none;
+  font: inherit;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  padding: var(--space-2) 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  color: var(--fg);
+  transition:
+    transform var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+.spades-bet:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-2px);
+}
+.spades-bet--nil {
+  color: var(--accent-2);
+}
+.spades-bet--nil:hover {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
 }
 
 .lobby {
@@ -773,6 +815,12 @@ button.seat-open {
     width: 40px;
     height: 56px;
   }
+  .hand-container {
+    padding-left: 16px;
+  }
+  .hand-container .card {
+    margin-left: -16px;
+  }
 }
 
 /* Very small phones */
@@ -929,4 +977,21 @@ h3 {
   font-weight: 560;
   line-height: 1.1;
   letter-spacing: -0.01em;
+}
+
+.spades-clock.low {
+  color: var(--accent-2);
+}
+.spades-clock-bar {
+  width: 100%;
+  height: 3px;
+  margin-top: 2px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--fg) 14%, transparent);
+  overflow: hidden;
+}
+.spades-clock-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
 }

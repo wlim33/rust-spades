@@ -1,10 +1,8 @@
 import type { Card } from '../state/helpers';
 import type { Seat } from './hand-manager';
-import { cardText, type CardEl } from './card-el';
+import { setCardFace, type CardEl } from './card-el';
 
 export type TrickSlot = { card: Card; seat: Seat; el: CardEl };
-
-const SUIT_COLOR = { Spade: 'black', Heart: 'red', Diamond: 'red', Club: 'black' } as const;
 
 export class TrickManager {
   private container: HTMLElement | null = null;
@@ -19,9 +17,7 @@ export class TrickManager {
   fillNextSlot(card: Card, seat: Seat): TrickSlot | null {
     const slot = this.slotEls.find((el) => el.classList.contains('trick-placeholder'));
     if (!slot) return null;
-    const colorClass = SUIT_COLOR[card.suit] === 'red' ? 'card-red' : 'card-black';
-    slot.className = `card card-front ${colorClass}`;
-    slot.textContent = cardText(card);
+    setCardFace(slot, card);
     const entry: TrickSlot = { card, seat, el: slot };
     this.filled.push(entry);
     return entry;

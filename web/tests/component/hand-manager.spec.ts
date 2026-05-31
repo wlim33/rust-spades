@@ -20,8 +20,12 @@ describe('HandManager', () => {
   it('mounts the player hand sorted by suit/rank', () => {
     hm.setPlayerHand([c('Heart', 'Two'), c('Spade', 'Ace')]);
     expect(south.children.length).toBe(2);
-    expect(south.children[0]!.textContent).toBe('A♠');
-    expect(south.children[1]!.textContent).toBe('2♥');
+    expect(
+      (south.children[0]!.querySelector('img.card-face') as HTMLImageElement).getAttribute('src'),
+    ).toBe('/cards/AS.svg');
+    expect(
+      (south.children[1]!.querySelector('img.card-face') as HTMLImageElement).getAttribute('src'),
+    ).toBe('/cards/2H.svg');
   });
 
   it('replacing the hand reuses kept entries and unmounts removed', () => {
@@ -47,7 +51,9 @@ describe('HandManager', () => {
   it('removeCard removes a specific player card and returns its element', () => {
     hm.setPlayerHand([c('Heart', 'Two'), c('Spade', 'Ace')]);
     const removed = hm.removeCard(c('Spade', 'Ace'));
-    expect(removed?.textContent).toBe('A♠');
+    expect((removed?.querySelector('img.card-face') as HTMLImageElement).getAttribute('src')).toBe(
+      '/cards/AS.svg',
+    );
     expect(south.children.length).toBe(1);
   });
 
