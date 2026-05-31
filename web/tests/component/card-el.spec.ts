@@ -6,28 +6,26 @@ describe('card-el', () => {
     document.body.innerHTML = '';
   });
 
-  it('renders a red heart Ace with red color class', () => {
+  it('renders a front card as an image face with the right src + aria-label', () => {
     const el = createFront({ suit: 'Heart', rank: 'Ace' });
-    expect(el.className).toContain('card-red');
-    expect(el.textContent).toBe('A♥');
+    const img = el.querySelector('img.card-face') as HTMLImageElement;
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('src')).toBe('/cards/AH.svg');
+    expect(el.className).toContain('card-front');
+    expect(el.getAttribute('aria-label')).toBe('Ace of Hearts');
+    expect(el.getAttribute('role')).toBe('button');
   });
 
-  it('renders a black spade 10 with black color class', () => {
-    const el = createFront({ suit: 'Spade', rank: 'Ten' });
-    expect(el.className).toContain('card-black');
-    expect(el.textContent).toBe('10♠');
-  });
-
-  it('back card has card-back class and no text', () => {
+  it('back card has card-back class and no face image', () => {
     const el = createBack();
     expect(el.className).toContain('card-back');
-    expect(el.textContent).toBe('');
+    expect(el.querySelector('img')).toBeNull();
   });
 
-  it('setFront mutates an existing element', () => {
+  it('setFront swaps the face image + aria-label on an existing element', () => {
     const el = createBack();
     setFront(el, { suit: 'Diamond', rank: 'Two' });
-    expect(el.className).toContain('card-red');
-    expect(el.textContent).toBe('2♦');
+    expect((el.querySelector('img.card-face') as HTMLImageElement).getAttribute('src')).toBe('/cards/2D.svg');
+    expect(el.getAttribute('aria-label')).toBe('Two of Diamonds');
   });
 });

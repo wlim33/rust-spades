@@ -205,25 +205,16 @@ main#root {
   font-size: 14px;
   user-select: none;
   position: relative;
+  overflow: hidden;
 }
-.card-red {
-  color: var(--card-red);
-}
-.card-black {
-  color: var(--card-ink);
-}
-.card-front::before {
-  content: attr(data-rank) '\A' attr(data-suit);
-  white-space: pre;
+.card-face {
   position: absolute;
-  top: 2px;
-  left: 3px;
-  font-size: 9px;
-  line-height: 1;
-  font-weight: 600;
-  color: inherit;
-  text-align: center;
-  letter-spacing: -0.02em;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  display: block;
+  pointer-events: none;
 }
 .card-back {
   background:
