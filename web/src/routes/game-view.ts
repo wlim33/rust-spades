@@ -24,6 +24,7 @@ import { toast } from '../state/toast';
 import { CardOrchestrator } from '../cards/orchestrator';
 import { appShell } from '../ui/templates';
 import { button } from '../ui/components/button';
+import { bidBar } from '../ui/components/bid-bar';
 import { scores } from '../ui/components/scores';
 import { gameTable, type GameTableRefs } from '../ui/components/game-table';
 import type { GameStore } from '../state/game';
@@ -86,15 +87,7 @@ export function renderInGame(args: {
           toast.error('Bet failed.');
         }
       };
-      return html`<div class="spades-bets">
-        ${Array.from({ length: 14 }, (_, n) =>
-          button({
-            label: String(n),
-            onClick: () => void onBet(n),
-            variant: 'primary',
-          }),
-        )}
-      </div>`;
+      return bidBar({ onBet: (amount) => void onBet(amount) });
     };
 
     const centerText =

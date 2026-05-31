@@ -339,7 +339,32 @@ main#root {
   max-width: 480px;
 }
 .spades-bet {
-  padding: var(--space-2);
+  appearance: none;
+  font: inherit;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  padding: var(--space-2) 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  color: var(--fg);
+  transition:
+    transform var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+.spades-bet:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-2px);
+}
+.spades-bet--nil {
+  color: var(--accent-2);
+}
+.spades-bet--nil:hover {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
 }
 
 .lobby {
