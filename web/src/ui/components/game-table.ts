@@ -7,6 +7,8 @@ export type SeatProps = {
   connected: boolean;
   betInfo: string;
   clockText: string | null;
+  low: boolean;
+  clockFrac: number | null; // 0..1 for the active seat's bar; null = no bar
 };
 
 export type GameTableRefs = {
@@ -39,7 +41,14 @@ export function gameTable(args: {
     const chipCls = `spades-seat-chip${p.connected ? '' : ' is-disconnected'}`;
     return html`<div class=${chipCls}>
       <span class="spades-seat-label">${p.name}</span>
-      ${p.clockText ? html`<span class="spades-clock">${p.clockText}</span>` : null}
+      ${p.clockText
+        ? html`<span class="spades-clock${p.low ? ' low' : ''}">${p.clockText}</span>`
+        : null}
+      ${p.clockFrac != null
+        ? html`<span class="spades-clock-bar"
+            ><i style=${`width:${Math.round(p.clockFrac * 100)}%`}></i
+          ></span>`
+        : null}
       <span class="spades-seat-info">${p.betInfo}</span>
     </div>`;
   };

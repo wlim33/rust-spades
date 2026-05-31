@@ -6,9 +6,18 @@ import {
   isCardValid,
   oppCardCount,
   seatRel,
+  formatClock,
   type Card,
   type RelativeSeat,
 } from '../state/helpers';
+import {
+  clockTick,
+  captureActiveClock,
+  liveActiveMs,
+  startClockTicker,
+  stopClockTicker,
+  LOW_CLOCK_MS,
+} from '../state/clocks';
 import { clearSession } from '../lib/storage';
 import { navigateTo } from '../lib/util';
 import { toast } from '../state/toast';
@@ -35,7 +44,26 @@ export function renderInGame(args: {
     return store.playerNames.value[idx] ?? `Seat ${idx + 1}`;
   };
 
+  const timed = (): boolean => store.timerConfig.value != null;
+  const clockFor = (absIdx: number): string | null => {
+    if (!timed()) return null;
+    if (store.playerIds.value[absIdx] === store.currentPlayerId.value)
+      return formatClock(liveActiveMs());
+    return formatClock(store.playerClocksMs.value?.[absIdx] ?? null);
+  };
+  const lowFor = (absIdx: number): boolean =>
+    timed() &&
+    store.playerIds.value[absIdx] === store.currentPlayerId.value &&
+    (liveActiveMs() ?? Infinity) <= LOW_CLOCK_MS;
+  const fracFor = (absIdx: number): number | null => {
+    if (!timed() || store.playerIds.value[absIdx] !== store.currentPlayerId.value) return null;
+    const initialMs = (store.timerConfig.value?.initial_time_secs ?? 0) * 1000;
+    if (initialMs <= 0) return null;
+    return Math.max(0, Math.min(1, (liveActiveMs() ?? 0) / initialMs));
+  };
+
   const template = (): TemplateResult => {
+    void clockTick.value;
     const i = myIdx();
     const north = (i + 2) % 4;
     const west = (i + 3) % 4;
@@ -119,7 +147,9 @@ export function renderInGame(args: {
             store.playerBets.value[north] != null
               ? `Bet ${store.playerBets.value[north]} / Won ${store.playerTricksWon.value[north]}`
               : '',
-          clockText: null,
+          clockText: clockFor(north),
+          low: lowFor(north),
+          clockFrac: fracFor(north),
         },
         west: {
           name: seatName(west),
@@ -129,7 +159,9 @@ export function renderInGame(args: {
             store.playerBets.value[west] != null
               ? `Bet ${store.playerBets.value[west]} / Won ${store.playerTricksWon.value[west]}`
               : '',
-          clockText: null,
+          clockText: clockFor(west),
+          low: lowFor(west),
+          clockFrac: fracFor(west),
         },
         east: {
           name: seatName(east),
@@ -139,7 +171,9 @@ export function renderInGame(args: {
             store.playerBets.value[east] != null
               ? `Bet ${store.playerBets.value[east]} / Won ${store.playerTricksWon.value[east]}`
               : '',
-          clockText: null,
+          clockText: clockFor(east),
+          low: lowFor(east),
+          clockFrac: fracFor(east),
         },
         south: {
           name: seatName(i),
@@ -149,7 +183,9 @@ export function renderInGame(args: {
             store.playerBets.value[i] != null
               ? `Bet ${store.playerBets.value[i]} / Won ${store.playerTricksWon.value[i]}`
               : '',
-          clockText: null,
+          clockText: clockFor(i),
+          low: lowFor(i),
+          clockFrac: fracFor(i),
         },
         centerText,
         refs,
@@ -295,6 +331,12 @@ export function renderInGame(args: {
     }
   });
 
+  const disposeClock = effect(() => {
+    captureActiveClock(store.activePlayerClockMs.value);
+  });
+  startClockTicker();
   args.resources.cleanups.push(disposeRender);
   args.resources.cleanups.push(disposeCards);
+  args.resources.cleanups.push(disposeClock);
+  args.resources.cleanups.push(stopClockTicker);
 }
