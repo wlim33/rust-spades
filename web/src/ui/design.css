@@ -303,7 +303,19 @@ main#root {
   justify-content: center;
 }
 .hand-container {
-  gap: 4px;
+  gap: 0;
+  padding-left: 22px;
+}
+.hand-container .card {
+  margin-left: -22px;
+  transition: transform var(--dur) var(--ease);
+}
+.hand-container .card:first-child {
+  margin-left: 0;
+}
+.hand-container .card.cm-clickable:hover {
+  transform: translateY(-16px);
+  z-index: 5;
 }
 .trick-container {
   display: grid;
@@ -802,6 +814,12 @@ button.seat-open {
   .skeleton-card {
     width: 40px;
     height: 56px;
+  }
+  .hand-container {
+    padding-left: 16px;
+  }
+  .hand-container .card {
+    margin-left: -16px;
   }
 }
 
