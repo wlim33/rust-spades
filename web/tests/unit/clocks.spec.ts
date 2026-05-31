@@ -1,7 +1,8 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { captureActiveClock, liveActiveMs } from '../../src/state/clocks';
 
 describe('clocks', () => {
+  beforeEach(() => captureActiveClock(null));
   afterEach(() => vi.restoreAllMocks());
 
   it('counts the active clock down from the captured snapshot', () => {

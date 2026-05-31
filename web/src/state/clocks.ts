@@ -34,4 +34,6 @@ export function stopClockTicker(): void {
     clearInterval(timer);
     timer = null;
   }
+  // Clear the snapshot so a new game never briefly shows the prior game's clock.
+  snapshotMs = null;
 }

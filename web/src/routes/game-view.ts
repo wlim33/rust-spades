@@ -59,7 +59,9 @@ export function renderInGame(args: {
     if (!timed() || store.playerIds.value[absIdx] !== store.currentPlayerId.value) return null;
     const initialMs = (store.timerConfig.value?.initial_time_secs ?? 0) * 1000;
     if (initialMs <= 0) return null;
-    return Math.max(0, Math.min(1, (liveActiveMs() ?? 0) / initialMs));
+    const live = liveActiveMs();
+    if (live == null) return null;
+    return Math.max(0, Math.min(1, live / initialMs));
   };
 
   const template = (): TemplateResult => {
