@@ -491,6 +491,9 @@ button.seat-open {
   border: 1px solid var(--border-strong);
   font: inherit;
 }
+.form-field.invalid input {
+  border-color: var(--danger);
+}
 .form-actions {
   display: flex;
   gap: var(--space-2);
