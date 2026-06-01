@@ -854,8 +854,7 @@ button.seat-open {
     left: var(--space-3);
     right: var(--space-3);
   }
-  .form-page,
-  .profile-page {
+  .form-page:not(.panel) {
     padding: 0 var(--space-2);
   }
   .menu {
