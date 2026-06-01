@@ -1,3 +1,12 @@
+# --- safety: never deploy the mutable :latest tag -------------------------
+- name: Refuse to deploy the mutable ':latest' tag
+  ansible.builtin.assert:
+    that: image_tag != "latest"
+    fail_msg: >-
+      image_tag must be a specific commit SHA for an immutable, rollback-able
+      deploy (got 'latest'). Pass -e image_tag=<sha>.
+    quiet: true
+
 # --- render config onto the VPS -------------------------------------------
 - name: Render docker-compose.yml
   ansible.builtin.template:

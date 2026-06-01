@@ -82,8 +82,8 @@
   ansible.builtin.file:
     path: "{{ data_dir }}"
     state: directory
-    owner: "{{ container_uid }}"
-    group: "{{ container_uid }}"
+    owner: "{{ container_uid | string }}"
+    group: "{{ container_uid | string }}"
     mode: "0755"
 
 # --- ghcr login (so the VPS can pull the private image) --------------------
@@ -93,6 +93,8 @@
     stdin: "{{ vault_ghcr_token }}"
   register: common_ghcr_login
   changed_when: "'Login Succeeded' in common_ghcr_login.stdout"
+  no_log: true
+  when: not ansible_check_mode
 
 # --- legacy cleanup (from the old bash flow) -------------------------------
 - name: Disable the legacy spades-server systemd unit
