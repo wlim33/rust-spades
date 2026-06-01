@@ -95,9 +95,15 @@ Relaxes line-length (long comments/folded strings) and keeps Ansible-friendly
 truthy handling. `ansible-lint` auto-discovers this file.
 
 ```yaml
+---
 extends: default
 
 rules:
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
   line-length:
     max: 160
     level: warning
@@ -107,7 +113,14 @@ rules:
   comments:
     min-spaces-from-content: 1
   comments-indentation: disable
+  document-start: disable
 ```
+
+The `braces`/`octal-values` rules align with what `ansible-lint` expects (so it
+keeps fix-mode enabled); `document-start: disable` avoids requiring `---` on
+every file (the encrypted `vault.yml` can't carry one). The non-fatal
+"Decryption failed" WARNINGs `ansible-lint` prints for `vault.yml` are a known
+quirk and do not fail the run.
 
 - [ ] **Step 3: Create the throwaway dev vault password (gitignored, build-phase only)**
 
