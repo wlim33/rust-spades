@@ -658,10 +658,24 @@ button.seat-open {
 .profile-games {
   list-style: none;
   padding: 0;
+  margin: 0;
 }
 .profile-games li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
   padding: var(--space-2) 0;
   border-bottom: 1px solid var(--border);
+}
+.profile-games code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+.profile-games__seat {
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
 }
 
 .toast-stack {
