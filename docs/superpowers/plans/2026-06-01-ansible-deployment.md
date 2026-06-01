@@ -715,25 +715,26 @@ git commit -m "feat(ansible): backend role converges the stack with health gate"
 **Files:**
 - Create: `ansible/roles/frontend/tasks/main.yml`
 
-Runs on the control node (`localhost`). `repo_root` is computed from `playbook_dir`.
+Runs on the control node (`localhost`). `frontend_repo_root` is computed from
+`playbook_dir` (role-prefixed to satisfy ansible-lint `var-naming`).
 
 - [ ] **Step 1: Create `ansible/roles/frontend/tasks/main.yml`**
 
 ```yaml
 - name: Resolve the repository root
   ansible.builtin.set_fact:
-    repo_root: "{{ playbook_dir }}/.."
+    frontend_repo_root: "{{ playbook_dir }}/.."
 
 - name: Install web dependencies
   ansible.builtin.command:
     cmd: pnpm install --frozen-lockfile
-    chdir: "{{ repo_root }}/web"
+    chdir: "{{ frontend_repo_root }}/web"
   changed_when: true
 
 - name: Build the frontend bundle
   ansible.builtin.command:
     cmd: pnpm build
-    chdir: "{{ repo_root }}/web"
+    chdir: "{{ frontend_repo_root }}/web"
   changed_when: true
 
 - name: Deploy to Cloudflare Pages
@@ -743,7 +744,7 @@ Runs on the control node (`localhost`). `repo_root` is computed from `playbook_d
       --project-name={{ cf_pages_project }}
       --branch={{ cf_pages_branch }}
       --commit-dirty=true
-    chdir: "{{ repo_root }}"
+    chdir: "{{ frontend_repo_root }}"
   environment:
     CLOUDFLARE_API_TOKEN: "{{ vault_cf_api_token }}"
     CLOUDFLARE_ACCOUNT_ID: "{{ vault_cf_account_id }}"
@@ -797,7 +798,7 @@ git commit -m "feat(ansible): frontend role builds and deploys to cloudflare pag
       changed_when: false
       no_log: true
 
-    - name: buildx build and push (sha + latest tags)
+    - name: Buildx build and push (sha + latest tags)
       ansible.builtin.command:
         cmd: >-
           docker buildx build
