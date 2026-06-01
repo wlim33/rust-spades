@@ -1142,20 +1142,19 @@ Two consecutive green CI deploys is the gate for Phase 8 deletion.
 ### Task 16: Remove superseded files and unused secrets
 
 **Files:**
-- Delete: `deploy/install-docker.sh`, `docker-compose.yml`, `deploy/Caddyfile`, `deploy/env.template`, `web/scripts/deploy-cf-pages.sh`
-- Modify: `deploy/origin-certs.md` (fold into `ansible/README.md`, then delete) — handled in Task 18
+- Delete: `deploy/install-docker.sh`, `docker-compose.yml`, `deploy/Caddyfile`, `deploy/env.template`, `deploy/origin-certs.md`, `web/scripts/deploy-cf-pages.sh` (the `origin-certs.md` content was folded into `ansible/README.md` in Task 18)
 
 - [ ] **Step 1: Confirm two green CI deploys have happened (Phase 7 Step 5).** Do not proceed otherwise.
 
 - [ ] **Step 2: Delete the superseded files**
 
 ```bash
-git rm deploy/install-docker.sh docker-compose.yml deploy/Caddyfile deploy/env.template web/scripts/deploy-cf-pages.sh
+git rm deploy/install-docker.sh docker-compose.yml deploy/Caddyfile deploy/env.template deploy/origin-certs.md web/scripts/deploy-cf-pages.sh
 ```
 
 - [ ] **Step 3: Verify nothing else references them**
 
-Run: `grep -rn -e 'install-docker.sh' -e 'deploy/Caddyfile' -e 'deploy/env.template' -e 'deploy-cf-pages.sh' --exclude-dir=.git .`
+Run: `grep -rn -e 'install-docker.sh' -e 'deploy/Caddyfile' -e 'deploy/env.template' -e 'origin-certs.md' -e 'deploy-cf-pages.sh' --exclude-dir=.git .`
 Expected: only matches inside `docs/superpowers/` (this plan/spec) and `ansible/README.md`. Any reference in `Makefile`, `SERVER.md`, or a workflow must be updated/removed in the same commit.
 
 - [ ] **Step 4: Drop the now-unused GitHub secrets**
@@ -1236,7 +1235,11 @@ git commit -m "fix(ansible): skip docker/pnpm actions in check mode"
 
 **Files:**
 - Create: `ansible/README.md`
-- Delete: `deploy/origin-certs.md` (content folded in)
+
+Note: the README folds in the `deploy/origin-certs.md` content, but the actual
+deletion of `deploy/origin-certs.md` happens in Phase 8 (Task 16) alongside the
+other old-plumbing removals — the BUILD phase stays non-destructive while the old
+system is still live and the operator may still reference that doc.
 
 - [ ] **Step 1: Create `ansible/README.md`**
 
@@ -1312,18 +1315,7 @@ blocks into the vault and redeploy. Ensure Cloudflare SSL/TLS mode is **Full (st
 - Add Molecule for container-based role testing (out of scope today).
 ````
 
-- [ ] **Step 2: Delete the folded-in doc**
-
-```bash
-git rm deploy/origin-certs.md
-```
-
-- [ ] **Step 3: Update any lingering references**
-
-Run: `grep -rn 'origin-certs.md' --exclude-dir=.git . | grep -v docs/superpowers`
-Expected: no matches (or update `SERVER.md` to point at `ansible/README.md`).
-
-- [ ] **Step 4: Commit**
+- [ ] **Step 2: Commit**
 
 ```bash
 git add ansible/README.md
