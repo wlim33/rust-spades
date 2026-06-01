@@ -32,6 +32,7 @@ describe('settings route', () => {
     expect(emailInput.value).toBe('a@x');
     expect(document.querySelector('#current_password')).not.toBeNull();
     expect(document.querySelector('#new_password')).not.toBeNull();
+    expect(document.querySelector('.form-page.panel')).not.toBeNull();
     cleanup();
   });
 
@@ -53,6 +54,7 @@ describe('settings route', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(upd).toHaveBeenCalledWith('newalice@x', 'hunter2');
+    expect(document.querySelector('.field-success')?.textContent).toContain('Saved');
     cleanup();
   });
 });

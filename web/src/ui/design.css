@@ -512,6 +512,9 @@ button.seat-open {
 .field-error {
   color: var(--danger);
 }
+.field-success {
+  color: var(--success);
+}
 .form-field {
   display: flex;
   flex-direction: column;
