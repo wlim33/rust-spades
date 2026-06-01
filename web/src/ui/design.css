@@ -668,6 +668,9 @@ button.seat-open {
   padding: var(--space-2) 0;
   border-bottom: 1px solid var(--border);
 }
+.profile-games li:last-child {
+  border-bottom: none;
+}
 .profile-games code {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
