@@ -22,6 +22,10 @@ describe('login route', () => {
     expect(document.querySelector<HTMLInputElement>('#email')).not.toBeNull();
     expect(document.querySelector<HTMLInputElement>('#password')).not.toBeNull();
     expect(document.querySelector('[data-testid=submit]')).not.toBeNull();
+    expect(document.querySelector('.auth-card h2')).not.toBeNull();
+    // The OAuth buttons (oauthButtons, rendered after </form>) are dropped by happy-dom's
+    // HTML parser but render in real browsers; the component is covered standalone in
+    // auth-components.spec.ts.
     cleanup();
   });
 

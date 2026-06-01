@@ -3,6 +3,8 @@ import { effect, signal } from '@preact/signals-core';
 import { appShell } from '../ui/templates';
 import { formField } from '../ui/components/form-field';
 import { button } from '../ui/components/button';
+import { authCard } from '../ui/components/auth-card';
+import { oauthButtons } from '../ui/components/oauth-buttons';
 import { session } from '../state/session';
 import { ApiError } from '../api/client';
 import { navigateTo } from '../lib/util';
@@ -55,60 +57,63 @@ export const signup: RouteModule = {
     };
 
     const template = () =>
-      appShell(html`
-        <section class="form-page">
-          <h2>Sign up</h2>
-          ${error.value
-            ? html`<p data-testid="form-error" class="field-error">${error.value}</p>`
-            : nothing}
-          <form
-            @submit=${(e: Event) => {
-              e.preventDefault();
-              void onSubmit();
-            }}
-          >
-            ${formField({
-              id: 'email',
-              label: 'Email',
-              type: 'email',
-              value: email.value,
-              autocomplete: 'email',
-              onInput: (e) => {
-                email.value = (e.target as HTMLInputElement).value;
-              },
-            })}
-            ${formField({
-              id: 'username',
-              label: 'Username',
-              value: username.value,
-              autocomplete: 'username',
-              maxLength: 20,
-              onInput: (e) => {
-                username.value = (e.target as HTMLInputElement).value;
-              },
-            })}
-            ${formField({
-              id: 'password',
-              label: 'Password',
-              type: 'password',
-              value: password.value,
-              autocomplete: 'new-password',
-              onInput: (e) => {
-                password.value = (e.target as HTMLInputElement).value;
-              },
-            })}
-            <div class="form-actions">
-              ${button({
-                label: submitting.value ? 'Creating account…' : 'Sign up',
-                onClick: () => {},
-                variant: 'primary',
-                disabled: submitting.value,
+      appShell(
+        authCard({
+          title: 'Sign up',
+          children: html`
+            <form
+              @submit=${(e: Event) => {
+                e.preventDefault();
+                void onSubmit();
+              }}
+            >
+              ${error.value
+                ? html`<p data-testid="form-error" class="field-error">${error.value}</p>`
+                : nothing}
+              ${formField({
+                id: 'email',
+                label: 'Email',
+                type: 'email',
+                value: email.value,
+                autocomplete: 'email',
+                onInput: (e) => {
+                  email.value = (e.target as HTMLInputElement).value;
+                },
               })}
-            </div>
-          </form>
-          <p>Have an account? <a href="/login" data-link>Sign in</a></p>
-        </section>
-      `);
+              ${formField({
+                id: 'username',
+                label: 'Username',
+                value: username.value,
+                autocomplete: 'username',
+                maxLength: 20,
+                onInput: (e) => {
+                  username.value = (e.target as HTMLInputElement).value;
+                },
+              })}
+              ${formField({
+                id: 'password',
+                label: 'Password',
+                type: 'password',
+                value: password.value,
+                autocomplete: 'new-password',
+                onInput: (e) => {
+                  password.value = (e.target as HTMLInputElement).value;
+                },
+              })}
+              <div class="form-actions">
+                ${button({
+                  label: submitting.value ? 'Creating account…' : 'Sign up',
+                  onClick: () => {},
+                  variant: 'primary',
+                  disabled: submitting.value,
+                })}
+              </div>
+            </form>
+            ${oauthButtons({ next: '/' })}
+            <p class="switch">Have an account? <a href="/login" data-link>Sign in</a></p>
+          `,
+        }),
+      );
 
     const tagSubmit = (): void => {
       const btn = root.querySelector<HTMLButtonElement>('.form-actions .btn--primary');

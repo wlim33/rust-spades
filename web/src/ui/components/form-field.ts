@@ -1,4 +1,4 @@
-import { html, type TemplateResult } from 'lit-html';
+import { html, nothing, type TemplateResult } from 'lit-html';
 
 export type FormFieldOpts = {
   id: string;
@@ -14,7 +14,9 @@ export type FormFieldOpts = {
 };
 
 export function formField(opts: FormFieldOpts): TemplateResult {
-  return html`<div class="form-field">
+  const hasError = !!opts.error;
+  const errId = `${opts.id}-error`;
+  return html`<div class="form-field${hasError ? ' invalid' : ''}">
     <label for=${opts.id}>${opts.label}</label>
     <input
       id=${opts.id}
@@ -25,10 +27,12 @@ export function formField(opts: FormFieldOpts): TemplateResult {
       autocomplete=${opts.autocomplete ?? 'off'}
       maxlength=${opts.maxLength ?? 200}
       ?disabled=${opts.disabled ?? false}
+      aria-invalid=${hasError ? 'true' : nothing}
+      aria-describedby=${hasError ? errId : nothing}
       @input=${opts.onInput}
     />
     ${opts.error
-      ? html`<span data-testid="field-error" class="field-error">${opts.error}</span>`
+      ? html`<span id=${errId} data-testid="field-error" class="field-error">${opts.error}</span>`
       : null}
   </div>`;
 }
