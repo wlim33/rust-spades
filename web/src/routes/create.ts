@@ -97,39 +97,54 @@ export const create: RouteModule = {
           </label>
           <fieldset>
             <legend>Pick seat</legend>
-            ${(['A', 'B', 'C', 'D'] as const).map((s) =>
-              button({
-                label: `Seat ${s}`,
-                onClick: () => {
-                  seat.value = seat.value === s ? null : s;
-                },
-                variant: seat.value === s ? 'primary' : 'secondary',
-              }),
-            )}
+            <div class="seg" role="group" aria-label="Pick seat">
+              ${(['A', 'B', 'C', 'D'] as const).map(
+                (s) =>
+                  html`<button
+                    type="button"
+                    aria-pressed=${seat.value === s}
+                    @click=${() => {
+                      seat.value = seat.value === s ? null : s;
+                    }}
+                  >
+                    ${s}
+                  </button>`,
+              )}
+            </div>
           </fieldset>
           <fieldset>
             <legend>Points</legend>
-            ${([200, 300, 500] as const).map((p) =>
-              button({
-                label: String(p),
-                onClick: () => {
-                  points.value = p;
-                },
-                variant: points.value === p ? 'primary' : 'secondary',
-              }),
-            )}
+            <div class="seg" role="group" aria-label="Points">
+              ${([200, 300, 500] as const).map(
+                (p) =>
+                  html`<button
+                    type="button"
+                    aria-pressed=${points.value === p}
+                    @click=${() => {
+                      points.value = p;
+                    }}
+                  >
+                    ${p}
+                  </button>`,
+              )}
+            </div>
           </fieldset>
           <fieldset>
             <legend>Timer</legend>
-            ${TIMER_PRESETS.map((t, i) =>
-              button({
-                label: t.label,
-                onClick: () => {
-                  timerIdx.value = i;
-                },
-                variant: timerIdx.value === i ? 'primary' : 'secondary',
-              }),
-            )}
+            <div class="seg" role="group" aria-label="Timer">
+              ${TIMER_PRESETS.map(
+                (t, i) =>
+                  html`<button
+                    type="button"
+                    aria-pressed=${timerIdx.value === i}
+                    @click=${() => {
+                      timerIdx.value = i;
+                    }}
+                  >
+                    ${t.label}
+                  </button>`,
+              )}
+            </div>
           </fieldset>
           ${button({
             label: submitting.value ? 'Creating…' : 'Create',

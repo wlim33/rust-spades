@@ -468,6 +468,35 @@ button.seat-open {
   border-radius: var(--radius-md);
   padding: var(--space-3);
 }
+.seg {
+  display: flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--surface-raised);
+}
+.seg button {
+  flex: 1 1 auto;
+  min-width: 3rem;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.seg button:first-child {
+  border-left: none;
+}
+.seg button:hover:not([aria-pressed='true']) {
+  color: var(--fg);
+}
+.seg button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
 .field-error {
   color: var(--danger);
 }
