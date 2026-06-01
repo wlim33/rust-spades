@@ -922,7 +922,7 @@ Note: `--check` skips the `command`-based docker tasks (they only run when not i
 
 - [ ] **Step 2: yamllint locally**
 
-Run: `yamllint -c ansible/.yamllint ansible && yamllint .github/workflows/ansible.yml`
+Run: `yamllint -c ansible/.yamllint ansible .github/workflows/ansible.yml`
 Expected: no errors. (If `yamllint` is missing: `brew install yamllint`.)
 
 - [ ] **Step 3: Commit**
@@ -1182,13 +1182,23 @@ So the `--check` dry-run (Task 11 `dry-run` job, Task 13) never tries to run doc
 
 - [ ] **Step 1: Add `check_mode: false` + skip to each docker/pnpm `command` task**
 
-For every `ansible.builtin.command` running `docker ...`, `pnpm ...`, `npx ...` (in `roles/backend/tasks/main.yml`, `deploy.yml` Play 1, `roles/frontend/tasks/main.yml`), add:
+Add `when: not ansible_check_mode` to every **action** task — both the
+`ansible.builtin.command` tasks (`docker ...`, `pnpm ...`, `npx ...`) AND the
+`ansible.builtin.uri` health-gate / smoke-check tasks. In check mode the
+container/site is not updated, so an unguarded `uri` would either hit the
+network or fail against stale state and break the dry-run. Specifically guard:
 
-```yaml
-  when: not ansible_check_mode
-```
+- `roles/backend/tasks/main.yml`: "Log into ghcr.io for the pull", "Pull the
+  pinned image", "Bring the stack up", **and** "Wait for the backend to report
+  healthy" (the `uri` gate).
+- `deploy.yml` Play 1: "Log into ghcr.io" and "buildx build and push".
+- `roles/frontend/tasks/main.yml`: "Install web dependencies", "Build the
+  frontend bundle", "Deploy to Cloudflare Pages", **and** both "Smoke-check ..."
+  `uri` tasks.
 
-to the docker compose `pull`/`up`, ghcr `login`, buildx build, pnpm/npx tasks. Leave the `template`, `copy`, `file`, `uri` tasks unguarded so `--check --diff` still shows config diffs. Example for the pull task:
+Leave only the `template`, `copy`, and `file` tasks unguarded — those are the
+config-state tasks whose `--check --diff` output is the whole point of the dry
+run. Example for the pull task:
 
 ```yaml
 - name: Pull the pinned image
