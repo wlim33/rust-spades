@@ -1,0 +1,7 @@
+all:
+  children:
+    production:
+      hosts:
+        spades-prod:
+          ansible_host: "{{ lookup('env', 'DEPLOY_HOST') }}"
+          ansible_user: deploy
