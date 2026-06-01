@@ -1,0 +1,58 @@
+name: ansible
+
+on:
+  pull_request:
+    branches: [master]
+    paths: ['ansible/**', '.github/workflows/ansible.yml']
+  workflow_dispatch:
+
+jobs:
+  static:
+    name: lint + syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install ansible + linters
+        run: pipx install ansible-core && pipx inject ansible-core ansible-lint && pip install yamllint
+      - name: yamllint
+        run: yamllint -c ansible/.yamllint ansible
+      - name: Write CI vault password
+        run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > "$RUNNER_TEMP/vault-pass"
+      - name: ansible-lint
+        working-directory: ansible
+        env:
+          ANSIBLE_VAULT_PASSWORD_FILE: ${{ runner.temp }}/vault-pass
+        run: ansible-lint
+      - name: syntax-check
+        working-directory: ansible
+        env:
+          ANSIBLE_VAULT_PASSWORD_FILE: ${{ runner.temp }}/vault-pass
+        run: |
+          ansible-playbook provision.yml --syntax-check
+          ansible-playbook deploy.yml --syntax-check
+
+  dry-run:
+    name: deploy --check (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: pipx install ansible-core
+      - name: SSH + vault setup
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > "$RUNNER_TEMP/vault-pass"
+      - name: ansible-playbook deploy.yml --check --diff --tags backend
+        working-directory: ansible
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          ANSIBLE_VAULT_PASSWORD_FILE: ${{ runner.temp }}/vault-pass
+          ANSIBLE_PRIVATE_KEY_FILE: ~/.ssh/id_deploy
+        run: ansible-playbook deploy.yml --check --diff --tags backend
