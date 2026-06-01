@@ -13,6 +13,7 @@
   /* accents */
   --accent: #1f8f80;
   --accent-hover: #1a796c;
+  --accent-fg: #fff;
   --accent-2: #e0623f;
   --accent-3: #c08a1e;
 
@@ -96,6 +97,7 @@
 
   --accent: #3cc3b0;
   --accent-hover: #54d0be;
+  --accent-fg: #06231f;
   --accent-2: #f0835f;
   --accent-3: #e0aa3e;
 

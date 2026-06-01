@@ -33,7 +33,7 @@ export const profile: RouteModule = {
 
       render(
         appShell(html`
-          <section class="profile-page">
+          <section class="profile-page panel">
             ${l ? html`<p>Loading…</p>` : nothing}
             ${!l && nf
               ? html`<h2>Not found</h2>
@@ -57,10 +57,8 @@ export const profile: RouteModule = {
                   ${g.map(
                     (entry) =>
                       html`<li>
-                        <span
-                          >Game <code>${entry.game_id.slice(0, 8)}</code> — seat
-                          ${entry.seat_index}</span
-                        >
+                        <code>${entry.game_id.slice(0, 8)}</code>
+                        <span class="profile-games__seat">Seat ${entry.seat_index}</span>
                       </li>`,
                   )}
                 </ul>`

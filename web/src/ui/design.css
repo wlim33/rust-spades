@@ -94,15 +94,12 @@ main#root {
 }
 .btn--primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-fg);
   box-shadow: var(--shadow-1);
 }
 .btn--primary:hover {
   background: var(--accent-hover);
   box-shadow: var(--shadow-2);
-}
-[data-theme='dark'] .btn--primary {
-  color: #06231f;
 }
 .btn--secondary {
   background: var(--surface-raised);
@@ -398,6 +395,12 @@ main#root {
   gap: var(--space-2);
   width: 100%;
 }
+.seat-grid [data-team='1'] {
+  --team: var(--accent);
+}
+.seat-grid [data-team='2'] {
+  --team: var(--accent-2);
+}
 .seat-taken,
 .seat-open {
   display: flex;
@@ -407,6 +410,7 @@ main#root {
   padding: var(--space-3);
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--team, var(--border));
   background: var(--surface-raised);
 }
 .seat-taken.mine {
@@ -440,7 +444,9 @@ button.seat-open {
   gap: var(--space-2);
   padding: var(--space-3);
   border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--fg) 6%, transparent);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-1);
   width: 100%;
 }
 .join-modal input {
@@ -471,8 +477,43 @@ button.seat-open {
   border-radius: var(--radius-md);
   padding: var(--space-3);
 }
+.seg {
+  display: flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--surface-raised);
+}
+.seg button {
+  flex: 1 1 auto;
+  min-width: 3rem;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.seg button:first-child {
+  border-left: none;
+}
+.seg button:focus-visible {
+  outline-offset: -2px;
+}
+.seg button:hover:not([aria-pressed='true']) {
+  color: var(--fg);
+}
+.seg button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
 .field-error {
   color: var(--danger);
+}
+.field-success {
+  color: var(--success);
 }
 .form-field {
   display: flex;
@@ -620,10 +661,27 @@ button.seat-open {
 .profile-games {
   list-style: none;
   padding: 0;
+  margin: 0;
 }
 .profile-games li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
   padding: var(--space-2) 0;
   border-bottom: 1px solid var(--border);
+}
+.profile-games li:last-child {
+  border-bottom: none;
+}
+.profile-games code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+.profile-games__seat {
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
 }
 
 .toast-stack {
@@ -1055,6 +1113,16 @@ h3 {
   }
 }
 
+.panel,
+.auth-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+.panel {
+  padding: var(--space-6);
+}
 .auth-card {
   display: flex;
   flex-direction: column;
@@ -1062,10 +1130,6 @@ h3 {
   width: 100%;
   max-width: 24rem;
   padding: var(--space-6);
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-2);
 }
 .auth-card__brand {
   display: flex;

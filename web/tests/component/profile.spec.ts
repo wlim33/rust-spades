@@ -50,6 +50,9 @@ describe('profile route', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(document.body.textContent).toContain('alice');
     expect(document.body.textContent).toContain('g1abcdef');
+    expect(document.querySelector('.profile-page.panel')).not.toBeNull();
+    expect(document.querySelector('.profile-games code')?.textContent).toBe('g1abcdef');
+    expect(document.querySelector('.profile-games__seat')?.textContent).toContain('0');
     cleanup();
   });
 

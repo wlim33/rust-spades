@@ -62,13 +62,13 @@ export const settings: RouteModule = {
       const u = session.currentUser.value;
       if (!u) return appShell(html`<p>Redirecting…</p>`);
       return appShell(html`
-        <section class="form-page">
+        <section class="form-page panel">
           <h2>Settings</h2>
           <p>Signed in as <strong>${u.username}</strong> (${u.email})</p>
           ${error.value
             ? html`<p data-testid="form-error" class="field-error">${error.value}</p>`
             : nothing}
-          ${saved.value ? html`<p style="color: var(--color-accent)">Saved.</p>` : nothing}
+          ${saved.value ? html`<p class="field-success">Saved.</p>` : nothing}
           ${formField({
             id: 'email',
             label: 'Email',
