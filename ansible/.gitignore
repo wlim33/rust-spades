@@ -1,0 +1,4 @@
+# Vault password files and anything locally decrypted are never committed.
+.vault-pass
+.vault-pass-dev
+*.decrypted
