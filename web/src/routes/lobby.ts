@@ -28,6 +28,7 @@ export function renderLobby(args: LobbyArgs): void {
   const joiningSeat = signal<'A' | 'B' | 'C' | 'D' | null>(null);
   const joinName = signal('');
   const errorMsg = signal<string | null>(null);
+  const copied = signal(false);
   const saved = loadSession(args.shortId);
   const myPlayerId = signal<string | null>(saved?.pid ?? null);
 
@@ -101,6 +102,10 @@ export function renderLobby(args: LobbyArgs): void {
     const url = `${location.origin}/play/${args.shortId}`;
     try {
       await navigator.clipboard.writeText(url);
+      copied.value = true;
+      setTimeout(() => {
+        copied.value = false;
+      }, 1500);
     } catch {
       // ignore
     }
@@ -126,6 +131,7 @@ export function renderLobby(args: LobbyArgs): void {
             if (occupant) {
               return html`<div
                 class="seat-taken ${occupant.player_id === myPlayerId.value ? 'mine' : ''}"
+                data-team=${SEAT_TEAMS[s]}
               >
                 <strong>Seat ${s}</strong>
                 <span>Team ${SEAT_TEAMS[s]}</span>
@@ -134,13 +140,17 @@ export function renderLobby(args: LobbyArgs): void {
               </div>`;
             }
             if (myPlayerId.value) {
-              return html`<div class="seat-open">
+              return html`<div class="seat-open" data-team=${SEAT_TEAMS[s]}>
                 <strong>Seat ${s}</strong>
                 <span>Team ${SEAT_TEAMS[s]}</span>
                 <span>Open</span>
               </div>`;
             }
-            return html`<button class="seat-open btn btn--primary" @click=${() => onJoinClick(s)}>
+            return html`<button
+              class="seat-open btn btn--primary"
+              data-team=${SEAT_TEAMS[s]}
+              @click=${() => onJoinClick(s)}
+            >
               <strong>Seat ${s}</strong>
               <span>Team ${SEAT_TEAMS[s]}</span>
             </button>`;
@@ -176,7 +186,11 @@ export function renderLobby(args: LobbyArgs): void {
             >Share this link:
             <input type="text" readonly .value=${`${location.origin}/play/${args.shortId}`} />
           </label>
-          ${button({ label: 'Copy', onClick: () => void copyShareLink(), variant: 'secondary' })}
+          ${button({
+            label: copied.value ? 'Copied!' : 'Copy',
+            onClick: () => void copyShareLink(),
+            variant: 'secondary',
+          })}
         </div>
 
         ${isCreator()
