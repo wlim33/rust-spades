@@ -1104,3 +1104,9 @@ h3 {
   flex-direction: column;
   gap: var(--space-3);
 }
+.auth-card .switch {
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  margin: 0;
+}
