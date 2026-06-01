@@ -1,0 +1,39 @@
+- name: Resolve the repository root
+  ansible.builtin.set_fact:
+    frontend_repo_root: "{{ playbook_dir }}/.."
+
+- name: Install web dependencies
+  ansible.builtin.command:
+    cmd: pnpm install --frozen-lockfile
+    chdir: "{{ frontend_repo_root }}/web"
+  changed_when: true
+
+- name: Build the frontend bundle
+  ansible.builtin.command:
+    cmd: pnpm build
+    chdir: "{{ frontend_repo_root }}/web"
+  changed_when: true
+
+- name: Deploy to Cloudflare Pages
+  ansible.builtin.command:
+    cmd: >-
+      npx --yes wrangler pages deploy web/dist
+      --project-name={{ cf_pages_project }}
+      --branch={{ cf_pages_branch }}
+      --commit-dirty=true
+    chdir: "{{ frontend_repo_root }}"
+  environment:
+    CLOUDFLARE_API_TOKEN: "{{ vault_cf_api_token }}"
+    CLOUDFLARE_ACCOUNT_ID: "{{ vault_cf_account_id }}"
+  changed_when: true
+  no_log: true
+
+- name: Smoke-check the frontend
+  ansible.builtin.uri:
+    url: "https://{{ app_domain }}/"
+    status_code: 200
+
+- name: Smoke-check the backend health endpoint
+  ansible.builtin.uri:
+    url: "https://{{ spades_domain }}/health"
+    status_code: 200
