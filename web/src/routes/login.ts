@@ -4,6 +4,7 @@ import { appShell } from '../ui/templates';
 import { formField } from '../ui/components/form-field';
 import { button } from '../ui/components/button';
 import { authCard } from '../ui/components/auth-card';
+import { oauthButtons } from '../ui/components/oauth-buttons';
 import { session } from '../state/session';
 import { ApiError } from '../api/client';
 import { navigateTo } from '../lib/util';
@@ -78,21 +79,7 @@ export const login: RouteModule = {
                 })}
               </div>
             </form>
-            <div class="auth-divider">or</div>
-            <button
-              class="btn btn--secondary btn--block"
-              type="button"
-              @click=${() => session.startOauth('google', next)}
-            >
-              Continue with Google
-            </button>
-            <button
-              class="btn btn--secondary btn--block"
-              type="button"
-              @click=${() => session.startOauth('github', next)}
-            >
-              Continue with GitHub
-            </button>
+            ${oauthButtons({ next })}
             <p class="switch">No account? <a href="/signup" data-link>Sign up</a></p>
           `,
         }),

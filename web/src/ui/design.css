@@ -1099,3 +1099,8 @@ h3 {
 .btn--block {
   width: 100%;
 }
+.auth-oauth {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}

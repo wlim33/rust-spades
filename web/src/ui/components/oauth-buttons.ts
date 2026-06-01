@@ -3,7 +3,10 @@ import { session } from '../../state/session';
 import { icon } from '../icon';
 
 export function oauthButtons(opts: { next: string }): TemplateResult {
-  return html`<div class="auth-divider">or</div>
+  // Single root element: a multi-root template returned from a nested `${fn()}`
+  // binding does not render reliably across renderers, so wrap the group.
+  return html`<div class="auth-oauth">
+    <div class="auth-divider">or</div>
     <button
       class="btn btn--secondary btn--block"
       type="button"
@@ -17,5 +20,6 @@ export function oauthButtons(opts: { next: string }): TemplateResult {
       @click=${() => session.startOauth('github', opts.next)}
     >
       ${icon('github-fill')} Continue with GitHub
-    </button>`;
+    </button>
+  </div>`;
 }
