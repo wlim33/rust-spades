@@ -72,7 +72,8 @@ inventory = inventory/production.yml
 roles_path = roles
 host_key_checking = True
 retry_files_enabled = False
-stdout_callback = yaml
+stdout_callback = default
+result_format = yaml
 nocows = True
 interpreter_python = auto_silent
 
