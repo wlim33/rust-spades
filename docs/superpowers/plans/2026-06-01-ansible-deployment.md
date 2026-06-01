@@ -62,6 +62,7 @@ ansible/
 **Files:**
 - Create: `ansible/ansible.cfg`
 - Create: `ansible/.gitignore`
+- Create: `ansible/.yamllint`
 
 - [ ] **Step 1: Create `ansible/ansible.cfg`**
 
@@ -86,6 +87,26 @@ pipelining = True
 .vault-pass
 .vault-pass-dev
 *.decrypted
+```
+
+- [ ] **Step 2b: Create `ansible/.yamllint`**
+
+Relaxes line-length (long comments/folded strings) and keeps Ansible-friendly
+truthy handling. `ansible-lint` auto-discovers this file.
+
+```yaml
+extends: default
+
+rules:
+  line-length:
+    max: 160
+    level: warning
+  truthy:
+    allowed-values: ['true', 'false']
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
 ```
 
 - [ ] **Step 3: Create the throwaway dev vault password (gitignored, build-phase only)**
@@ -840,7 +861,7 @@ jobs:
       - name: Install ansible + linters
         run: pipx install ansible-core && pipx inject ansible-core ansible-lint && pip install yamllint
       - name: yamllint
-        run: yamllint ansible
+        run: yamllint -c ansible/.yamllint ansible
       - name: Write CI vault password
         run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > "$RUNNER_TEMP/vault-pass"
       - name: ansible-lint
@@ -883,8 +904,8 @@ Note: `--check` skips the `command`-based docker tasks (they only run when not i
 
 - [ ] **Step 2: yamllint locally**
 
-Run: `yamllint ansible .github/workflows/ansible.yml`
-Expected: no errors. (If `yamllint` is missing: `pip install yamllint`.)
+Run: `yamllint -c ansible/.yamllint ansible && yamllint .github/workflows/ansible.yml`
+Expected: no errors. (If `yamllint` is missing: `brew install yamllint`.)
 
 - [ ] **Step 3: Commit**
 
