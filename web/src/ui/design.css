@@ -94,15 +94,12 @@ main#root {
 }
 .btn--primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-fg);
   box-shadow: var(--shadow-1);
 }
 .btn--primary:hover {
   background: var(--accent-hover);
   box-shadow: var(--shadow-2);
-}
-[data-theme='dark'] .btn--primary {
-  color: #06231f;
 }
 .btn--secondary {
   background: var(--surface-raised);
@@ -1055,6 +1052,16 @@ h3 {
   }
 }
 
+.panel,
+.auth-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+.panel {
+  padding: var(--space-6);
+}
 .auth-card {
   display: flex;
   flex-direction: column;
@@ -1062,10 +1069,6 @@ h3 {
   width: 100%;
   max-width: 24rem;
   padding: var(--space-6);
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-2);
 }
 .auth-card__brand {
   display: flex;
