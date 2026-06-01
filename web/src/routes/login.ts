@@ -3,6 +3,7 @@ import { effect, signal } from '@preact/signals-core';
 import { appShell } from '../ui/templates';
 import { formField } from '../ui/components/form-field';
 import { button } from '../ui/components/button';
+import { authCard } from '../ui/components/auth-card';
 import { session } from '../state/session';
 import { ApiError } from '../api/client';
 import { navigateTo } from '../lib/util';
@@ -35,61 +36,67 @@ export const login: RouteModule = {
     };
 
     const template = () =>
-      appShell(html`
-        <section class="form-page">
-          <h2>Sign in</h2>
-          ${error.value
-            ? html`<p data-testid="form-error" class="field-error">${error.value}</p>`
-            : nothing}
-          <form
-            @submit=${(e: Event) => {
-              e.preventDefault();
-              void onSubmit();
-            }}
-          >
-            ${formField({
-              id: 'email',
-              label: 'Email',
-              type: 'email',
-              value: email.value,
-              autocomplete: 'email',
-              onInput: (e) => {
-                email.value = (e.target as HTMLInputElement).value;
-              },
-            })}
-            ${formField({
-              id: 'password',
-              label: 'Password',
-              type: 'password',
-              value: password.value,
-              autocomplete: 'current-password',
-              onInput: (e) => {
-                password.value = (e.target as HTMLInputElement).value;
-              },
-            })}
-            <div class="form-actions">
-              ${button({
-                label: submitting.value ? 'Signing in…' : 'Sign in',
-                onClick: () => {},
-                variant: 'primary',
-                disabled: submitting.value,
+      appShell(
+        authCard({
+          title: 'Sign in',
+          children: html`
+            <form
+              @submit=${(e: Event) => {
+                e.preventDefault();
+                void onSubmit();
+              }}
+            >
+              ${error.value
+                ? html`<p data-testid="form-error" class="field-error">${error.value}</p>`
+                : nothing}
+              ${formField({
+                id: 'email',
+                label: 'Email',
+                type: 'email',
+                value: email.value,
+                autocomplete: 'email',
+                onInput: (e) => {
+                  email.value = (e.target as HTMLInputElement).value;
+                },
               })}
-            </div>
-          </form>
-          <p class="oauth-divider">or</p>
-          ${button({
-            label: 'Sign in with Google',
-            onClick: () => session.startOauth('google', next),
-            variant: 'secondary',
-          })}
-          ${button({
-            label: 'Sign in with GitHub',
-            onClick: () => session.startOauth('github', next),
-            variant: 'secondary',
-          })}
-          <p>No account? <a href="/signup" data-link>Sign up</a></p>
-        </section>
-      `);
+              ${formField({
+                id: 'password',
+                label: 'Password',
+                type: 'password',
+                value: password.value,
+                autocomplete: 'current-password',
+                onInput: (e) => {
+                  password.value = (e.target as HTMLInputElement).value;
+                },
+              })}
+              <div class="form-actions">
+                ${button({
+                  label: submitting.value ? 'Signing in…' : 'Sign in',
+                  onClick: () => {},
+                  variant: 'primary',
+                  disabled: submitting.value,
+                })}
+              </div>
+            </form>
+            <div class="auth-divider">or</div>
+            <button
+              class="btn btn--secondary btn--block"
+              type="button"
+              @click=${() => session.startOauth('google', next)}
+            >
+              Continue with Google
+            </button>
+            <button
+              class="btn btn--secondary btn--block"
+              type="button"
+              @click=${() => session.startOauth('github', next)}
+            >
+              Continue with GitHub
+            </button>
+            <p class="switch">No account? <a href="/signup" data-link>Sign up</a></p>
+          `,
+        }),
+      );
 
     const tagSubmit = (): void => {
       const btn = root.querySelector<HTMLButtonElement>('.form-actions .btn--primary');

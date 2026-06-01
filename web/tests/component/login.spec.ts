@@ -22,6 +22,8 @@ describe('login route', () => {
     expect(document.querySelector<HTMLInputElement>('#email')).not.toBeNull();
     expect(document.querySelector<HTMLInputElement>('#password')).not.toBeNull();
     expect(document.querySelector('[data-testid=submit]')).not.toBeNull();
+    expect(document.querySelector('.auth-card h2')).not.toBeNull();
+    expect(document.querySelectorAll('button.btn--secondary').length).toBe(2);
     cleanup();
   });
 

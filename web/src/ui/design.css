@@ -502,11 +502,6 @@ button.seat-open {
 .form-actions .btn {
   flex: 1;
 }
-.oauth-divider {
-  text-align: center;
-  color: var(--fg-muted);
-  margin: var(--space-3) 0;
-}
 
 .avatar-menu {
   position: relative;

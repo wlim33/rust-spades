@@ -3,6 +3,7 @@ import { effect, signal } from '@preact/signals-core';
 import { appShell } from '../ui/templates';
 import { formField } from '../ui/components/form-field';
 import { button } from '../ui/components/button';
+import { authCard } from '../ui/components/auth-card';
 import { session } from '../state/session';
 import { ApiError } from '../api/client';
 import { navigateTo } from '../lib/util';
@@ -41,44 +42,49 @@ export const oauthComplete: RouteModule = {
     };
 
     const template = () =>
-      appShell(html`
-        <section class="form-page">
-          <h2>Choose a username</h2>
-          <p>You're almost in. Pick a public username to finish creating your account.</p>
-          ${error.value
-            ? html`<p data-testid="form-error" class="field-error">${error.value}</p>`
-            : nothing}
-          <form
-            @submit=${(e: Event) => {
-              e.preventDefault();
-              void onSubmit();
-            }}
-          >
-            ${formField({
-              id: 'username',
-              label: 'Username',
-              value: username.value,
-              autocomplete: 'username',
-              maxLength: 20,
-              onInput: (e) => {
-                username.value = (e.target as HTMLInputElement).value;
-              },
-            })}
-            <div class="form-actions">
-              ${button({
-                label: submitting.value ? 'Finishing…' : 'Continue',
-                onClick: () => {},
-                variant: 'primary',
-                disabled: submitting.value,
+      appShell(
+        authCard({
+          title: 'Choose a username',
+          children: html`
+            <p>You're almost in. Pick a public username to finish creating your account.</p>
+            <form
+              @submit=${(e: Event) => {
+                e.preventDefault();
+                void onSubmit();
+              }}
+            >
+              ${error.value
+                ? html`<p data-testid="form-error" class="field-error">${error.value}</p>`
+                : nothing}
+              ${formField({
+                id: 'username',
+                label: 'Username',
+                value: username.value,
+                autocomplete: 'username',
+                maxLength: 20,
+                onInput: (e) => {
+                  username.value = (e.target as HTMLInputElement).value;
+                },
               })}
-            </div>
-          </form>
-        </section>
-      `);
+              <div class="form-actions">
+                ${button({
+                  label: submitting.value ? 'Finishing…' : 'Continue',
+                  onClick: () => {},
+                  variant: 'primary',
+                  disabled: submitting.value,
+                })}
+              </div>
+            </form>
+          `,
+        }),
+      );
 
     const tagSubmit = (): void => {
       const btn = root.querySelector<HTMLButtonElement>('.form-actions .btn--primary');
-      if (btn) btn.setAttribute('type', 'submit');
+      if (btn) {
+        if (!btn.hasAttribute('data-testid')) btn.setAttribute('data-testid', 'submit');
+        btn.setAttribute('type', 'submit');
+      }
     };
 
     const dispose = effect(() => {
