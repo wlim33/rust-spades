@@ -298,11 +298,14 @@ This is the declarative replacement for `deploy/install-docker.sh`. Every task i
 - [ ] **Step 1: Create `ansible/roles/common/handlers/main.yml`**
 
 ```yaml
-- name: reload systemd
+- name: Reload systemd
   become: true
   ansible.builtin.systemd:
     daemon_reload: true
 ```
+
+(Handler/task names use Sentence case to satisfy ansible-lint `name[casing]`;
+registered vars are role-prefixed to satisfy `var-naming[no-role-prefix]`.)
 
 - [ ] **Step 2: Create `ansible/roles/common/tasks/main.yml`**
 
@@ -400,8 +403,8 @@ This is the declarative replacement for `deploy/install-docker.sh`. Every task i
   ansible.builtin.command:
     cmd: docker login {{ ghcr_registry }} -u {{ ghcr_username }} --password-stdin
     stdin: "{{ vault_ghcr_token }}"
-  register: ghcr_login
-  changed_when: "'Login Succeeded' in ghcr_login.stdout"
+  register: common_ghcr_login
+  changed_when: "'Login Succeeded' in common_ghcr_login.stdout"
 
 # --- legacy cleanup (from the old bash flow) -------------------------------
 - name: Disable the legacy spades-server systemd unit
@@ -600,12 +603,15 @@ git commit -m "feat(ansible): managed .env template sourced from vault"
 - [ ] **Step 1: Create `ansible/roles/backend/handlers/main.yml`**
 
 ```yaml
-- name: restart caddy
+- name: Restart caddy
   ansible.builtin.command:
     cmd: docker compose restart caddy
     chdir: "{{ app_dir }}"
   changed_when: true
 ```
+
+(Sentence-case name per `name[casing]`; the matching `notify:` lines below use
+the same `Restart caddy` string.)
 
 - [ ] **Step 2: Create `ansible/roles/backend/tasks/main.yml`**
 
@@ -634,7 +640,7 @@ git commit -m "feat(ansible): managed .env template sourced from vault"
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: "0644"
-  notify: restart caddy
+  notify: Restart caddy
 
 # --- Origin CA cert + key from vault --------------------------------------
 - name: Install the Origin CA certificate
@@ -645,7 +651,7 @@ git commit -m "feat(ansible): managed .env template sourced from vault"
     group: "{{ ansible_user }}"
     mode: "0640"
   no_log: true
-  notify: restart caddy
+  notify: Restart caddy
 
 - name: Install the Origin CA private key
   ansible.builtin.copy:
@@ -655,14 +661,13 @@ git commit -m "feat(ansible): managed .env template sourced from vault"
     group: "{{ ansible_user }}"
     mode: "0600"
   no_log: true
-  notify: restart caddy
+  notify: Restart caddy
 
 # --- converge the stack ----------------------------------------------------
 - name: Log into ghcr.io for the pull
   ansible.builtin.command:
     cmd: docker login {{ ghcr_registry }} -u {{ ghcr_username }} --password-stdin
     stdin: "{{ vault_ghcr_token }}"
-  register: ghcr_login
   changed_when: false
   no_log: true
 
