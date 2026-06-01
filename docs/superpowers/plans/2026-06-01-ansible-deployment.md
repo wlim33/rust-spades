@@ -76,6 +76,10 @@ stdout_callback = default
 result_format = yaml
 nocows = True
 interpreter_python = auto_silent
+# Steady-state default: prod vault password in ansible/.vault-pass (gitignored,
+# operator-created). ANSIBLE_VAULT_PASSWORD_FILE overrides — CI sets it, and the
+# build phase points it at .vault-pass-dev.
+vault_password_file = .vault-pass
 
 [ssh_connection]
 pipelining = True
@@ -395,8 +399,8 @@ registered vars are role-prefixed to satisfy `var-naming[no-role-prefix]`.)
   ansible.builtin.file:
     path: "{{ data_dir }}"
     state: directory
-    owner: "{{ container_uid }}"
-    group: "{{ container_uid }}"
+    owner: "{{ container_uid | string }}"
+    group: "{{ container_uid | string }}"
     mode: "0755"
 
 # --- ghcr login (so the VPS can pull the private image) --------------------
@@ -406,6 +410,8 @@ registered vars are role-prefixed to satisfy `var-naming[no-role-prefix]`.)
     stdin: "{{ vault_ghcr_token }}"
   register: common_ghcr_login
   changed_when: "'Login Succeeded' in common_ghcr_login.stdout"
+  no_log: true
+  when: not ansible_check_mode
 
 # --- legacy cleanup (from the old bash flow) -------------------------------
 - name: Disable the legacy spades-server systemd unit
@@ -617,6 +623,15 @@ the same `Restart caddy` string.)
 - [ ] **Step 2: Create `ansible/roles/backend/tasks/main.yml`**
 
 ```yaml
+# --- safety: never deploy the mutable :latest tag -------------------------
+- name: Refuse to deploy the mutable ':latest' tag
+  ansible.builtin.assert:
+    that: image_tag != "latest"
+    fail_msg: >-
+      image_tag must be a specific commit SHA for an immutable, rollback-able
+      deploy (got 'latest'). Pass -e image_tag=<sha>.
+    quiet: true
+
 # --- render config onto the VPS -------------------------------------------
 - name: Render docker-compose.yml
   ansible.builtin.template:
@@ -917,7 +932,7 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           ANSIBLE_VAULT_PASSWORD_FILE: ${{ runner.temp }}/vault-pass
           ANSIBLE_PRIVATE_KEY_FILE: ~/.ssh/id_deploy
-        run: ansible-playbook deploy.yml --check --diff --tags backend
+        run: ansible-playbook deploy.yml --check --diff --tags backend -e image_tag=$(git rev-parse --short=12 HEAD)
 ```
 
 Note: `--check` skips the `command`-based docker tasks (they only run when not in check mode is not automatic — see Task 17 for the explicit guard added before enabling this job against prod). For the first introduction this job is wired but only exercised after Task 17.
