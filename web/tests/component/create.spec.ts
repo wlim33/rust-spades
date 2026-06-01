@@ -25,9 +25,19 @@ describe('create route', () => {
 
   it('clicking a seat segment moves aria-pressed to it', () => {
     const cleanup = create.render({}, { path: '/create', search: new URLSearchParams() });
-    const seatSeg = document.querySelectorAll('.seg')[0]!;
+    const seatSeg = document.querySelector('.seg[aria-label="Pick seat"]')!;
     seatSeg.querySelectorAll('button')[0]!.click(); // 'A'
     expect(seatSeg.querySelector('button[aria-pressed="true"]')?.textContent?.trim()).toBe('A');
+    cleanup();
+  });
+
+  it('clicking the selected seat again de-selects it', () => {
+    const cleanup = create.render({}, { path: '/create', search: new URLSearchParams() });
+    const seatSeg = document.querySelector('.seg[aria-label="Pick seat"]')!;
+    const seatA = seatSeg.querySelectorAll('button')[0]!;
+    seatA.click(); // select A
+    seatA.click(); // de-select A
+    expect(seatSeg.querySelector('button[aria-pressed="true"]')).toBeNull();
     cleanup();
   });
 

@@ -490,6 +490,9 @@ button.seat-open {
 .seg button:first-child {
   border-left: none;
 }
+.seg button:focus-visible {
+  outline-offset: -2px;
+}
 .seg button:hover:not([aria-pressed='true']) {
   color: var(--fg);
 }
