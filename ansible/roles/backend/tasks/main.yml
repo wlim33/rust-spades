@@ -52,18 +52,21 @@
     stdin: "{{ vault_ghcr_token }}"
   changed_when: false
   no_log: true
+  when: not ansible_check_mode
 
 - name: Pull the pinned image
   ansible.builtin.command:
     cmd: docker compose pull
     chdir: "{{ app_dir }}"
   changed_when: true
+  when: not ansible_check_mode
 
 - name: Bring the stack up
   ansible.builtin.command:
     cmd: docker compose up -d --remove-orphans
     chdir: "{{ app_dir }}"
   changed_when: true
+  when: not ansible_check_mode
 
 # --- health gate -----------------------------------------------------------
 - name: Wait for the backend to report healthy
@@ -74,3 +77,4 @@
   retries: 12
   delay: 5
   until: backend_health.status == 200
+  when: not ansible_check_mode

@@ -11,6 +11,7 @@
         stdin: "{{ vault_ghcr_token }}"
       changed_when: false
       no_log: true
+      when: not ansible_check_mode
 
     - name: Buildx build and push (sha + latest tags)
       ansible.builtin.command:
@@ -22,6 +23,7 @@
           --push
           {{ playbook_dir }}/..
       changed_when: true
+      when: not ansible_check_mode
 
 # Play 2 — converge the backend stack on the VPS.
 - name: Deploy the backend

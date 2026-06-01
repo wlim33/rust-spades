@@ -7,12 +7,14 @@
     cmd: pnpm install --frozen-lockfile
     chdir: "{{ frontend_repo_root }}/web"
   changed_when: true
+  when: not ansible_check_mode
 
 - name: Build the frontend bundle
   ansible.builtin.command:
     cmd: pnpm build
     chdir: "{{ frontend_repo_root }}/web"
   changed_when: true
+  when: not ansible_check_mode
 
 - name: Deploy to Cloudflare Pages
   ansible.builtin.command:
@@ -27,13 +29,16 @@
     CLOUDFLARE_ACCOUNT_ID: "{{ vault_cf_account_id }}"
   changed_when: true
   no_log: true
+  when: not ansible_check_mode
 
 - name: Smoke-check the frontend
   ansible.builtin.uri:
     url: "https://{{ app_domain }}/"
     status_code: 200
+  when: not ansible_check_mode
 
 - name: Smoke-check the backend health endpoint
   ansible.builtin.uri:
     url: "https://{{ spades_domain }}/health"
     status_code: 200
+  when: not ansible_check_mode
