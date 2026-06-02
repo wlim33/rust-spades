@@ -11,6 +11,7 @@ pub mod game_actor;
 pub mod game_manager;
 pub mod handlers_auth;
 pub mod handlers_users;
+pub mod leaderboard;
 pub mod lock_util;
 pub mod matchmaking;
 pub mod oasgen_impls;
