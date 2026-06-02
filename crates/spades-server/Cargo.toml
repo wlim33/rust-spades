@@ -53,3 +53,5 @@ clap = { version = "4", features = ["derive", "env"] }
 axum-test = { version = "18", features = ["reqwest", "ws"] }
 ntest = "0.9"
 wiremock = "0.6"
+# Enables `tokio::time::pause`/`advance` for deterministic timer tests.
+tokio = { version = "1.0", features = ["test-util"] }

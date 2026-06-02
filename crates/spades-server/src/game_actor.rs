@@ -211,7 +211,15 @@ pub struct GameActor {
     timer_generation: u64,
     ai_config: Option<AiPlayerConfig>,
     db: Option<Arc<SqliteStore>>,
-    self_tx: mpsc::UnboundedSender<GameCmd>,
+    /// A *weak* self-reference, handed to timer tasks so they can deliver
+    /// `TimerFired`. It is deliberately weak: a strong clone would keep the
+    /// mpsc inbox open for the actor's whole life, so `inbox.recv()` would
+    /// never return `None` and the task would outlive the last `GameHandle`
+    /// (leaking the task — and any WS broadcast subscribers — after
+    /// `remove_game`). With a weak handle, dropping every `GameHandle` closes
+    /// the inbox and the actor exits as documented; a timer that fires after
+    /// teardown simply fails to upgrade and no-ops.
+    self_tx: mpsc::WeakUnboundedSender<GameCmd>,
 }
 
 impl GameActor {
@@ -236,7 +244,7 @@ impl GameActor {
             timer_generation: 0,
             ai_config,
             db,
-            self_tx: cmd_tx.clone(),
+            self_tx: cmd_tx.downgrade(),
         };
         tokio::spawn(actor.run(cmd_rx));
         GameHandle {
@@ -564,7 +572,12 @@ impl GameActor {
         let self_tx = self.self_tx.clone();
         let handle = tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(remaining_ms)).await;
-            let _ = self_tx.send(GameCmd::TimerFired { generation });
+            // Upgrade may fail if the actor was torn down (all `GameHandle`s
+            // dropped) while this timer slept — in that case there is nothing
+            // to fire at, so no-op.
+            if let Some(tx) = self_tx.upgrade() {
+                let _ = tx.send(GameCmd::TimerFired { generation });
+            }
         });
         self.active_timer = Some(ActiveTimer {
             handle,

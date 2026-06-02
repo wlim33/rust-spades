@@ -1157,6 +1157,230 @@ mod tests {
         );
     }
 
+    // ---- WebSocket resilience: disconnect / reconnect / timeout --------
+    //
+    // These exercise the lifecycle tail of `handle_game_ws` that the
+    // happy-path tests above never reach: presence cleanup on disconnect,
+    // catch-up after a real reconnect, timeout aborts arriving on a live
+    // socket, and the client-driven keepalive path.
+
+    #[tokio::test]
+    async fn ws_disconnect_broadcasts_updated_presence_to_remaining_subscriber() {
+        // Two players watch the same game. When A's socket drops, the
+        // disconnect tail (`ws.rs` ~225) must decrement A's connection count
+        // and broadcast a fresh presence snapshot — which B, still connected,
+        // observes as A `connected: false`.
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+
+        let path_a = format!(
+            "/games/{}/ws?player_id={}",
+            create.game_id, create.player_ids[0]
+        );
+        let path_b = format!(
+            "/games/{}/ws?player_id={}",
+            create.game_id, create.player_ids[1]
+        );
+        let ws_a = server.get_websocket(&path_a).await.into_websocket().await;
+        let mut ws_b = server.get_websocket(&path_b).await.into_websocket().await;
+
+        // Drop A. A graceful close drives the server's `Message::Close` arm.
+        ws_a.close().await;
+
+        // B drains until it sees A reported as disconnected.
+        let a_id = create.player_ids[0].to_string();
+        for _ in 0..32 {
+            let msg: serde_json::Value = ws_b.receive_json().await;
+            if msg["event"] != "presence_changed" {
+                continue;
+            }
+            let a_disconnected = msg["players"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|p| p["player_id"] == a_id && p["connected"] == false);
+            if a_disconnected {
+                return;
+            }
+        }
+        panic!("B never observed A's disconnect in a presence snapshot");
+    }
+
+    #[tokio::test]
+    async fn ws_reconnect_with_since_replays_missed_events_then_resumes_live() {
+        // Full reconnect cycle: connect, drop, miss an event, reconnect with
+        // `?since=` to replay it, then confirm the new socket is live by
+        // receiving a freshly-broadcast event.
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+
+        let path = format!(
+            "/games/{}/ws?player_id={}",
+            create.game_id, create.player_ids[0]
+        );
+        let mut ws = server.get_websocket(&path).await.into_websocket().await;
+        let snap = ws_recv_event_of(&mut ws, "state_changed").await;
+        assert_eq!(snap["seq"], 0);
+        assert_eq!(snap["state"], "NotStarted");
+        ws.close().await;
+
+        // Missed while disconnected: the Start transition is broadcast at seq 0.
+        server
+            .post(&format!("/games/{}/transition", create.game_id))
+            .json(&serde_json::json!({"type": "start"}))
+            .await
+            .assert_status_ok();
+
+        // Reconnect asking for everything from seq 0: the ring buffer still
+        // holds it, so it replays as catch-up (Betting), not a fresh snapshot.
+        let reconnect = format!(
+            "/games/{}/ws?player_id={}&since=0",
+            create.game_id, create.player_ids[0]
+        );
+        let mut ws = server
+            .get_websocket(&reconnect)
+            .await
+            .into_websocket()
+            .await;
+        let replayed = ws_recv_event_of(&mut ws, "state_changed").await;
+        assert_eq!(replayed["seq"], 0);
+        assert!(replayed["state"]["Betting"].is_number());
+
+        // Prove the reconnected socket is fully live: a new chat fans out to it.
+        server
+            .post(&format!("/games/{}/chat", create.game_id))
+            .json(&serde_json::json!({
+                "player_id": create.player_ids[0],
+                "content": "back online",
+            }))
+            .await
+            .assert_status(StatusCode::ACCEPTED);
+        let chat = ws_recv_event_of(&mut ws, "chat_message").await;
+        assert_eq!(chat["content"], "back online");
+    }
+
+    #[tokio::test]
+    async fn ws_first_round_timeout_delivers_game_aborted_to_live_subscriber() {
+        // A zero-second clock fires the first-round betting timeout the moment
+        // the game starts; a connected subscriber must receive `game_aborted`
+        // over the wire (not just see the transcript become available).
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({
+                "max_points": 100,
+                "timer_config": { "initial_time_secs": 0, "increment_secs": 0 }
+            }))
+            .await
+            .json();
+
+        let path = format!(
+            "/games/{}/ws?player_id={}",
+            create.game_id, create.player_ids[0]
+        );
+        let mut ws = server.get_websocket(&path).await.into_websocket().await;
+        let _snap = ws_recv_event_of(&mut ws, "state_changed").await;
+
+        server
+            .post(&format!("/games/{}/transition", create.game_id))
+            .json(&serde_json::json!({"type": "start"}))
+            .await
+            .assert_status_ok();
+
+        let aborted = ws_recv_event_of(&mut ws, "game_aborted").await;
+        assert_eq!(aborted["game_id"], create.game_id.to_string());
+        assert!(
+            aborted["reason"]
+                .as_str()
+                .unwrap_or("")
+                .to_lowercase()
+                .contains("first round"),
+            "unexpected abort reason: {:?}",
+            aborted["reason"]
+        );
+    }
+
+    #[tokio::test]
+    async fn ws_responds_to_client_ping_with_pong() {
+        // Client-driven keepalive: a Ping must come back as a Pong (ws.rs ~213),
+        // keeping an otherwise-idle connection alive. Game-state/presence Text
+        // frames may interleave, so drain until the Pong arrives.
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        let path = format!(
+            "/games/{}/ws?player_id={}",
+            create.game_id, create.player_ids[0]
+        );
+        let mut ws = server.get_websocket(&path).await.into_websocket().await;
+
+        ws.send_message(axum_test::WsMessage::Ping(vec![7u8, 8, 9].into()))
+            .await;
+
+        for _ in 0..16 {
+            if let axum_test::WsMessage::Pong(payload) = ws.receive_message().await {
+                assert_eq!(payload.as_ref(), &[7u8, 8, 9]);
+                return;
+            }
+        }
+        panic!("never received a Pong in response to the client Ping");
+    }
+
+    #[tokio::test]
+    async fn ws_closes_when_game_is_deleted() {
+        // Deleting a game drops its actor handle; the actor exits, its
+        // broadcast sender drops, and the WS handler's `rx.recv()` returns
+        // `Closed` and tears the socket down (ws.rs ~187). The client must
+        // observe the stream end rather than hang forever.
+        //
+        // (Regression guard: the actor used to retain a strong self-reference
+        // that kept it — and this socket — alive after delete. See the weak
+        // `self_tx` in game_actor.rs.)
+        let server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        let path = format!(
+            "/games/{}/ws?player_id={}",
+            create.game_id, create.player_ids[0]
+        );
+        let mut ws = server.get_websocket(&path).await.into_websocket().await;
+        let _snap = ws_recv_event_of(&mut ws, "state_changed").await;
+
+        // The creating session owns a seat, so it is authorized to delete.
+        server
+            .delete(&format!("/games/{}", create.game_id))
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+
+        // The socket must close. `receive_message` panics if the stream yields
+        // an error/None, so bound the wait in a timeout and treat a clean Close
+        // frame as success; drain any in-flight Text frames first.
+        let closed = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                match ws.receive_message().await {
+                    axum_test::WsMessage::Close(_) => break true,
+                    _ => continue,
+                }
+            }
+        })
+        .await;
+        assert_eq!(closed, Ok(true), "socket did not close after game deletion");
+    }
+
     // ---- matchmaking SSE handler: input validation ---------------------
     //
     // The seek SSE stream itself is hard to drive from axum-test (it never
