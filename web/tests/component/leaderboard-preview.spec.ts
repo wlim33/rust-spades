@@ -85,9 +85,14 @@ describe('home leaderboard preview', () => {
     vi.stubGlobal('fetch', stubLeaderboardFetch([entry(1, 'alice', 1800)]));
     const cleanup = renderHome();
     await flush();
-    expect(document.querySelector('[data-testid="home-menu"]')).not.toBeNull();
+    const menu = document.querySelector('[data-testid="home-menu"]');
+    const preview = document.querySelector('[data-testid="home-leaderboard"]');
+    expect(menu).not.toBeNull();
     expect(document.querySelector('[data-testid="play-friends"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="home-leaderboard"]')).not.toBeNull();
+    expect(preview).not.toBeNull();
+    // Placement guarantee: the preview comes AFTER the menu in the DOM, so the
+    // join buttons stay first/primary.
+    expect(menu!.compareDocumentPosition(preview!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     cleanup();
   });
 
