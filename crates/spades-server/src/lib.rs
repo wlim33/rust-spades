@@ -10,6 +10,7 @@ pub mod challenges;
 pub mod game_actor;
 pub mod game_manager;
 pub mod handlers_auth;
+pub mod handlers_leaderboard;
 pub mod handlers_users;
 pub mod leaderboard;
 pub mod lock_util;
