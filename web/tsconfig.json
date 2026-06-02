@@ -20,5 +20,7 @@
     "types": ["vite/client"]
   },
   "include": ["src", "tests"],
-  "exclude": ["dist", "node_modules"]
+  // Playwright e2e tests run under Node (process, node:crypto) and are typed by
+  // tsconfig.node.json instead — keeping @types/node globals out of browser code.
+  "exclude": ["dist", "node_modules", "tests/e2e"]
 }

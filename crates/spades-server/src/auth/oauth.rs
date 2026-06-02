@@ -34,9 +34,23 @@ pub struct PendingSignup {
 }
 
 use oauth2::basic::BasicClient;
-use oauth2::{AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
+use oauth2::{AuthUrl, ClientId, ClientSecret, EndpointNotSet, EndpointSet, RedirectUrl, TokenUrl};
 
-pub fn google_client(state: &OauthState) -> Option<BasicClient> {
+/// A `BasicClient` with its auth + token endpoints configured — the typestate
+/// oauth2 5.x requires before `authorize_url`/`exchange_code` can be called.
+pub type OauthClient =
+    BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
+
+/// HTTP client for the OAuth token exchange. Redirects MUST stay disabled:
+/// oauth2 5.x delegates SSRF protection to the caller's client, so following
+/// redirects during the exchange would reintroduce the vulnerability.
+pub fn oauth_http_client() -> Result<reqwest::Client, reqwest::Error> {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+}
+
+pub fn google_client(state: &OauthState) -> Option<OauthClient> {
     let cfg = state.google.as_ref()?;
     let auth = AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".into()).ok()?;
     let token = TokenUrl::new("https://oauth2.googleapis.com/token".into()).ok()?;
@@ -46,17 +60,15 @@ pub fn google_client(state: &OauthState) -> Option<BasicClient> {
     ))
     .ok()?;
     Some(
-        BasicClient::new(
-            ClientId::new(cfg.client_id.clone()),
-            Some(ClientSecret::new(cfg.client_secret.clone())),
-            auth,
-            Some(token),
-        )
-        .set_redirect_uri(redirect),
+        BasicClient::new(ClientId::new(cfg.client_id.clone()))
+            .set_client_secret(ClientSecret::new(cfg.client_secret.clone()))
+            .set_auth_uri(auth)
+            .set_token_uri(token)
+            .set_redirect_uri(redirect),
     )
 }
 
-pub fn github_client(state: &OauthState) -> Option<BasicClient> {
+pub fn github_client(state: &OauthState) -> Option<OauthClient> {
     let cfg = state.github.as_ref()?;
     let auth = AuthUrl::new("https://github.com/login/oauth/authorize".into()).ok()?;
     let token = TokenUrl::new("https://github.com/login/oauth/access_token".into()).ok()?;
@@ -66,13 +78,11 @@ pub fn github_client(state: &OauthState) -> Option<BasicClient> {
     ))
     .ok()?;
     Some(
-        BasicClient::new(
-            ClientId::new(cfg.client_id.clone()),
-            Some(ClientSecret::new(cfg.client_secret.clone())),
-            auth,
-            Some(token),
-        )
-        .set_redirect_uri(redirect),
+        BasicClient::new(ClientId::new(cfg.client_id.clone()))
+            .set_client_secret(ClientSecret::new(cfg.client_secret.clone()))
+            .set_auth_uri(auth)
+            .set_token_uri(token)
+            .set_redirect_uri(redirect),
     )
 }
 

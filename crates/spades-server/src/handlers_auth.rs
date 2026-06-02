@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::auth::{
     AuthError, AuthState, AuthUser,
     mailer::Email,
-    oauth::{PendingSignup, github_client, google_client},
+    oauth::{PendingSignup, github_client, google_client, oauth_http_client},
     password::{hash_password, validate_password, verify_against_dummy, verify_password},
     rate_limit::{check_email, check_ip},
     session_ext,
@@ -486,11 +486,13 @@ pub async fn oauth_google_callback(
     let client = google_client(&auth.oauth)
         .ok_or_else(|| AuthError::OauthFailed("google not configured".into()))?;
 
+    let http_client = oauth_http_client()
+        .map_err(|e| AuthError::OauthFailed(format!("http client: {e}")))?;
     let verifier = PkceCodeVerifier::new(verifier_secret);
     let token = client
         .exchange_code(AuthorizationCode::new(q.code))
         .set_pkce_verifier(verifier)
-        .request_async(oauth2::reqwest::async_http_client)
+        .request_async(&http_client)
         .await
         .map_err(|e| AuthError::OauthFailed(format!("token exchange: {e}")))?;
 
@@ -688,11 +690,13 @@ pub async fn oauth_github_callback(
     let client = github_client(&auth.oauth)
         .ok_or_else(|| AuthError::OauthFailed("github not configured".into()))?;
 
+    let http_client = oauth_http_client()
+        .map_err(|e| AuthError::OauthFailed(format!("http client: {e}")))?;
     let verifier = PkceCodeVerifier::new(verifier_secret);
     let token = client
         .exchange_code(AuthorizationCode::new(q.code))
         .set_pkce_verifier(verifier)
-        .request_async(oauth2::reqwest::async_http_client)
+        .request_async(&http_client)
         .await
         .map_err(|e| AuthError::OauthFailed(format!("token exchange: {e}")))?;
 

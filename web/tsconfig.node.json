@@ -8,5 +8,11 @@
     "esModuleInterop": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "vitest.workspace.ts", "happydom.setup.ts", "playwright.config.ts"]
+  "include": [
+    "vite.config.ts",
+    "vitest.config.ts",
+    "happydom.setup.ts",
+    "playwright.config.ts",
+    "tests/e2e"
+  ]
 }

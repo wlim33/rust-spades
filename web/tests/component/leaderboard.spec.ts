@@ -13,12 +13,18 @@ describe('leaderboard route', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('renders ranked rows for the default all-time board', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ period: 'all-time', entries: [entry(1, 'alice', 1700), entry(2, 'bob', 1600)] }), { status: 200, headers: { 'content-type': 'application/json' } }));
-    vi.stubGlobal('fetch', fetchMock);
-    const cleanup = leaderboard.render(
-      {},
-      { path: '/leaderboard', search: new URLSearchParams() },
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            period: 'all-time',
+            entries: [entry(1, 'alice', 1700), entry(2, 'bob', 1600)],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
     );
+    vi.stubGlobal('fetch', fetchMock);
+    const cleanup = leaderboard.render({}, { path: '/leaderboard', search: new URLSearchParams() });
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -43,10 +49,7 @@ describe('leaderboard route', () => {
         });
       }),
     );
-    const cleanup = leaderboard.render(
-      {},
-      { path: '/leaderboard', search: new URLSearchParams() },
-    );
+    const cleanup = leaderboard.render({}, { path: '/leaderboard', search: new URLSearchParams() });
     await new Promise((r) => setTimeout(r, 0));
     (document.querySelector('[data-testid="tab-this-month"]') as HTMLButtonElement).click();
     // two flushes: one for the refetch promise, one for the resulting re-render
@@ -67,10 +70,7 @@ describe('leaderboard route', () => {
           }),
       ),
     );
-    const cleanup = leaderboard.render(
-      {},
-      { path: '/leaderboard', search: new URLSearchParams() },
-    );
+    const cleanup = leaderboard.render({}, { path: '/leaderboard', search: new URLSearchParams() });
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
     expect(document.body.textContent?.toLowerCase()).toContain('no ranked players');
