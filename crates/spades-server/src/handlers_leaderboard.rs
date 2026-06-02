@@ -52,7 +52,7 @@ fn parse_period(period: Option<&str>) -> Result<(String, LeaderboardWindow), Aut
         Some(s) => {
             // Explicit YYYY-MM.
             let parts: Vec<&str> = s.split('-').collect();
-            if parts.len() == 2 && parts[0].len() == 4 {
+            if parts.len() == 2 && parts[0].len() == 4 && parts[1].len() == 2 {
                 if let (Ok(year), Ok(month)) = (parts[0].parse::<i32>(), parts[1].parse::<u32>()) {
                     if (1..=12).contains(&month) {
                         return Ok((
@@ -120,5 +120,8 @@ mod tests {
         assert!(parse_period(Some("yesterday")).is_err());
         assert!(parse_period(Some("2020-13")).is_err());
         assert!(parse_period(Some("20-01")).is_err());
+        // Non-canonical month widths are rejected (must be 2-digit MM).
+        assert!(parse_period(Some("2020-1")).is_err());
+        assert!(parse_period(Some("2020-001")).is_err());
     }
 }
