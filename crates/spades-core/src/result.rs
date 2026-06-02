@@ -44,6 +44,8 @@ pub enum TransitionError {
     CardIncorrectSuit,
     #[error("Error: Cannot lead a spade until spades have been broken.")]
     SpadesNotBroken,
+    #[error("Error: Bet must be between 0 and 13 inclusive.")]
+    InvalidBet,
 }
 
 #[cfg(test)]
@@ -83,6 +85,7 @@ mod tests {
     #[test_case("CardNotInHand")]
     #[test_case("CardIncorrectSuit")]
     #[test_case("SpadesNotBroken")]
+    #[test_case("InvalidBet")]
     fn transition_error_display_contains_error(variant_name: &str) {
         let err = match variant_name {
             "AlreadyStarted" => TransitionError::AlreadyStarted,
@@ -93,6 +96,7 @@ mod tests {
             "CardNotInHand" => TransitionError::CardNotInHand,
             "CardIncorrectSuit" => TransitionError::CardIncorrectSuit,
             "SpadesNotBroken" => TransitionError::SpadesNotBroken,
+            "InvalidBet" => TransitionError::InvalidBet,
             _ => unreachable!(),
         };
         let msg = format!("{}", err);

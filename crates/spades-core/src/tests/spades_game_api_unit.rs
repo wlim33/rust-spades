@@ -769,6 +769,52 @@ fn history_preserved_across_round_boundary() {
 }
 
 #[test]
+fn spades_broken_resets_at_round_boundary() {
+    // Spades almost always get broken during round 0. At the start of round 1 the
+    // engine must again forbid leading an unbroken spade — i.e. `spades_broken`
+    // is reset to false at the round boundary. A regression that forgot to reset
+    // would let seat 0 open round 1 with a spade.
+    let mut g = Game::new(uuid::Uuid::new_v4(), [uuid::Uuid::new_v4(); 4], 200, None);
+    g.play(GameTransition::Start).unwrap();
+    for _ in 0..4 {
+        g.play(GameTransition::Bet(1)).unwrap();
+    }
+    // Play all 13 tricks of round 0 by always taking the first legal card.
+    for _ in 0..13 {
+        for _ in 0..4 {
+            let legal = g.get_legal_cards().unwrap();
+            g.play(GameTransition::Card(legal[0])).unwrap();
+        }
+    }
+    // Round 1 betting (max_points=200 isn't reachable in one round of 1-bids).
+    assert!(matches!(g.get_state(), State::Betting(_)));
+    for _ in 0..4 {
+        g.play(GameTransition::Bet(1)).unwrap();
+    }
+    assert!(matches!(g.get_state(), State::Trick(0)));
+
+    // Seat 0 leads round 1. Give them a club and a spade; leading the spade must
+    // be rejected because spades start each round unbroken.
+    g.players[0].hand = vec![
+        Card {
+            suit: Suit::Club,
+            rank: Rank::Five,
+        },
+        Card {
+            suit: Suit::Spade,
+            rank: Rank::Ace,
+        },
+    ];
+    assert_eq!(
+        g.play(GameTransition::Card(Card {
+            suit: Suit::Spade,
+            rank: Rank::Ace
+        })),
+        Err(TransitionError::SpadesNotBroken)
+    );
+}
+
+#[test]
 fn trick_winner_uses_lead_not_last() {
     // Regression test: the engine previously passed the LAST seat to get_trick_winner,
     // giving wrong results when the last seat played a non-spade discard with no trump.

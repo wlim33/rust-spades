@@ -168,7 +168,10 @@ fn test_get_winner_ids_tie_returns_error() {
 #[test]
 fn abort_from_not_started() {
     let mut g = Game::new(Uuid::new_v4(), [Uuid::new_v4(); 4], 500, None);
-    assert_eq!(g.play(GameTransition::Abort), Ok(TransitionSuccess::Aborted));
+    assert_eq!(
+        g.play(GameTransition::Abort),
+        Ok(TransitionSuccess::Aborted)
+    );
     assert_eq!(*g.get_state(), State::Aborted);
 }
 
@@ -176,14 +179,20 @@ fn abort_from_not_started() {
 fn abort_from_betting() {
     let (mut g, _) = make_started_game();
     assert!(matches!(*g.get_state(), State::Betting(_)));
-    assert_eq!(g.play(GameTransition::Abort), Ok(TransitionSuccess::Aborted));
+    assert_eq!(
+        g.play(GameTransition::Abort),
+        Ok(TransitionSuccess::Aborted)
+    );
     assert_eq!(*g.get_state(), State::Aborted);
 }
 
 #[test]
 fn abort_from_trick() {
     let (mut g, _) = make_game_in_trick_state();
-    assert_eq!(g.play(GameTransition::Abort), Ok(TransitionSuccess::Aborted));
+    assert_eq!(
+        g.play(GameTransition::Abort),
+        Ok(TransitionSuccess::Aborted)
+    );
     assert_eq!(*g.get_state(), State::Aborted);
 }
 
@@ -315,6 +324,32 @@ fn test_set_state() {
     assert_eq!(*g.get_state(), State::NotStarted);
     g.set_state(State::Aborted);
     assert_eq!(*g.get_state(), State::Aborted);
+}
+
+// ── Bet bounds validation (a legal bid is 0..=13) ──
+
+#[test_case(-1)]
+#[test_case(-100)]
+#[test_case(14)]
+#[test_case(99)]
+fn bet_out_of_range_is_rejected(bet: i32) {
+    let (mut g, _) = make_started_game();
+    assert!(matches!(*g.get_state(), State::Betting(0)));
+    assert_eq!(
+        g.play(GameTransition::Bet(bet)),
+        Err(TransitionError::InvalidBet)
+    );
+    // A rejected bet must not advance the rotation or mutate scoring.
+    assert!(matches!(*g.get_state(), State::Betting(0)));
+}
+
+#[test_case(0)]
+#[test_case(1)]
+#[test_case(13)]
+fn bet_at_bounds_is_accepted(bet: i32) {
+    let (mut g, _) = make_started_game();
+    assert_eq!(g.play(GameTransition::Bet(bet)), Ok(TransitionSuccess::Bet));
+    assert!(matches!(*g.get_state(), State::Betting(1)));
 }
 
 // ── Play errors: CompletedGame, CardNotInHand, CardIncorrectSuit, BetInTrickStage ──

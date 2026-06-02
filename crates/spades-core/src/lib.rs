@@ -333,6 +333,9 @@ impl Game {
                 State::Trick(_rotation_status) => Err(TransitionError::BetInTrickStage),
                 State::Completed | State::Aborted => Err(TransitionError::CompletedGame),
                 State::Betting(rotation_status) => {
+                    if !(0..=13).contains(&bet) {
+                        return Err(TransitionError::InvalidBet);
+                    }
                     self.scoring.add_bet(self.current_player_index, bet);
                     if rotation_status == 3 {
                         self.scoring.bet();

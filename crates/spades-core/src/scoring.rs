@@ -601,6 +601,97 @@ mod tests {
     }
 
     #[test]
+    fn test_double_nil_both_succeed() {
+        // Both partners on team A bid nil and the team takes zero tricks.
+        // Each successful nil is +100 → +200, with no bags.
+        let mut s = Scoring::new(500);
+        s.add_bet(0, 0);
+        s.add_bet(1, 7);
+        s.add_bet(2, 0);
+        s.add_bet(3, 6);
+        s.bet();
+        play_round(&mut s, 0); // team A wins nothing; all 13 to team B
+
+        assert_eq!(s.team_a.cumulative_points, 200);
+        assert_eq!(s.team_a.bags, 0);
+    }
+
+    #[test]
+    fn test_double_nil_one_partner_takes_trick() {
+        // Both partners bid nil but seat 0 takes 2 tricks. With team_bets == 0 the
+        // contract branch is always satisfied, so every trick the team takes becomes
+        // a bag (+2 here). The failed nil is -100; the partner whose nil held is +100.
+        // Net: +2 points, +2 bags. Documents the "two independent nils + bags" rule.
+        let mut s = Scoring::new(500);
+        s.add_bet(0, 0);
+        s.add_bet(1, 7);
+        s.add_bet(2, 0);
+        s.add_bet(3, 4);
+        s.bet();
+        play_round(&mut s, 2); // seat 0 takes 2 tricks, seat 2 takes none
+
+        assert_eq!(s.team_a.cumulative_points, 2);
+        assert_eq!(s.team_a.bags, 2);
+    }
+
+    #[test]
+    fn test_nil_succeeds_but_team_misses_contract() {
+        // seat 0 bids nil (holds), seat 2 bids 6, but the team wins only 3 tricks,
+        // all by seat 2. Missed contract → -60; nil holds → +100. Net +40, no bags.
+        // The untested diagonal: nil success combined with a missed team contract.
+        let mut s = Scoring::new(500);
+        s.add_bet(0, 0);
+        s.add_bet(1, 6);
+        s.add_bet(2, 6);
+        s.add_bet(3, 4);
+        s.bet();
+
+        for t in 0..13 {
+            let cards = if t < 3 {
+                // seat 2 wins (Ace at index 2)
+                make_trick(Suit::Club, [Rank::Two, Rank::Three, Rank::Ace, Rank::Four])
+            } else {
+                // seat 1 wins
+                make_trick(Suit::Club, [Rank::Two, Rank::Ace, Rank::Three, Rank::Four])
+            };
+            s.trick(0, &cards);
+        }
+
+        assert_eq!(s.team_a.cumulative_points, 40);
+        assert_eq!(s.team_a.bags, 0);
+    }
+
+    #[test]
+    fn test_nil_fails_and_team_misses_contract() {
+        // seat 0 bids nil but takes 1 trick (fails), seat 2 bids 6; the team wins
+        // only 4 tricks (1 by seat 0, 3 by seat 2). Missed contract → -60; failed
+        // nil → -100. Net -160, no bags. The doubly-bad diagonal.
+        let mut s = Scoring::new(500);
+        s.add_bet(0, 0);
+        s.add_bet(1, 6);
+        s.add_bet(2, 6);
+        s.add_bet(3, 4);
+        s.bet();
+
+        for t in 0..13 {
+            let cards = if t == 0 {
+                // seat 0 wins (Ace at index 0)
+                make_trick(Suit::Club, [Rank::Ace, Rank::King, Rank::Queen, Rank::Jack])
+            } else if t < 4 {
+                // seat 2 wins
+                make_trick(Suit::Club, [Rank::Two, Rank::Three, Rank::Ace, Rank::Four])
+            } else {
+                // seat 1 wins
+                make_trick(Suit::Club, [Rank::Two, Rank::Ace, Rank::Three, Rank::Four])
+            };
+            s.trick(0, &cards);
+        }
+
+        assert_eq!(s.team_a.cumulative_points, -160);
+        assert_eq!(s.team_a.bags, 0);
+    }
+
+    #[test]
     fn test_trick_13th_resets_round() {
         let mut s = Scoring::new(500);
         s.add_bet(0, 3);
