@@ -1175,16 +1175,20 @@ h3 {
 }
 
 /* Leaderboard */
+.leaderboard {
+  max-width: 480px;
+}
 .leaderboard__tabs {
   display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 .leaderboard__tab {
+  font: inherit;
   cursor: pointer;
-  padding: 0.35rem 0.75rem;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid currentColor;
-  border-radius: 0.375rem;
+  border-radius: var(--radius-md);
   background: transparent;
   color: inherit;
   opacity: 0.7;
@@ -1202,9 +1206,9 @@ h3 {
   display: grid;
   grid-template-columns: 2.5rem 1fr auto;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.4rem 0;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
 }
 .leaderboard__rank {
   text-align: right;

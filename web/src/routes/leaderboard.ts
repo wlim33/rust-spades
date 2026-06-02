@@ -15,17 +15,22 @@ export const leaderboard: RouteModule = {
     const loading = signal(true);
     const error = signal<string | null>(null);
 
+    let loadEpoch = 0;
     async function load(p: LeaderboardPeriod): Promise<void> {
+      const epoch = ++loadEpoch;
       loading.value = true;
       error.value = null;
       try {
-        board.value = await request<Leaderboard>(`/leaderboard?period=${p}`, {
+        const data = await request<Leaderboard>(`/leaderboard?period=${p}`, {
           method: 'GET',
         });
+        if (epoch !== loadEpoch) return; // a newer load superseded this one
+        board.value = data;
       } catch (e) {
+        if (epoch !== loadEpoch) return;
         error.value = e instanceof Error ? e.message : 'Failed to load leaderboard.';
       } finally {
-        loading.value = false;
+        if (epoch === loadEpoch) loading.value = false;
       }
     }
 
@@ -50,10 +55,11 @@ export const leaderboard: RouteModule = {
         appShell(html`
           <section class="leaderboard panel">
             <h2>Leaderboard</h2>
-            <div class="leaderboard__tabs" role="tablist">
+            <div class="leaderboard__tabs" role="group" aria-label="Leaderboard period">
               <button
                 class="leaderboard__tab ${cur === 'all-time' ? 'is-active' : ''}"
                 data-testid="tab-all-time"
+                aria-pressed=${cur === 'all-time'}
                 @click=${() => selectPeriod('all-time')}
               >
                 All-time
@@ -61,6 +67,7 @@ export const leaderboard: RouteModule = {
               <button
                 class="leaderboard__tab ${cur === 'this-month' ? 'is-active' : ''}"
                 data-testid="tab-this-month"
+                aria-pressed=${cur === 'this-month'}
                 @click=${() => selectPeriod('this-month')}
               >
                 This month

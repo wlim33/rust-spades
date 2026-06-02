@@ -13,25 +13,18 @@ describe('leaderboard route', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('renders ranked rows for the default all-time board', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string) => {
-        expect(url).toContain('period=all-time');
-        return new Response(
-          JSON.stringify({
-            period: 'all-time',
-            entries: [entry(1, 'alice', 1700), entry(2, 'bob', 1600)],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }),
-    );
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ period: 'all-time', entries: [entry(1, 'alice', 1700), entry(2, 'bob', 1600)] }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
     const cleanup = leaderboard.render(
       {},
       { path: '/leaderboard', search: new URLSearchParams() },
     );
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('period=all-time'),
+      expect.anything(),
+    );
     expect(document.body.textContent).toContain('alice');
     expect(document.body.textContent).toContain('bob');
     expect(document.querySelectorAll('.leaderboard__row').length).toBe(2);
@@ -56,6 +49,7 @@ describe('leaderboard route', () => {
     );
     await new Promise((r) => setTimeout(r, 0));
     (document.querySelector('[data-testid="tab-this-month"]') as HTMLButtonElement).click();
+    // two flushes: one for the refetch promise, one for the resulting re-render
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
     expect(periods).toContain('this-month');
