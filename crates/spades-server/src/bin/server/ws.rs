@@ -184,7 +184,16 @@ async fn handle_game_ws(
                         let _ = socket.send(Message::Close(None)).await;
                         break;
                     }
-                    Err(broadcast::error::RecvError::Closed) => break,
+                    Err(broadcast::error::RecvError::Closed) => {
+                        // The game actor is gone (e.g. the game was deleted),
+                        // so no further events will arrive. Send a graceful
+                        // close handshake instead of dropping the socket — a
+                        // bare drop reaches the client as a TCP reset
+                        // (`ResetWithoutClosingHandshake`) rather than a clean
+                        // close.
+                        let _ = socket.send(Message::Close(None)).await;
+                        break;
+                    }
                 }
             }
             event = async {
