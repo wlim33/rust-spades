@@ -33,6 +33,12 @@ async function load(p: LeaderboardPeriod): Promise<void> {
   }
 }
 
+function selectPreviewPeriod(p: LeaderboardPeriod): void {
+  if (period.value === p) return;
+  period.value = p;
+  void load(p);
+}
+
 /** Begin loading. Call BEFORE the host's render effect runs so the first paint
  *  is in a loading posture (no empty-state flash). */
 export function startLeaderboardPreview(): void {
@@ -50,6 +56,7 @@ export function stopLeaderboardPreview(): void {
 }
 
 export function leaderboardPreview(): TemplateResult {
+  const cur = period.value;
   const entries = (board.value?.entries ?? []).slice(0, PREVIEW_SIZE);
   return html`
     <section
@@ -62,6 +69,24 @@ export function leaderboardPreview(): TemplateResult {
         <a class="home-leaderboard__more" href="/leaderboard" data-link
           >View full leaderboard ${icon('arrow-right-s-line')}</a
         >
+      </div>
+      <div class="leaderboard__tabs" role="group" aria-label="Leaderboard period">
+        <button
+          class="leaderboard__tab ${cur === 'all-time' ? 'is-active' : ''}"
+          data-testid="home-tab-all-time"
+          aria-pressed=${cur === 'all-time'}
+          @click=${() => selectPreviewPeriod('all-time')}
+        >
+          All-time
+        </button>
+        <button
+          class="leaderboard__tab ${cur === 'this-month' ? 'is-active' : ''}"
+          data-testid="home-tab-this-month"
+          aria-pressed=${cur === 'this-month'}
+          @click=${() => selectPreviewPeriod('this-month')}
+        >
+          This month
+        </button>
       </div>
       <ol class="leaderboard__list">
         ${entries.map(

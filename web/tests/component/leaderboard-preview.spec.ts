@@ -90,4 +90,33 @@ describe('home leaderboard preview', () => {
     expect(document.querySelector('[data-testid="home-leaderboard"]')).not.toBeNull();
     cleanup();
   });
+
+  it('switches to this-month and refetches with that period', async () => {
+    const periods: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (typeof url === 'string' && url.includes('/leaderboard')) {
+          periods.push(url.includes('this-month') ? 'this-month' : 'all-time');
+          return new Response(JSON.stringify({ period: 'x', entries: [] }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }),
+    );
+    const cleanup = renderHome();
+    await flush();
+    const tab = document.querySelector('[data-testid="home-tab-this-month"]') as HTMLButtonElement;
+    expect(tab).not.toBeNull();
+    tab.click();
+    await flush();
+    expect(periods).toContain('this-month');
+    expect(tab.getAttribute('aria-pressed')).toBe('true');
+    cleanup();
+  });
 });
