@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { attachDrag } from '../../src/cards/drag';
 
 function pointer(el: HTMLElement, type: string, opts: PointerEventInit = {}): void {
@@ -7,7 +7,9 @@ function pointer(el: HTMLElement, type: string, opts: PointerEventInit = {}): vo
 
 describe('attachDrag', () => {
   let el: HTMLElement;
-  let onPlay: ReturnType<typeof vi.fn>;
+  // Vitest 4's bare `vi.fn()` is `Mock<Procedure>`, no longer assignable to a
+  // specific callback type, so spell out the signature attachDrag expects.
+  let onPlay: Mock<(srcRect: DOMRect) => void>;
 
   beforeEach(() => {
     document.body.innerHTML =
