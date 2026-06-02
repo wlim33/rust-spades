@@ -22,6 +22,9 @@ export function header(): TemplateResult {
   return html`<header class="site-header">
     <a class="site-title" href="/" data-link>Spades</a>
     <nav class="site-nav">
+      <a class="site-nav__link" href="/leaderboard" data-link data-testid="nav-leaderboard"
+        >Leaderboard</a
+      >
       ${themeToggle()}
       ${user
         ? avatarMenu(user)

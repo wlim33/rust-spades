@@ -10,6 +10,7 @@ import { signup } from './routes/signup';
 import { oauthComplete } from './routes/oauth-complete';
 import { settings } from './routes/settings';
 import { profile } from './routes/profile';
+import { leaderboard } from './routes/leaderboard';
 import { notFound } from './routes/notfound';
 import { session } from './state/session';
 import { consumeOauthInProgress } from './lib/storage';
@@ -34,6 +35,7 @@ void (async () => {
     '/auth/oauth/complete': oauthComplete,
     '/me': settings,
     '/u/:username': profile,
+    '/leaderboard': leaderboard,
     '*': notFound,
   });
 
