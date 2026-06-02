@@ -30,3 +30,19 @@ export type ProfileGames = {
   total: number;
   games: ProfileGameEntry[];
 };
+
+export type LeaderboardPeriod = 'all-time' | 'this-month';
+
+export type LeaderboardEntry = {
+  rank: number;
+  username: string;
+  rating: number;
+  rd: number;
+  games_played: number;
+  score: number;
+};
+
+export type Leaderboard = {
+  period: string;
+  entries: LeaderboardEntry[];
+};

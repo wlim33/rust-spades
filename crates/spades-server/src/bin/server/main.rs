@@ -188,6 +188,10 @@ pub fn build_router(state: AppState) -> Router {
             "/users/{username}/games",
             get(spades_server::handlers_users::get_profile_games),
         )
+        .route(
+            "/leaderboard",
+            get(spades_server::handlers_leaderboard::get_leaderboard),
+        )
         // Operational endpoints — outside the oasgen-managed schema.
         .route("/health", get(health))
         .route("/readyz", get(readyz))

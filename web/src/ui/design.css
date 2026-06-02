@@ -1173,3 +1173,48 @@ h3 {
   color: var(--fg-muted);
   margin: 0;
 }
+
+/* Leaderboard */
+.leaderboard {
+  max-width: 480px;
+}
+.leaderboard__tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.leaderboard__tab {
+  font: inherit;
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+}
+.leaderboard__tab.is-active {
+  font-weight: 700;
+  opacity: 1;
+}
+.leaderboard__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.leaderboard__row {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.leaderboard__rank {
+  text-align: right;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.leaderboard__rating {
+  font-variant-numeric: tabular-nums;
+}

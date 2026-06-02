@@ -695,6 +695,76 @@ impl SqliteStore {
         .map_err(|e| e.to_string())
     }
 
+    /// Top players for a board, ranked by the conservative Glicko score
+    /// `rating - RD_CONSERVATISM * rd` (descending; raw rating breaks ties).
+    ///
+    /// Only human seats count: the JOIN requires a non-NULL `user_id` and
+    /// `is_bot = 0`, so anon seats and bot-account seats never appear.
+    /// `min_games` gates on
+    /// the all-time seat count. For `Month`, an extra `EXISTS` requires at
+    /// least one seat in that UTC month; the score still uses the user's
+    /// current rating (we keep no rating history).
+    pub fn leaderboard(
+        &self,
+        window: crate::leaderboard::LeaderboardWindow,
+        min_games: i64,
+        limit: i64,
+    ) -> Result<Vec<crate::leaderboard::LeaderboardRow>, String> {
+        use crate::leaderboard::{
+            LeaderboardRow, LeaderboardWindow, RD_CONSERVATISM, month_bounds,
+        };
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+
+        let (month_clause, bounds) = match window {
+            LeaderboardWindow::AllTime => (String::new(), None),
+            LeaderboardWindow::Month { year, month } => (
+                "AND EXISTS (SELECT 1 FROM game_seats m \
+                 WHERE m.user_id = u.id AND m.is_bot = 0 \
+                 AND m.created_at >= ?2 AND m.created_at < ?3)"
+                    .to_string(),
+                Some(month_bounds(year, month)),
+            ),
+        };
+
+        // RD_CONSERVATISM and limit are compile-time numerics, not user
+        // input, so interpolating them into the SQL is safe.
+        let sql = format!(
+            "SELECT u.username, u.rating, u.rd, COUNT(*) AS games \
+             FROM users u \
+             JOIN game_seats gs ON gs.user_id = u.id AND gs.is_bot = 0 \
+             WHERE 1 = 1 {month_clause} \
+             GROUP BY u.id \
+             HAVING games >= ?1 \
+             ORDER BY (u.rating - {RD_CONSERVATISM} * u.rd) DESC, u.rating DESC \
+             LIMIT {limit}"
+        );
+
+        let map_row = |r: &rusqlite::Row<'_>| -> rusqlite::Result<LeaderboardRow> {
+            let rating: f64 = r.get(1)?;
+            let rd: f64 = r.get(2)?;
+            Ok(LeaderboardRow {
+                username: r.get(0)?,
+                rating,
+                rd,
+                games_played: r.get(3)?,
+                score: rating - RD_CONSERVATISM * rd,
+            })
+        };
+
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = match &bounds {
+            None => stmt
+                .query_map(rusqlite::params![min_games], map_row)
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>(),
+            Some((start, end)) => stmt
+                .query_map(rusqlite::params![min_games, start, end], map_row)
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>(),
+        };
+        rows.map_err(|e| e.to_string())
+    }
+
     /// Run `f` inside a SQLite transaction. The closure receives the
     /// connection — call the `*_in` free functions in this module to perform
     /// individual writes. Commits on `Ok`; rolls back on `Err` (or any panic
@@ -1464,5 +1534,205 @@ mod tests {
             store.find_user_by_username("Alice").unwrap().is_some(),
             "pre-existing user still present"
         );
+    }
+
+    /// Insert `n` distinct game-seats owned by `user` (seat 0 of `n`
+    /// different games). Used to push a user past the MIN_GAMES gate.
+    fn seed_seats(store: &SqliteStore, user: Uuid, n: usize) {
+        for _ in 0..n {
+            store
+                .insert_game_seat(
+                    Uuid::new_v4(),
+                    0,
+                    Uuid::new_v4(),
+                    crate::auth::game_seats::SeatOwner {
+                        user_id: Some(user),
+                        anon_user_id: None,
+                        is_bot: false,
+                    },
+                )
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn leaderboard_ranks_by_conservative_score() {
+        use crate::leaderboard::LeaderboardWindow;
+        use crate::ratings::Rating;
+        let store = SqliteStore::open(":memory:").unwrap();
+        let high_rd = store.insert_user(&new_user("highrd", "h@x.com")).unwrap();
+        let low_rd = store.insert_user(&new_user("lowrd", "l@x.com")).unwrap();
+        seed_seats(&store, high_rd, 5);
+        seed_seats(&store, low_rd, 5);
+        // high_rd: 1800 - 2*300 = 1200
+        store
+            .set_user_rating(
+                high_rd,
+                &Rating {
+                    rating: 1800.0,
+                    rd: 300.0,
+                    volatility: 0.06,
+                },
+            )
+            .unwrap();
+        // low_rd: 1600 - 2*50 = 1500  → ranks ABOVE high_rd despite lower raw rating
+        store
+            .set_user_rating(
+                low_rd,
+                &Rating {
+                    rating: 1600.0,
+                    rd: 50.0,
+                    volatility: 0.06,
+                },
+            )
+            .unwrap();
+
+        let rows = store
+            .leaderboard(LeaderboardWindow::AllTime, 5, 10)
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].username, "lowrd");
+        assert_eq!(rows[1].username, "highrd");
+        assert!((rows[0].score - 1500.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn leaderboard_excludes_players_below_min_games() {
+        use crate::leaderboard::LeaderboardWindow;
+        let store = SqliteStore::open(":memory:").unwrap();
+        let vet = store.insert_user(&new_user("vet", "v@x.com")).unwrap();
+        let rook = store.insert_user(&new_user("rook", "r@x.com")).unwrap();
+        seed_seats(&store, vet, 5);
+        seed_seats(&store, rook, 4); // below the gate
+        let rows = store
+            .leaderboard(LeaderboardWindow::AllTime, 5, 10)
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].username, "vet");
+    }
+
+    #[test]
+    fn leaderboard_caps_at_limit() {
+        use crate::leaderboard::LeaderboardWindow;
+        use crate::ratings::Rating;
+        let store = SqliteStore::open(":memory:").unwrap();
+        for i in 0..12 {
+            let u = store
+                .insert_user(&new_user(&format!("p{i}"), &format!("p{i}@x.com")))
+                .unwrap();
+            seed_seats(&store, u, 5);
+            store
+                .set_user_rating(
+                    u,
+                    &Rating {
+                        rating: 1500.0 + i as f64,
+                        rd: 50.0,
+                        volatility: 0.06,
+                    },
+                )
+                .unwrap();
+        }
+        let rows = store
+            .leaderboard(LeaderboardWindow::AllTime, 5, 10)
+            .unwrap();
+        assert_eq!(rows.len(), 10, "top-10 cap");
+        assert_eq!(rows[0].username, "p11", "highest score first");
+    }
+
+    #[test]
+    fn leaderboard_excludes_anon_and_bot_seats() {
+        use crate::leaderboard::LeaderboardWindow;
+        let store = SqliteStore::open(":memory:").unwrap();
+        let real = store.insert_user(&new_user("real", "r@x.com")).unwrap();
+        seed_seats(&store, real, 5);
+        // Anon seats (NULL user_id) must never surface.
+        for _ in 0..5 {
+            store
+                .insert_game_seat(
+                    Uuid::new_v4(),
+                    0,
+                    Uuid::new_v4(),
+                    crate::auth::game_seats::SeatOwner {
+                        user_id: None,
+                        anon_user_id: Some(Uuid::new_v4()),
+                        is_bot: false,
+                    },
+                )
+                .unwrap();
+        }
+        // A bot ACCOUNT (real user_id, but is_bot seats) must also never surface.
+        let bot = store
+            .insert_user(&new_user("botaccount", "bot@x.com"))
+            .unwrap();
+        for _ in 0..5 {
+            store
+                .insert_game_seat(
+                    Uuid::new_v4(),
+                    0,
+                    Uuid::new_v4(),
+                    crate::auth::game_seats::SeatOwner {
+                        user_id: Some(bot),
+                        anon_user_id: None,
+                        is_bot: true,
+                    },
+                )
+                .unwrap();
+        }
+        let rows = store
+            .leaderboard(LeaderboardWindow::AllTime, 5, 10)
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].username, "real");
+    }
+
+    #[test]
+    fn leaderboard_month_window_filters_by_activity() {
+        use crate::leaderboard::LeaderboardWindow;
+        use chrono::Datelike;
+        let store = SqliteStore::open(":memory:").unwrap();
+        let active = store.insert_user(&new_user("active", "a@x.com")).unwrap();
+        let inactive = store.insert_user(&new_user("inactive", "i@x.com")).unwrap();
+        seed_seats(&store, active, 5); // created now → current month
+        seed_seats(&store, inactive, 5);
+        // Backdate inactive's seats to January 2020.
+        store
+            .with_tx(|conn| {
+                conn.execute(
+                    "UPDATE game_seats SET created_at = '2020-01-15 12:00:00' WHERE user_id = ?1",
+                    rusqlite::params![inactive.to_string()],
+                )
+                .map_err(|e| e.to_string())?;
+                Ok(())
+            })
+            .unwrap();
+
+        // January 2020 board: only the backdated player.
+        let jan = store
+            .leaderboard(
+                LeaderboardWindow::Month {
+                    year: 2020,
+                    month: 1,
+                },
+                5,
+                10,
+            )
+            .unwrap();
+        assert_eq!(jan.len(), 1);
+        assert_eq!(jan[0].username, "inactive");
+
+        // Current month board: only the player active now.
+        let now = chrono::Utc::now().naive_utc();
+        let cur = store
+            .leaderboard(
+                LeaderboardWindow::Month {
+                    year: now.year(),
+                    month: now.month(),
+                },
+                5,
+                10,
+            )
+            .unwrap();
+        assert!(cur.iter().any(|r| r.username == "active"));
+        assert!(!cur.iter().any(|r| r.username == "inactive"));
     }
 }
