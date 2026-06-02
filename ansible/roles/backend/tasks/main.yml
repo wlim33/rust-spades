@@ -1,0 +1,89 @@
+# --- safety: never deploy the mutable :latest tag -------------------------
+- name: Refuse to deploy the mutable ':latest' tag
+  ansible.builtin.assert:
+    that: image_tag != "latest"
+    fail_msg: >-
+      image_tag must be a specific commit SHA for an immutable, rollback-able
+      deploy (got 'latest'). Pass -e image_tag=<sha>.
+    quiet: true
+
+# --- render config onto the VPS -------------------------------------------
+- name: Render docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ app_dir }}/docker-compose.yml"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
+
+- name: Render .env
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ app_dir }}/.env"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0640"
+
+- name: Render Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ app_dir }}/Caddyfile"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
+  notify: Restart caddy
+
+# --- Origin CA cert + key from vault --------------------------------------
+- name: Install the Origin CA certificate
+  ansible.builtin.copy:
+    content: "{{ vault_origin_cert }}"
+    dest: "{{ app_dir }}/certs/{{ spades_domain }}.pem"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0640"
+  no_log: true
+  notify: Restart caddy
+
+- name: Install the Origin CA private key
+  ansible.builtin.copy:
+    content: "{{ vault_origin_key }}"
+    dest: "{{ app_dir }}/certs/{{ spades_domain }}.key"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0600"
+  no_log: true
+  notify: Restart caddy
+
+# --- converge the stack ----------------------------------------------------
+- name: Log into ghcr.io for the pull
+  ansible.builtin.command:
+    cmd: docker login {{ ghcr_registry }} -u {{ ghcr_username }} --password-stdin
+    stdin: "{{ vault_ghcr_token }}"
+  changed_when: false
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Pull the pinned image
+  ansible.builtin.command:
+    cmd: docker compose pull
+    chdir: "{{ app_dir }}"
+  changed_when: true
+  when: not ansible_check_mode
+
+- name: Bring the stack up
+  ansible.builtin.command:
+    cmd: docker compose up -d --remove-orphans
+    chdir: "{{ app_dir }}"
+  changed_when: true
+  when: not ansible_check_mode
+
+# --- health gate -----------------------------------------------------------
+- name: Wait for the backend to report healthy
+  ansible.builtin.uri:
+    url: http://127.0.0.1:3000/health
+    status_code: 200
+  register: backend_health
+  retries: 12
+  delay: 5
+  until: backend_health.status == 200
+  when: not ansible_check_mode

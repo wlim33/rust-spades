@@ -1,0 +1,5 @@
+- name: Provision the spades host
+  hosts: production
+  gather_facts: true
+  roles:
+    - common

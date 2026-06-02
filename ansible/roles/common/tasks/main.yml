@@ -1,0 +1,117 @@
+# --- Docker engine ---------------------------------------------------------
+- name: Install prerequisites for the Docker apt repo
+  become: true
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: true
+
+- name: Create apt keyrings directory
+  become: true
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Install Docker's GPG key (ascii-armored, used directly via signed-by)
+  become: true
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/debian/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Add the Docker apt repository
+  become: true
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ ansible_facts.architecture | replace('x86_64', 'amd64') }}
+      signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/debian
+      {{ ansible_facts.distribution_release }} stable
+    filename: docker
+    state: present
+
+- name: Install Docker Engine + compose plugin
+  become: true
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+# --- deploy user -----------------------------------------------------------
+- name: Create the deploy system user
+  become: true
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    system: true
+    shell: /bin/bash
+    home: "/home/{{ ansible_user }}"
+    create_home: true
+    groups: docker
+    append: true
+
+# --- directories -----------------------------------------------------------
+- name: Create the app directory
+  become: true
+  ansible.builtin.file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+
+- name: Create the certs directory
+  become: true
+  ansible.builtin.file:
+    path: "{{ app_dir }}/certs"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0700"
+
+- name: Create the data directory (owned by the container UID)
+  become: true
+  ansible.builtin.file:
+    path: "{{ data_dir }}"
+    state: directory
+    owner: "{{ container_uid | string }}"
+    group: "{{ container_uid | string }}"
+    mode: "0755"
+
+# --- ghcr login (so the VPS can pull the private image) --------------------
+- name: Log the deploy user into ghcr.io
+  ansible.builtin.command:
+    cmd: docker login {{ ghcr_registry }} -u {{ ghcr_username }} --password-stdin
+    stdin: "{{ vault_ghcr_token }}"
+  register: common_ghcr_login
+  changed_when: "'Login Succeeded' in common_ghcr_login.stdout"
+  no_log: true
+  when: not ansible_check_mode
+
+# --- legacy cleanup (from the old bash flow) -------------------------------
+- name: Disable the legacy spades-server systemd unit
+  become: true
+  ansible.builtin.systemd:
+    name: spades-server
+    state: stopped
+    enabled: false
+  failed_when: false
+
+- name: Remove legacy systemd unit + sudoers artifacts
+  become: true
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/spades-server.service
+    - /etc/systemd/system/spades-server.service.d
+    - /etc/sudoers.d/spades-deploy
+  notify: Reload systemd

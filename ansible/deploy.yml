@@ -1,0 +1,43 @@
+# Play 1 — build and push the image from the control node.
+- name: Build and push the backend image
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [build]
+  tasks:
+    - name: Log into ghcr.io
+      ansible.builtin.command:
+        cmd: docker login {{ ghcr_registry }} -u {{ ghcr_username }} --password-stdin
+        stdin: "{{ vault_ghcr_token }}"
+      changed_when: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Buildx build and push (sha + latest tags)
+      ansible.builtin.command:
+        cmd: >-
+          docker buildx build
+          --tag {{ image_repo }}:{{ image_tag }}
+          --tag {{ image_repo }}:latest
+          {{ buildx_cache_args }}
+          --push
+          {{ playbook_dir }}/..
+      changed_when: true
+      when: not ansible_check_mode
+
+# Play 2 — converge the backend stack on the VPS.
+- name: Deploy the backend
+  hosts: production
+  gather_facts: true
+  tags: [backend]
+  roles:
+    - backend
+
+# Play 3 — build and ship the frontend from the control node.
+- name: Deploy the frontend
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [frontend]
+  roles:
+    - frontend

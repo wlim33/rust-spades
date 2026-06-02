@@ -1,0 +1,41 @@
+services:
+  spades-server:
+    image: {{ image_repo }}:{{ image_tag }}
+    container_name: spades-server
+    restart: unless-stopped
+    expose:
+      - "3000"
+    volumes:
+      - {{ data_dir }}:/data
+    env_file:
+      - {{ app_dir }}/.env
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: spades-caddy
+    restart: unless-stopped
+    depends_on:
+      spades-server:
+        condition: service_healthy
+    ports:
+      - "443:443"
+    volumes:
+      - {{ app_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - {{ app_dir }}/certs:/etc/caddy/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,25 @@
+# --- domains / app config ---------------------------------------------------
+spades_domain: spades.wlim.dev
+app_domain: app.wlim.dev
+cors_allow_origin: "https://app.wlim.dev"
+oauth_redirect_base_url: "https://spades.wlim.dev"
+
+# --- image -----------------------------------------------------------------
+image_repo: ghcr.io/wlim33/spades
+image_tag: latest          # overridden per-deploy: ansible-playbook deploy.yml -e image_tag=<sha>
+
+# --- registry --------------------------------------------------------------
+ghcr_registry: ghcr.io
+ghcr_username: wlim33
+
+# --- paths on the VPS ------------------------------------------------------
+app_dir: /opt/spades
+data_dir: /var/lib/spades
+container_uid: 1000
+
+# --- cloudflare pages ------------------------------------------------------
+cf_pages_project: spades
+cf_pages_branch: main
+
+# --- buildx cache: empty for laptop; CI overrides with the gha backend -----
+buildx_cache_args: ""
