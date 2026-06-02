@@ -13,7 +13,9 @@ pub const MIN_GAMES: i64 = 5;
 pub const LEADERBOARD_SIZE: i64 = 10;
 
 /// Conservatism multiplier `k` in the ranking score `rating - k * rd`.
-/// k = 2 is the standard Glicko "lower-confidence-bound" choice.
+/// k = 2 is the standard Glicko lower-confidence-bound choice (≈2 standard
+/// deviations below the point estimate); see Glickman's Glicko/Glicko-2
+/// papers. Larger k penalizes rating uncertainty (high RD) more heavily.
 pub const RD_CONSERVATISM: f64 = 2.0;
 
 /// Which players a board covers.
@@ -43,6 +45,16 @@ pub struct LeaderboardRow {
 /// calendar month, formatted to match `game_seats.created_at`
 /// (`YYYY-MM-DD HH:MM:SS`). Lexicographic string comparison on this fixed
 /// format is equivalent to chronological comparison.
+///
+/// # Preconditions
+///
+/// `month` must be in `1..=12` and `year` a representable calendar year.
+/// Callers are responsible for validating these — the HTTP layer
+/// (`handlers_leaderboard::parse_period`) rejects out-of-range months and
+/// non-4-digit years before constructing a `LeaderboardWindow::Month`, so
+/// values reaching this function are already in range. Passing an invalid
+/// `month` panics (via `.expect`); this is treated as a caller bug, not a
+/// runtime condition.
 pub fn month_bounds(year: i32, month: u32) -> (String, String) {
     use chrono::NaiveDate;
     let start = NaiveDate::from_ymd_opt(year, month, 1)
@@ -81,6 +93,14 @@ mod tests {
             (
                 "2026-12-01 00:00:00".to_string(),
                 "2027-01-01 00:00:00".to_string()
+            )
+        );
+        // January zero-pads the month and end-month.
+        assert_eq!(
+            month_bounds(2026, 1),
+            (
+                "2026-01-01 00:00:00".to_string(),
+                "2026-02-01 00:00:00".to_string()
             )
         );
     }
