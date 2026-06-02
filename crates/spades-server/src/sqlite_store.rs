@@ -698,8 +698,9 @@ impl SqliteStore {
     /// Top players for a board, ranked by the conservative Glicko score
     /// `rating - RD_CONSERVATISM * rd` (descending; raw rating breaks ties).
     ///
-    /// Only users with a `game_seats` row are considered (the JOIN), so
-    /// anon/bot seats (`user_id IS NULL`) never appear. `min_games` gates on
+    /// Only human seats count: the JOIN requires a non-NULL `user_id` and
+    /// `is_bot = 0`, so anon seats and bot-account seats never appear.
+    /// `min_games` gates on
     /// the all-time seat count. For `Month`, an extra `EXISTS` requires at
     /// least one seat in that UTC month; the score still uses the user's
     /// current rating (we keep no rating history).
@@ -718,7 +719,8 @@ impl SqliteStore {
             LeaderboardWindow::AllTime => (String::new(), None),
             LeaderboardWindow::Month { year, month } => (
                 "AND EXISTS (SELECT 1 FROM game_seats m \
-                 WHERE m.user_id = u.id AND m.created_at >= ?2 AND m.created_at < ?3)"
+                 WHERE m.user_id = u.id AND m.is_bot = 0 \
+                 AND m.created_at >= ?2 AND m.created_at < ?3)"
                     .to_string(),
                 Some(month_bounds(year, month)),
             ),
@@ -727,9 +729,9 @@ impl SqliteStore {
         // RD_CONSERVATISM and limit are compile-time numerics, not user
         // input, so interpolating them into the SQL is safe.
         let sql = format!(
-            "SELECT u.username, u.rating, u.rd, COUNT(gs.game_id) AS games \
+            "SELECT u.username, u.rating, u.rd, COUNT(*) AS games \
              FROM users u \
-             JOIN game_seats gs ON gs.user_id = u.id \
+             JOIN game_seats gs ON gs.user_id = u.id AND gs.is_bot = 0 \
              WHERE 1 = 1 {month_clause} \
              GROUP BY u.id \
              HAVING games >= ?1 \
@@ -1643,6 +1645,7 @@ mod tests {
         let store = SqliteStore::open(":memory:").unwrap();
         let real = store.insert_user(&new_user("real", "r@x.com")).unwrap();
         seed_seats(&store, real, 5);
+        // Anon seats (NULL user_id) must never surface.
         for _ in 0..5 {
             store
                 .insert_game_seat(
@@ -1653,6 +1656,24 @@ mod tests {
                         user_id: None,
                         anon_user_id: Some(Uuid::new_v4()),
                         is_bot: false,
+                    },
+                )
+                .unwrap();
+        }
+        // A bot ACCOUNT (real user_id, but is_bot seats) must also never surface.
+        let bot = store
+            .insert_user(&new_user("botaccount", "bot@x.com"))
+            .unwrap();
+        for _ in 0..5 {
+            store
+                .insert_game_seat(
+                    Uuid::new_v4(),
+                    0,
+                    Uuid::new_v4(),
+                    crate::auth::game_seats::SeatOwner {
+                        user_id: Some(bot),
+                        anon_user_id: None,
+                        is_bot: true,
                     },
                 )
                 .unwrap();
