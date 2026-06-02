@@ -106,10 +106,7 @@ export function leaderboardPreview(): TemplateResult {
               (e) =>
                 html`<li class="leaderboard__row">
                   <span class="leaderboard__rank">${e.rank}</span>
-                  <a
-                    class="leaderboard__name"
-                    href="/u/${encodeURIComponent(e.username)}"
-                    data-link
+                  <a class="leaderboard__name" href="/u/${encodeURIComponent(e.username)}" data-link
                     >${e.username}</a
                   >
                   <span class="leaderboard__rating">${e.rating}</span>
