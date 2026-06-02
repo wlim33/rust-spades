@@ -32,6 +32,15 @@ impl TeamState {
     }
 
     fn calculate_round_totals(&mut self, first: PartnerOutcome, second: PartnerOutcome) {
+        // Double nil: both partners bid 0. Scored as an indivisible unit — +200 if
+        // neither partner took a trick, otherwise a flat -200 with the tricks
+        // discarded (no bags). This bypasses the per-partner nil scoring below.
+        if first.bet == 0 && second.bet == 0 {
+            let made = !first.took_trick && !second.took_trick;
+            self.cumulative_points += if made { 200 } else { -200 };
+            return;
+        }
+
         let team_tricks = self.current_round_tricks_won;
         let team_bets = first.bet + second.bet;
 
@@ -618,10 +627,8 @@ mod tests {
 
     #[test]
     fn test_double_nil_one_partner_takes_trick() {
-        // Both partners bid nil but seat 0 takes 2 tricks. With team_bets == 0 the
-        // contract branch is always satisfied, so every trick the team takes becomes
-        // a bag (+2 here). The failed nil is -100; the partner whose nil held is +100.
-        // Net: +2 points, +2 bags. Documents the "two independent nils + bags" rule.
+        // Indivisible double nil: both partners bid 0 but seat 0 takes 2 tricks, so
+        // the double nil fails as a unit — flat -200, tricks discarded (no bags).
         let mut s = Scoring::new(500);
         s.add_bet(0, 0);
         s.add_bet(1, 7);
@@ -630,8 +637,36 @@ mod tests {
         s.bet();
         play_round(&mut s, 2); // seat 0 takes 2 tricks, seat 2 takes none
 
-        assert_eq!(s.team_a.cumulative_points, 2);
-        assert_eq!(s.team_a.bags, 2);
+        assert_eq!(s.team_a.cumulative_points, -200);
+        assert_eq!(s.team_a.bags, 0);
+    }
+
+    #[test]
+    fn test_double_nil_both_partners_take_tricks() {
+        // Double nil still fails as a single -200 unit when both partners take
+        // tricks (not -100 each) — and the tricks never accrue as bags.
+        let mut s = Scoring::new(500);
+        s.add_bet(0, 0);
+        s.add_bet(1, 7);
+        s.add_bet(2, 0);
+        s.add_bet(3, 4);
+        s.bet();
+        for t in 0..13 {
+            let cards = if t == 0 {
+                // seat 0 wins
+                make_trick(Suit::Club, [Rank::Ace, Rank::King, Rank::Queen, Rank::Jack])
+            } else if t == 1 {
+                // seat 2 wins
+                make_trick(Suit::Club, [Rank::Two, Rank::Three, Rank::Ace, Rank::Four])
+            } else {
+                // seat 1 wins
+                make_trick(Suit::Club, [Rank::Two, Rank::Ace, Rank::Three, Rank::Four])
+            };
+            s.trick(0, &cards);
+        }
+
+        assert_eq!(s.team_a.cumulative_points, -200);
+        assert_eq!(s.team_a.bags, 0);
     }
 
     #[test]
