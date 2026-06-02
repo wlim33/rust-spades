@@ -119,4 +119,30 @@ describe('home leaderboard preview', () => {
     expect(tab.getAttribute('aria-pressed')).toBe('true');
     cleanup();
   });
+
+  it('shows a quiet unavailable message on failure and keeps the join menu', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('network down');
+      }),
+    );
+    const cleanup = renderHome();
+    await flush();
+    expect(document.body.textContent).toContain('Leaderboard unavailable.');
+    // Not the loud red field-error treatment the full page uses.
+    expect(document.querySelector('[data-testid="home-leaderboard"] .field-error')).toBeNull();
+    // The core guarantee: a leaderboard failure never removes the join buttons.
+    expect(document.querySelector('[data-testid="home-menu"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="play-friends"]')).not.toBeNull();
+    cleanup();
+  });
+
+  it('shows an empty state when no players are ranked', async () => {
+    vi.stubGlobal('fetch', stubLeaderboardFetch([]));
+    const cleanup = renderHome();
+    await flush();
+    expect(document.body.textContent?.toLowerCase()).toContain('no ranked players');
+    cleanup();
+  });
 });

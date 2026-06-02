@@ -1,4 +1,4 @@
-import { html, type TemplateResult } from 'lit-html';
+import { html, nothing, type TemplateResult } from 'lit-html';
 import { signal } from '@preact/signals-core';
 import { request } from '../../api/client';
 import { icon } from '../icon';
@@ -56,8 +56,17 @@ export function stopLeaderboardPreview(): void {
 }
 
 export function leaderboardPreview(): TemplateResult {
+  // Read all signals eagerly before building the template (see
+  // routes/leaderboard.ts: happy-dom/lit-html nested-conditional quirk).
+  const l = loading.value;
+  const err = error.value;
+  const b = board.value;
   const cur = period.value;
-  const entries = (board.value?.entries ?? []).slice(0, PREVIEW_SIZE);
+  const entries = (b?.entries ?? []).slice(0, PREVIEW_SIZE);
+  const showLoading = l && !b; // first load only; keep cached list during refetch
+  const showEmpty = !l && !err && entries.length === 0;
+  const showList = !err && entries.length > 0;
+
   return html`
     <section
       class="home-leaderboard panel"
@@ -88,18 +97,26 @@ export function leaderboardPreview(): TemplateResult {
           This month
         </button>
       </div>
-      <ol class="leaderboard__list">
-        ${entries.map(
-          (e) =>
-            html`<li class="leaderboard__row">
-              <span class="leaderboard__rank">${e.rank}</span>
-              <a class="leaderboard__name" href="/u/${encodeURIComponent(e.username)}" data-link
-                >${e.username}</a
-              >
-              <span class="leaderboard__rating">${e.rating}</span>
-            </li>`,
-        )}
-      </ol>
+      ${showLoading ? html`<p class="home-leaderboard__status">Loading…</p>` : nothing}
+      ${err ? html`<p class="home-leaderboard__status">Leaderboard unavailable.</p>` : nothing}
+      ${showEmpty ? html`<p class="home-leaderboard__status">No ranked players yet.</p>` : nothing}
+      ${showList
+        ? html`<ol class="leaderboard__list">
+            ${entries.map(
+              (e) =>
+                html`<li class="leaderboard__row">
+                  <span class="leaderboard__rank">${e.rank}</span>
+                  <a
+                    class="leaderboard__name"
+                    href="/u/${encodeURIComponent(e.username)}"
+                    data-link
+                    >${e.username}</a
+                  >
+                  <span class="leaderboard__rating">${e.rating}</span>
+                </li>`,
+            )}
+          </ol>`
+        : nothing}
     </section>
   `;
 }
