@@ -8,6 +8,11 @@ import { saveSession } from '../lib/storage';
 import { toast } from '../state/toast';
 import { queueSizes, startQueuePoll, stopQueuePoll, queueCountFor } from '../state/menu';
 import { icon } from '../ui/icon';
+import {
+  leaderboardPreview,
+  startLeaderboardPreview,
+  stopLeaderboardPreview,
+} from '../ui/components/leaderboard-preview';
 import type { RouteModule } from '../router';
 import type { TemplateResult } from 'lit-html';
 
@@ -168,6 +173,7 @@ function template(): TemplateResult {
         <span class="menu__row-go">${icon('arrow-right-s-line')}</span>
       </button>
     </div>
+    ${leaderboardPreview()}
   `);
 }
 
@@ -181,6 +187,7 @@ export const home: RouteModule = {
       oauthBanner.value = false;
     }
     startQueuePoll();
+    startLeaderboardPreview();
     const dispose = effect(() => {
       void queueSizes.value;
       render(template(), root);
@@ -189,6 +196,7 @@ export const home: RouteModule = {
       if (quickplay.value) quickplay.value.cancel();
       dispose();
       stopQueuePoll();
+      stopLeaderboardPreview();
       render(nothing, root);
     };
   },

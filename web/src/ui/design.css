@@ -1218,3 +1218,34 @@ h3 {
 .leaderboard__rating {
   font-variant-numeric: tabular-nums;
 }
+
+/* Landing-page leaderboard preview */
+.home-leaderboard {
+  width: 100%;
+  max-width: 360px;
+  margin-top: var(--space-4);
+}
+.home-leaderboard__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.home-leaderboard__title {
+  font-size: var(--text-lg);
+  margin: 0;
+}
+.home-leaderboard__more {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--text-sm);
+  color: var(--accent);
+  white-space: nowrap;
+}
+.home-leaderboard__status {
+  margin: var(--space-2) 0 0;
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
