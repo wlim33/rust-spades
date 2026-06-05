@@ -23,8 +23,9 @@ describe('home route', () => {
     );
     expect(labels).toEqual(['5+3', '10+5', '15+10', 'Play with friends', 'Play with computers']);
 
-    // Icons now come from the vendored Remix pipeline (icon() → span.icon > svg), not inline <svg>
-    expect(menu!.querySelector('.quickplay-tile .icon svg')).not.toBeNull();
+    // Quickplay tiles no longer carry tier icons (simplified to neutral tiles).
+    expect(menu!.querySelector('.quickplay-tile .icon')).toBeNull();
+    // Menu-row icons + chevrons still use the vendored Remix pipeline (icon() → span.icon > svg).
     expect(menu!.querySelector('.menu__row .menu__row-icon .icon svg')).not.toBeNull();
     expect(menu!.querySelector('.menu__row-go .icon svg')).not.toBeNull();
     cleanup();
