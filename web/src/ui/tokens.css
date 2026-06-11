@@ -29,6 +29,8 @@
   /* cards & table */
   --card-face: #fffdf8;
   --card-edge: rgba(27, 35, 48, 0.16);
+  --suit-red: #b3382e;
+  --suit-black: #20242b;
   --felt: #2f6f62;
   --felt-ink: #eaf3ee;
   --felt-edge: #25564c;
@@ -110,6 +112,8 @@
 
   --card-face: #f6f0e4;
   --card-edge: rgba(0, 0, 0, 0.4);
+  --suit-red: #a93229;
+  --suit-black: #23272e;
   --felt: #143029;
   --felt-ink: #d9e8e0;
   --felt-edge: #0d211c;

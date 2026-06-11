@@ -1,6 +1,6 @@
 import type { Card, Rank, Suit } from '../state/helpers';
 
-const RANK_FILE: Record<Rank, string> = {
+const RANK_LABEL: Record<Rank, string> = {
   Two: '2',
   Three: '3',
   Four: '4',
@@ -9,36 +9,50 @@ const RANK_FILE: Record<Rank, string> = {
   Seven: '7',
   Eight: '8',
   Nine: '9',
-  Ten: 'T',
+  Ten: '10',
   Jack: 'J',
   Queen: 'Q',
   King: 'K',
   Ace: 'A',
 };
-const SUIT_FILE: Record<Suit, string> = { Spade: 'S', Heart: 'H', Diamond: 'D', Club: 'C' };
-
-export function cardFaceUrl(card: Card): string {
-  return `/cards/${RANK_FILE[card.rank]}${SUIT_FILE[card.suit]}.svg`;
-}
+const SUIT_GLYPH: Record<Suit, string> = {
+  Spade: '♠',
+  Heart: '♥',
+  Diamond: '♦',
+  Club: '♣',
+};
 
 export type CardPos = { x: number; y: number };
 export type CardEl = HTMLDivElement & { _cm: CardPos };
 
-function faceImg(card: Card): HTMLImageElement {
-  const img = document.createElement('img');
-  img.className = 'card-face';
-  img.src = cardFaceUrl(card);
-  img.alt = '';
-  img.loading = 'lazy';
-  img.draggable = false;
-  return img;
-}
-
-/** Turn any `.card` element into a face-up card for `card`. Shared by the hand and the trick slots. */
+/**
+ * Turn any `.card` element into a face-up card for `card`. Shared by the hand
+ * and the trick slots. Faces are plain DOM typography (corner index + center
+ * pip) rather than scaled-down scans of a full deck: at 40-46px wide only a
+ * bold index is readable, and in an overlapped fan the top-left corner is the
+ * only strip of the card that stays visible.
+ */
 export function setCardFace(el: CardEl, card: Card): void {
-  el.className = 'card card-front';
+  const tone = card.suit === 'Heart' || card.suit === 'Diamond' ? 'suit-red' : 'suit-black';
+  el.className = `card card-front ${tone}`;
   el.setAttribute('aria-label', `${card.rank} of ${card.suit}s`);
-  el.replaceChildren(faceImg(card));
+
+  const corner = document.createElement('span');
+  corner.className = 'card-corner';
+  const rank = document.createElement('span');
+  rank.className = 'card-corner-rank';
+  rank.textContent = RANK_LABEL[card.rank];
+  const suit = document.createElement('span');
+  suit.className = 'card-corner-suit';
+  suit.textContent = SUIT_GLYPH[card.suit];
+  corner.append(rank, suit);
+
+  const pip = document.createElement('span');
+  pip.className = 'card-pip';
+  pip.setAttribute('aria-hidden', 'true');
+  pip.textContent = SUIT_GLYPH[card.suit];
+
+  el.replaceChildren(corner, pip);
 }
 
 export function createFront(card: Card): CardEl {

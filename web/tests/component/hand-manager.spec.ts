@@ -20,12 +20,8 @@ describe('HandManager', () => {
   it('mounts the player hand sorted by suit/rank', () => {
     hm.setPlayerHand([c('Heart', 'Two'), c('Spade', 'Ace')]);
     expect(south.children.length).toBe(2);
-    expect(
-      (south.children[0]!.querySelector('img.card-face') as HTMLImageElement).getAttribute('src'),
-    ).toBe('/cards/AS.svg');
-    expect(
-      (south.children[1]!.querySelector('img.card-face') as HTMLImageElement).getAttribute('src'),
-    ).toBe('/cards/2H.svg');
+    expect(south.children[0]!.getAttribute('aria-label')).toBe('Ace of Spades');
+    expect(south.children[1]!.getAttribute('aria-label')).toBe('Two of Hearts');
   });
 
   it('replacing the hand reuses kept entries and unmounts removed', () => {
@@ -51,9 +47,7 @@ describe('HandManager', () => {
   it('removeCard removes a specific player card and returns its element', () => {
     hm.setPlayerHand([c('Heart', 'Two'), c('Spade', 'Ace')]);
     const removed = hm.removeCard(c('Spade', 'Ace'));
-    expect((removed?.querySelector('img.card-face') as HTMLImageElement).getAttribute('src')).toBe(
-      '/cards/AS.svg',
-    );
+    expect(removed?.getAttribute('aria-label')).toBe('Ace of Spades');
     expect(south.children.length).toBe(1);
   });
 

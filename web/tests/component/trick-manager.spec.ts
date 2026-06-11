@@ -25,9 +25,8 @@ describe('TrickManager', () => {
   it('fillNextSlot replaces a placeholder with a faced card', () => {
     tm.fillNextSlot(c('Heart', 'Ace'), 'south');
     const slot = container.children[0]!;
-    const img = slot.querySelector('img.card-face') as HTMLImageElement;
-    expect(img).not.toBeNull();
-    expect(img.getAttribute('src')).toBe('/cards/AH.svg');
+    expect(slot.getAttribute('aria-label')).toBe('Ace of Hearts');
+    expect(slot.querySelector('.card-corner-rank')?.textContent).toBe('A');
     expect(slot.className).not.toContain('trick-placeholder');
     expect(tm.count()).toBe(1);
   });

@@ -225,13 +225,40 @@ main#root {
   position: relative;
   overflow: hidden;
 }
-.card-face {
+/* Card faces are DOM typography: a bold corner index (the only strip visible
+   in an overlapped fan) plus a large center pip on the fully-visible card. */
+.card-front.suit-red {
+  color: var(--suit-red);
+}
+.card-front.suit-black {
+  color: var(--suit-black);
+}
+.card-corner {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: fill;
-  display: block;
+  top: 3px;
+  left: 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.card-corner-rank {
+  font-size: 16px;
+  letter-spacing: -0.5px;
+}
+.card-corner-suit {
+  font-size: 13px;
+  margin-top: 1px;
+}
+.card-pip {
+  position: absolute;
+  right: 4px;
+  bottom: 2px;
+  font-size: 26px;
+  line-height: 1;
   pointer-events: none;
 }
 .card-back {
@@ -897,6 +924,22 @@ button.seat-open {
   .hand-container .card {
     margin-left: -16px;
   }
+  .card-corner-rank {
+    font-size: 14px;
+  }
+  .card-corner-suit {
+    font-size: 11px;
+  }
+  .card-pip {
+    font-size: 21px;
+  }
+  .seat-north .opp-container .card {
+    margin-left: -29px;
+  }
+  .seat-east .opp-container .card,
+  .seat-west .opp-container .card {
+    margin-top: -40px;
+  }
 }
 
 /* Very small phones */
@@ -997,9 +1040,29 @@ button.seat-open {
   align-items: center;
   justify-content: center;
 }
+/* Opponent hands render as overlapped stacks (never wrapping grids): a
+   horizontal fan across the top, vertical fans down the sides. */
 .opp-container {
-  gap: 2px;
-  flex-wrap: wrap;
+  gap: 0;
+  flex-wrap: nowrap;
+}
+.seat-north .opp-container .card {
+  margin-left: -32px;
+}
+.seat-north .opp-container .card:first-child {
+  margin-left: 0;
+}
+.seat-east .opp-container,
+.seat-west .opp-container {
+  flex-direction: column;
+}
+.seat-east .opp-container .card,
+.seat-west .opp-container .card {
+  margin-top: -44px;
+}
+.seat-east .opp-container .card:first-child,
+.seat-west .opp-container .card:first-child {
+  margin-top: 0;
 }
 
 /* Tap target minimum on touch */
