@@ -363,6 +363,10 @@ main#root {
   z-index: 5;
 }
 .trick-container {
+  /* The collect animation flips the slots to position:absolute with offsets
+     computed relative to this container — it must be the positioned ancestor
+     or the cards anchor to the page and fly to the viewport origin. */
+  position: relative;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: var(--space-2);

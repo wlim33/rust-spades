@@ -93,11 +93,17 @@ export class CardOrchestrator {
 
   /** Fly the south player's card from hand → next trick slot. */
   async playCardToCenter(card: Card): Promise<void> {
+    // Measure while the element is still in the hand: keyboard plays carry no
+    // pointer rect, and a detached element measures 0,0 (card flies in from
+    // the viewport origin).
+    const entry = this.hand.cards('south').find((e) => cardEq(e.card, card));
+    const liveRect = entry?.el.isConnected ? entry.el.getBoundingClientRect() : null;
+
     const removed = this.hand.removeCard(card);
     const slot = this.trick.fillNextSlot(card, 'south');
     if (!removed || !slot) return;
 
-    const srcRect = this.lastPlayRect ?? removed.getBoundingClientRect();
+    const srcRect = this.lastPlayRect ?? liveRect ?? removed.getBoundingClientRect();
     this.lastPlayRect = null;
 
     slot.el.style.visibility = 'hidden';
