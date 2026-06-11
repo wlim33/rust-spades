@@ -23,6 +23,8 @@
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: "0640"
+  # Contains OAuth/SMTP secrets — keep them out of --diff output.
+  diff: false
 
 - name: Render Caddyfile
   ansible.builtin.template:
@@ -78,12 +80,14 @@
   when: not ansible_check_mode
 
 # --- health gate -----------------------------------------------------------
+# Probe from inside the container: port 3000 is expose:-only (not published to
+# the host), so a host-side uri check would always get connection-refused.
 - name: Wait for the backend to report healthy
-  ansible.builtin.uri:
-    url: http://127.0.0.1:3000/health
-    status_code: 200
+  ansible.builtin.command:
+    cmd: docker exec spades-server curl -fsS http://127.0.0.1:3000/health
   register: backend_health
   retries: 12
   delay: 5
-  until: backend_health.status == 200
+  until: backend_health.rc == 0
+  changed_when: false
   when: not ansible_check_mode

@@ -1,1 +1,3 @@
-# Host-specific overrides for spades-prod. Currently none beyond inventory.
+# Host-specific overrides for spades-prod.
+# Ubuntu 20.04's default python3 is 3.8; ansible-core needs >=3.9 on the target.
+ansible_python_interpreter: /usr/bin/python3.9

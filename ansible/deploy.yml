@@ -17,6 +17,7 @@
       ansible.builtin.command:
         cmd: >-
           docker buildx build
+          --platform linux/amd64
           --tag {{ image_repo }}:{{ image_tag }}
           --tag {{ image_repo }}:latest
           {{ buildx_cache_args }}
