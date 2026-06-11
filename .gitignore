@@ -10,3 +10,6 @@
 
 # Cloudflare Wrangler local cache (not for version control).
 /.wrangler/
+
+# Playwright MCP browser artifacts (snapshots/console logs from agent sessions).
+/.playwright-mcp/
