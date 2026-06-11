@@ -133,8 +133,12 @@ export const play: RouteModule = {
             return;
           }
 
-          // Otherwise: state snapshot. Fetch hand and apply.
-          void (async () => {
+          // Otherwise: state snapshot. Fetch hand and apply. The returned
+          // promise is awaited by the WS event queue — events must apply in
+          // order, or a slow hand fetch lets a stale snapshot win (the
+          // "frozen game" bug: real-network jitter reorders concurrent
+          // fetches; the last write was sometimes an old CPU-turn state).
+          return (async () => {
             try {
               const hand = await request<HandResponse>(
                 `/games/${gameId}/players/${playerId}/hand`,

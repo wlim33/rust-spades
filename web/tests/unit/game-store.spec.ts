@@ -49,4 +49,43 @@ describe('createGameStore', () => {
     // table is Heart Ace, Heart Five — no spade played, spades still not broken
     expect(s.spadesBroken.value).toBe(false);
   });
+
+  it('applyState drops events whose seq is not newer than the last applied', () => {
+    const s = createGameStore('p0');
+    s.applyState({ ...(trick as object), seq: 5 } as never, { player_id: 'p0', cards: [] });
+    expect(s.phase.value).toBe('PLAYING');
+
+    // A stale snapshot (e.g. an out-of-order WS event or reconnect replay)
+    // must not roll the store back.
+    s.applyState({ ...(betting as object), seq: 4 } as never, { player_id: 'p0', cards: [] });
+    expect(s.phase.value).toBe('PLAYING');
+    s.applyState({ ...(betting as object), seq: 5 } as never, { player_id: 'p0', cards: [] });
+    expect(s.phase.value).toBe('PLAYING');
+
+    // A newer event applies normally.
+    s.applyState({ ...(completed as object), seq: 6 } as never, { player_id: 'p0', cards: [] });
+    expect(s.phase.value).toBe('GAME_OVER');
+  });
+
+  it('applyState without seq (REST snapshot) always applies', () => {
+    const s = createGameStore('p0');
+    s.applyState({ ...(trick as object), seq: 9 } as never, { player_id: 'p0', cards: [] });
+    s.applyState(completed as never, { player_id: 'p0', cards: [] });
+    expect(s.phase.value).toBe('GAME_OVER');
+  });
+
+  it('exposes last_completed_trick for the trick-collection animation', () => {
+    const s = createGameStore('p0');
+    const withTrick = {
+      ...(trick as object),
+      last_completed_trick: [
+        { suit: 'Club', rank: 'Ace' },
+        { suit: 'Club', rank: 'Five' },
+        { suit: 'Club', rank: 'Six' },
+        { suit: 'Club', rank: 'Queen' },
+      ],
+    };
+    s.applyState(withTrick as never, { player_id: 'p0', cards: [] });
+    expect(s.lastCompletedTrick.value?.[0]).toEqual({ suit: 'Club', rank: 'Ace' });
+  });
 });

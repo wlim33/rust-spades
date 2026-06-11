@@ -26,6 +26,8 @@ export type GameStateResponse = {
   active_player_clock_ms?: number | null;
   last_completed_trick?: (Card | null)[] | null;
   short_id?: string | null;
+  /** Per-game monotonic event cursor; present on WS events, absent on REST snapshots. */
+  seq?: number;
 };
 
 export type HandResponse = {
@@ -46,6 +48,7 @@ export type GameStore = {
   playerBets: Signal<(number | null)[]>;
   playerTricksWon: Signal<number[]>;
   lastTrickWinnerId: Signal<string | null>;
+  lastCompletedTrick: Signal<(Card | null)[] | null>;
   teamAScore: Signal<number>;
   teamBScore: Signal<number>;
   teamABags: Signal<number>;
@@ -82,6 +85,7 @@ export function createGameStore(playerIdInit: string): GameStore {
   const playerBets = signal<(number | null)[]>([null, null, null, null]);
   const playerTricksWon = signal<number[]>([0, 0, 0, 0]);
   const lastTrickWinnerId = signal<string | null>(null);
+  const lastCompletedTrick = signal<(Card | null)[] | null>(null);
   const teamAScore = signal(0);
   const teamBScore = signal(0);
   const teamABags = signal(0);
@@ -109,7 +113,15 @@ export function createGameStore(playerIdInit: string): GameStore {
     }
   };
 
+  // WS events can resolve out of order (each triggers an async hand fetch);
+  // the per-game `seq` cursor lets us drop anything older than what we hold.
+  let lastSeq = -1;
+
   const applyState: GameStore['applyState'] = (state, handData) => {
+    if (typeof state.seq === 'number') {
+      if (state.seq <= lastSeq) return;
+      lastSeq = state.seq;
+    }
     gameState.value = state.state;
     currentPlayerId.value = state.current_player_id;
     teamAScore.value = state.team_a_score;
@@ -125,6 +137,7 @@ export function createGameStore(playerIdInit: string): GameStore {
     playerBets.value = state.player_bets ?? [null, null, null, null];
     playerTricksWon.value = state.player_tricks_won ?? [0, 0, 0, 0];
     lastTrickWinnerId.value = state.last_trick_winner_id ?? null;
+    lastCompletedTrick.value = state.last_completed_trick ?? null;
     hand.value = handData.cards ?? [];
     phase.value = phaseFromState(state.state);
     updateSpadesBroken();
@@ -152,6 +165,7 @@ export function createGameStore(playerIdInit: string): GameStore {
     playerBets,
     playerTricksWon,
     lastTrickWinnerId,
+    lastCompletedTrick,
     teamAScore,
     teamBScore,
     teamABags,

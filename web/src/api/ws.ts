@@ -3,7 +3,8 @@ import { API_URL } from '../lib/util';
 export type WsHandle = { close(): void };
 
 export type WsOptions = {
-  onEvent: (data: unknown) => void;
+  /** May return a promise: the event queue awaits it, so per-event work is serialized. */
+  onEvent: (data: unknown) => void | Promise<void>;
   onOpen?: () => void;
   onClose?: () => void;
   onError?: (e: unknown) => void;
