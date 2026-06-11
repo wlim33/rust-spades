@@ -1,0 +1,6 @@
+[advisories]
+# RUSTSEC-2023-0071 (rsa: Marvin timing sidechannel): rsa enters Cargo.lock
+# only via sqlx's optional mysql backend, which this workspace never enables
+# or compiles (`cargo tree -i rsa` is empty — SQLite is the only backend).
+# No fixed rsa release exists; revisit if we ever enable sqlx-mysql.
+ignore = ["RUSTSEC-2023-0071"]
