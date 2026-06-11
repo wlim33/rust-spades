@@ -9,6 +9,7 @@ import {
   getLeadSuit,
   isCardValid,
   oppCardCount,
+  trickNumber,
 } from '../../src/state/helpers';
 
 const c = (suit: Suit, rank: Card['rank']): Card => ({ suit, rank });
@@ -174,14 +175,31 @@ describe('isCardValid', () => {
 
 describe('oppCardCount', () => {
   it('returns 13 during BETTING', () => {
-    expect(oppCardCount('BETTING', null, [null, null, null, null], 1)).toBe(13);
+    expect(oppCardCount('BETTING', 0, [null, null, null, null], 1)).toBe(13);
   });
   it('returns 0 outside PLAYING/BETTING', () => {
-    expect(oppCardCount('MENU', null, [null, null, null, null], 1)).toBe(0);
+    expect(oppCardCount('MENU', 0, [null, null, null, null], 1)).toBe(0);
   });
-  it('decrements for played card at the seat', () => {
-    expect(oppCardCount('PLAYING', { Trick: 3 }, [null, c('Spade', 'Two'), null, null], 1)).toBe(
-      13 - 3 - 1,
-    );
+  it('counts down by completed tricks, not by State::Trick rotation', () => {
+    // Two tricks completed, nothing on the table: every opponent holds 11.
+    expect(oppCardCount('PLAYING', 2, [null, null, null, null], 1)).toBe(11);
+  });
+  it('decrements for a played card at the seat', () => {
+    expect(oppCardCount('PLAYING', 2, [null, c('Spade', 'Two'), null, null], 1)).toBe(10);
+  });
+  it('never goes negative', () => {
+    expect(oppCardCount('PLAYING', 13, [null, null, null, null], 1)).toBe(0);
+  });
+});
+
+describe('trickNumber', () => {
+  it('is 1 before any trick completes', () => {
+    expect(trickNumber([0, 0, 0, 0])).toBe(1);
+  });
+  it('is completed tricks + 1 mid-round', () => {
+    expect(trickNumber([2, 1, 0, 1])).toBe(5);
+  });
+  it('caps at 13 when the round is over', () => {
+    expect(trickNumber([5, 3, 3, 2])).toBe(13);
   });
 });

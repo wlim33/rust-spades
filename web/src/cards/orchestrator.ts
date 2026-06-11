@@ -281,6 +281,11 @@ export class CardOrchestrator {
     return this.trick.count();
   }
 
+  /** Relative seats that already have a card in the current trick. */
+  trickSeats(): Seat[] {
+    return this.trick.slots().map((s) => s.seat);
+  }
+
   clearAll(): void {
     this.disableInteraction();
     this.hand.clear();

@@ -104,22 +104,27 @@ export function isCardValid(args: {
   return args.card.suit !== 'Spade';
 }
 
-type GameStateValue = string | { Betting?: number; Trick?: number; Completed?: unknown };
-
+/**
+ * Cards an opponent still holds. `tricksCompleted` is the number of finished
+ * tricks this round (sum of player_tricks_won) — NOT the payload of
+ * `State::Trick(n)`, which is the rotation position of the next player.
+ */
 export function oppCardCount(
   phase: Phase,
-  gameState: GameStateValue | null,
+  tricksCompleted: number,
   tableCards: readonly (Card | null)[],
   seatIdx: number,
 ): number {
   if (phase === 'BETTING') return 13;
   if (phase !== 'PLAYING') return 0;
-  const trickNum =
-    typeof gameState === 'object' && gameState !== null && 'Trick' in gameState
-      ? (gameState.Trick as number)
-      : 0;
-  let count = 13 - trickNum;
+  let count = 13 - tricksCompleted;
   const tc = tableCards[seatIdx];
   if (tc) count--;
   return Math.max(0, count);
+}
+
+/** 1-based number of the trick currently being played, capped at 13. */
+export function trickNumber(playerTricksWon: readonly number[]): number {
+  const completed = playerTricksWon.reduce((a, b) => a + b, 0);
+  return Math.min(completed + 1, 13);
 }

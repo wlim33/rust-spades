@@ -12,6 +12,10 @@ export class GamePage {
   clickableCards(): Locator {
     return this.page.locator('.cm-clickable');
   }
+  /** Face-up cards currently sitting in the trick area. */
+  trickFaceCards(): Locator {
+    return this.page.locator('.trick-container .card-front');
+  }
 
   /** Resolves once the game is in BETTING: either our bet buttons or non-empty center text. */
   async waitForBetting(): Promise<void> {

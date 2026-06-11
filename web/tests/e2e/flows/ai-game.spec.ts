@@ -42,6 +42,28 @@ test('AI lifecycle: bet, play all 13 tricks, advance to the next hand', async ({
   }).toPass({ timeout: 20_000 });
 });
 
+test('Trick collection: completed tricks leave the table and play continues', async ({ page }) => {
+  const game = await createAiGame(page.request);
+  await seedAiSession(page, game);
+  await page.goto(`/play/${game.shortId}`);
+
+  const g = new GamePage(page);
+  await g.waitForBetting();
+  await g.bet(3);
+  await expect(g.hand()).toHaveCount(13, { timeout: 20_000 });
+
+  await g.playFirstLegalCard();
+  await expect(g.hand()).toHaveCount(12, { timeout: 20_000 });
+
+  // Our next turn: the previous trick must have been collected off the table.
+  // (The trick area only has 4 slots — if collection fails they stay occupied
+  // forever and the game wedges, so ≤3 face-up cards proves it cleared.)
+  await g.waitForPlayable();
+  await expect
+    .poll(async () => g.trickFaceCards().count(), { timeout: 20_000 })
+    .toBeLessThanOrEqual(3);
+});
+
 test('Keyboard: a legal card can be played with Enter', async ({ page }) => {
   const game = await createAiGame(page.request);
   await seedAiSession(page, game);

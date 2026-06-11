@@ -7,6 +7,7 @@ import {
   oppCardCount,
   seatRel,
   formatClock,
+  trickNumber,
   type Card,
   type RelativeSeat,
 } from '../state/helpers';
@@ -124,13 +125,7 @@ export function renderInGame(args: {
         myTeam: teamA,
         centerText:
           store.phase.value === 'PLAYING'
-            ? `Trick ${
-                typeof store.gameState.value === 'object' &&
-                store.gameState.value &&
-                'Trick' in store.gameState.value
-                  ? (store.gameState.value as { Trick: number }).Trick
-                  : 0
-              }/13`
+            ? `Trick ${trickNumber(store.playerTricksWon.value)}/13`
             : '',
       })}
       ${gameTable({
@@ -218,14 +213,16 @@ export function renderInGame(args: {
     if (i < 0) return;
     if (phase !== 'BETTING' && phase !== 'PLAYING' && phase !== 'GAME_OVER') return;
 
+    const tricksDone = store.playerTricksWon.value.reduce((a, b) => a + b, 0);
+
     if (!orchestrator.isInitialized() && hand.length > 0) {
       const curSeat = store.playerIds.value.indexOf(currentPlayerId ?? '');
       orchestrator.setupImmediate({
         playerHand: sortCards(hand),
         oppCounts: {
-          north: oppCardCount(phase, store.gameState.value, tableCards, (i + 2) % 4),
-          west: oppCardCount(phase, store.gameState.value, tableCards, (i + 3) % 4),
-          east: oppCardCount(phase, store.gameState.value, tableCards, (i + 1) % 4),
+          north: oppCardCount(phase, tricksDone, tableCards, (i + 2) % 4),
+          west: oppCardCount(phase, tricksDone, tableCards, (i + 3) % 4),
+          east: oppCardCount(phase, tricksDone, tableCards, (i + 1) % 4),
         },
         tableCards,
         myIdx: i,
@@ -242,25 +239,36 @@ export function renderInGame(args: {
       orchestrator.updatePlayerHand(sortCards(hand));
       orchestrator.updateOpponentCount(
         'north',
-        oppCardCount(phase, store.gameState.value, tableCards, (i + 2) % 4),
+        oppCardCount(phase, tricksDone, tableCards, (i + 2) % 4),
       );
       orchestrator.updateOpponentCount(
         'west',
-        oppCardCount(phase, store.gameState.value, tableCards, (i + 3) % 4),
+        oppCardCount(phase, tricksDone, tableCards, (i + 3) % 4),
       );
       orchestrator.updateOpponentCount(
         'east',
-        oppCardCount(phase, store.gameState.value, tableCards, (i + 1) % 4),
+        oppCardCount(phase, tricksDone, tableCards, (i + 1) % 4),
       );
 
       // Trick-animation diff: detect opponent card plays and trick completion.
       const isEmpty = (tc: Card | null | undefined): boolean => !tc;
 
       const allEmptyNow = tableCards.every(isEmpty);
-      const allFilledBefore = lastTableCards.every((tc) => !isEmpty(tc));
 
-      if (allFilledBefore && allEmptyNow) {
-        // Trick just completed — collect cards toward the winner.
+      if (allEmptyNow && orchestrator.trickCount() > 0) {
+        // Trick just completed. The server scores and clears the table within
+        // the same event as the trick's last card, so a "4 cards on table"
+        // snapshot never arrives — backfill whatever the diff missed from
+        // last_completed_trick, then collect toward the winner.
+        const completed = store.lastCompletedTrick.value;
+        if (completed) {
+          const placed = new Set(orchestrator.trickSeats());
+          for (let slot = 0; slot < 4; slot++) {
+            const card = completed[slot];
+            const seat = seatRel(slot, i);
+            if (card && !placed.has(seat)) orchestrator.placeCardInTrick(card, seat);
+          }
+        }
         const winnerId = store.lastTrickWinnerId.value;
         let winnerSeat: RelativeSeat = 'south';
         if (winnerId) {
