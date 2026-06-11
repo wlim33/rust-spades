@@ -254,20 +254,18 @@ export function renderInGame(args: {
       const isEmpty = (tc: Card | null | undefined): boolean => !tc;
 
       const allEmptyNow = tableCards.every(isEmpty);
+      const hadCardsBefore = lastTableCards.some((tc) => !isEmpty(tc));
 
-      if (allEmptyNow && orchestrator.trickCount() > 0) {
+      if (allEmptyNow && hadCardsBefore) {
         // Trick just completed. The server scores and clears the table within
         // the same event as the trick's last card, so a "4 cards on table"
-        // snapshot never arrives — backfill whatever the diff missed from
-        // last_completed_trick, then collect toward the winner.
-        const completed = store.lastCompletedTrick.value;
-        if (completed) {
-          const placed = new Set(orchestrator.trickSeats());
-          for (let slot = 0; slot < 4; slot++) {
-            const card = completed[slot];
-            const seat = seatRel(slot, i);
-            if (card && !placed.has(seat)) orchestrator.placeCardInTrick(card, seat);
-          }
+        // snapshot never arrives. Hand the full trick to the orchestrator: it
+        // backfills whatever its queue hasn't rendered yet, then collects.
+        const completed = store.lastCompletedTrick.value ?? [];
+        const plays: { card: Card; seat: RelativeSeat }[] = [];
+        for (let slot = 0; slot < 4; slot++) {
+          const card = completed[slot];
+          if (card) plays.push({ card, seat: seatRel(slot, i) });
         }
         const winnerId = store.lastTrickWinnerId.value;
         let winnerSeat: RelativeSeat = 'south';
@@ -275,7 +273,7 @@ export function renderInGame(args: {
           const winnerAbs = store.playerIds.value.indexOf(winnerId);
           if (winnerAbs >= 0) winnerSeat = seatRel(winnerAbs, i);
         }
-        void orchestrator.collectTrick(winnerSeat);
+        orchestrator.completeTrick(plays, winnerSeat);
       } else {
         // Look for newly-added opponent cards.
         for (let slot = 0; slot < 4; slot++) {
@@ -314,21 +312,31 @@ export function renderInGame(args: {
           phase: 'PLAYING',
         }),
       );
-      orchestrator.enableInteraction(validCards, (card) => {
-        void (async () => {
+      orchestrator.enableInteraction(
+        validCards,
+        (card) => {
+          // playCardToCenter first (it captures the pointer rect that
+          // disableInteraction clears), then revoke input synchronously so
+          // no second click can land. The server request runs inside the
+          // queued play step, keeping every later step ordered after it.
+          void orchestrator.playCardToCenter(card, async () => {
+            try {
+              await request(`/games/${args.gameId}/transition`, {
+                method: 'POST',
+                body: JSON.stringify({ type: 'card', card }),
+              });
+            } catch (e) {
+              console.error('play failed', e);
+              toast.error('Play failed.');
+            }
+          });
           orchestrator.disableInteraction();
-          await orchestrator.playCardToCenter(card);
-          try {
-            await request(`/games/${args.gameId}/transition`, {
-              method: 'POST',
-              body: JSON.stringify({ type: 'card', card }),
-            });
-          } catch (e) {
-            console.error('play failed', e);
-            toast.error('Play failed.');
-          }
-        })();
-      });
+        },
+        // Re-evaluated when the queued enable actually runs: the freshest
+        // store state decides whether input opens.
+        () =>
+          store.phase.value === 'PLAYING' && store.currentPlayerId.value === store.playerId.value,
+      );
     } else {
       orchestrator.disableInteraction();
     }

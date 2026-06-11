@@ -8,6 +8,11 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'on-first-retry',
+    // The card orchestrator honors prefers-reduced-motion by skipping
+    // animation flights; gameplay tests assert on state, not motion, and the
+    // full animation chain adds ~1.7s per trick. The animation-specific test
+    // opts back in with test.use({ reducedMotion: 'no-preference' }).
+    contextOptions: { reducedMotion: 'reduce' },
   },
   webServer: [
     {

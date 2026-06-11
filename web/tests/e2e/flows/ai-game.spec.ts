@@ -78,45 +78,49 @@ test('Keyboard: a legal card can be played with Enter', async ({ page }) => {
   await expect(g.hand()).toHaveCount(12, { timeout: 20_000 });
 });
 
-test('Card animations stay on the table (never fly from the page origin)', async ({ page }) => {
-  const game = await createAiGame(page.request);
-  await seedAiSession(page, game);
-  await page.goto(`/play/${game.shortId}`);
+test.describe('with animations enabled', () => {
+  test.use({ contextOptions: { reducedMotion: 'no-preference' } });
 
-  const g = new GamePage(page);
-  await g.waitForBetting();
-  await g.bet(3);
-  await expect(g.hand()).toHaveCount(13, { timeout: 20_000 });
+  test('Card animations stay on the table (never fly from the page origin)', async ({ page }) => {
+    const game = await createAiGame(page.request);
+    await seedAiSession(page, game);
+    await page.goto(`/play/${game.shortId}`);
 
-  // Record any card that ever renders near the viewport origin: the south
-  // play animation (fixed-position clone) and the trick-collect animation
-  // (slots flipped to absolute) must both stay anchored to the table.
-  await page.evaluate(() => {
-    const w = window as unknown as { __strayCards: string[] };
-    w.__strayCards = [];
-    const probe = (): void => {
-      for (const el of document.querySelectorAll('.card-front')) {
-        const r = el.getBoundingClientRect();
-        if (r.width > 0 && r.top < 40 && r.left < 40) {
-          w.__strayCards.push(`${el.getAttribute('aria-label')} at ${r.left},${r.top}`);
+    const g = new GamePage(page);
+    await g.waitForBetting();
+    await g.bet(3);
+    await expect(g.hand()).toHaveCount(13, { timeout: 20_000 });
+
+    // Record any card that ever renders near the viewport origin: the south
+    // play animation (fixed-position clone) and the trick-collect animation
+    // (slots flipped to absolute) must both stay anchored to the table.
+    await page.evaluate(() => {
+      const w = window as unknown as { __strayCards: string[] };
+      w.__strayCards = [];
+      const probe = (): void => {
+        for (const el of document.querySelectorAll('.card-front')) {
+          const r = el.getBoundingClientRect();
+          if (r.width > 0 && r.top < 40 && r.left < 40) {
+            w.__strayCards.push(`${el.getAttribute('aria-label')} at ${r.left},${r.top}`);
+          }
         }
-      }
+        requestAnimationFrame(probe);
+      };
       requestAnimationFrame(probe);
-    };
-    requestAnimationFrame(probe);
+    });
+
+    // Keyboard play exercises the no-pointer-rect path; the bots finish the
+    // trick, which exercises the collect animation.
+    await g.playFirstLegalCardByKeyboard();
+    await expect(g.hand()).toHaveCount(12, { timeout: 20_000 });
+    await g.waitForPlayable();
+    await expect
+      .poll(async () => g.trickFaceCards().count(), { timeout: 20_000 })
+      .toBeLessThanOrEqual(3);
+
+    const strays = await page.evaluate(
+      () => (window as unknown as { __strayCards: string[] }).__strayCards,
+    );
+    expect(strays).toEqual([]);
   });
-
-  // Keyboard play exercises the no-pointer-rect path; the bots finish the
-  // trick, which exercises the collect animation.
-  await g.playFirstLegalCardByKeyboard();
-  await expect(g.hand()).toHaveCount(12, { timeout: 20_000 });
-  await g.waitForPlayable();
-  await expect
-    .poll(async () => g.trickFaceCards().count(), { timeout: 20_000 })
-    .toBeLessThanOrEqual(3);
-
-  const strays = await page.evaluate(
-    () => (window as unknown as { __strayCards: string[] }).__strayCards,
-  );
-  expect(strays).toEqual([]);
 });

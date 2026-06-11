@@ -19,6 +19,13 @@ export class HandManager {
     if (!this.containers) return;
     const sorted = sortCards(cards);
     const existing = this.hands.south;
+
+    // No-op when the hand is unchanged: rebuilding re-appends every element,
+    // which churns the DOM (and trips e2e "element is not stable" checks)
+    // on every state event.
+    if (sorted.length === existing.length && sorted.every((c, i) => cardEq(c, existing[i]!.card))) {
+      return;
+    }
     const kept: HandEntry[] = [];
 
     // Unmount any cards no longer in the hand
