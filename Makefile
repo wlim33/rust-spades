@@ -1,6 +1,8 @@
 # Makefile — local dev for rust-spades
 .DEFAULT_GOAL := help
 .ONESHELL:
+# bash explicitly: -o pipefail is not POSIX, and Ubuntu's /bin/sh (dash) rejects it
+SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 
 PORT     ?= 3000
