@@ -231,13 +231,21 @@ fn build_cors_layer(origins: &[String]) -> Option<CorsLayer> {
     } else if origins.iter().any(|s| s == "*") {
         Some(CorsLayer::permissive())
     } else {
-        let mut layer = CorsLayer::new();
-        for o in origins {
-            if let Ok(hv) = o.parse::<axum::http::HeaderValue>() {
-                layer = layer.allow_origin(hv);
-            }
-        }
-        Some(layer)
+        // Exact-origin allowlist with credentials: the frontend sends the
+        // session cookie (credentials: 'include'), which the CORS spec only
+        // permits with a non-wildcard origin, allow-credentials: true, and
+        // concrete (here: mirrored) methods/headers in the preflight answer.
+        // Origins go in as one list — repeated allow_origin calls replace
+        // rather than accumulate.
+        let origin_values: Vec<axum::http::HeaderValue> =
+            origins.iter().filter_map(|o| o.parse().ok()).collect();
+        Some(
+            CorsLayer::new()
+                .allow_credentials(true)
+                .allow_methods(tower_http::cors::AllowMethods::mirror_request())
+                .allow_headers(tower_http::cors::AllowHeaders::mirror_request())
+                .allow_origin(origin_values),
+        )
     }
 }
 
@@ -977,6 +985,52 @@ mod tests {
         let response = server.get("/health").await;
         response.assert_status_ok();
         response.assert_text("ok");
+    }
+
+    #[tokio::test]
+    async fn test_cors_layer_supports_credentialed_preflight() {
+        use axum::http::{Method, Request, header};
+        use tower::ServiceExt;
+
+        let cors = build_cors_layer(&["https://app.wlim.dev".to_string()]).expect("cors layer");
+        let app = axum::Router::new()
+            .route("/health", axum::routing::get(|| async { "ok" }))
+            .layer(cors);
+
+        // Browser preflight for a credentialed fetch (credentials: 'include').
+        let preflight = Request::builder()
+            .method(Method::OPTIONS)
+            .uri("/health")
+            .header(header::ORIGIN, "https://app.wlim.dev")
+            .header(header::ACCESS_CONTROL_REQUEST_METHOD, "GET")
+            .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "content-type")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = app.oneshot(preflight).await.unwrap();
+
+        let headers = response.headers();
+        assert_eq!(
+            headers
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .map(|v| v.to_str().unwrap()),
+            Some("https://app.wlim.dev"),
+            "exact origin must be echoed (wildcard is invalid with credentials)"
+        );
+        assert_eq!(
+            headers
+                .get(header::ACCESS_CONTROL_ALLOW_CREDENTIALS)
+                .map(|v| v.to_str().unwrap()),
+            Some("true"),
+            "credentialed session-cookie requests require allow-credentials"
+        );
+        assert!(
+            headers.contains_key(header::ACCESS_CONTROL_ALLOW_METHODS),
+            "preflight must answer with allowed methods"
+        );
+        assert!(
+            headers.contains_key(header::ACCESS_CONTROL_ALLOW_HEADERS),
+            "preflight must answer with allowed headers"
+        );
     }
 
     // ---- WebSocket integration tests ----------------------------------
