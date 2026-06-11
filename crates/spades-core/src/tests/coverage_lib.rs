@@ -504,3 +504,35 @@ fn test_score_getters_not_started() {
     assert_eq!(g.get_team_a_bags(), Err(GetError::GameNotStarted));
     assert_eq!(g.get_team_b_bags(), Err(GetError::GameNotStarted));
 }
+
+#[test]
+fn debug_formats_for_suit_and_rank_are_compact() {
+    let suits = [
+        (Suit::Club, "\u{2667}"),
+        (Suit::Diamond, "\u{2662}"),
+        (Suit::Heart, "\u{2661}"),
+        (Suit::Spade, "\u{2664}"),
+    ];
+    for (suit, expected) in suits {
+        assert_eq!(format!("{suit:?}"), expected);
+    }
+
+    let ranks = [
+        (Rank::Two, "2"),
+        (Rank::Three, "3"),
+        (Rank::Four, "4"),
+        (Rank::Five, "5"),
+        (Rank::Six, "6"),
+        (Rank::Seven, "7"),
+        (Rank::Eight, "8"),
+        (Rank::Nine, "9"),
+        (Rank::Ten, "10"),
+        (Rank::Jack, "J"),
+        (Rank::Queen, "Q"),
+        (Rank::King, "K"),
+        (Rank::Ace, "A"),
+    ];
+    for (rank, expected) in ranks {
+        assert_eq!(format!("{rank:?}"), expected);
+    }
+}

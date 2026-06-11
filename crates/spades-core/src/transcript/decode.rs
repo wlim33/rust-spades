@@ -478,6 +478,89 @@ mod tests {
         ));
     }
 
+    /// Minimal valid header with a substitutable line — scaffolding for the
+    /// malformed-input tests below.
+    fn header_with(replace_key: &str, replacement: &str) -> String {
+        let mut out = String::new();
+        for line in [
+            "[GameId \"01010101-0101-0101-0101-010101010101\"]",
+            "[MaxPoints \"500\"]",
+            "[Player0 \"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"]",
+            "[Player1 \"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b\"]",
+            "[Player2 \"0c0c0c0c-0c0c-0c0c-0c0c-0c0c0c0c0c0c\"]",
+            "[Player3 \"0d0d0d0d-0d0d-0d0d-0d0d-0d0d0d0d0d0d\"]",
+            "[Termination \"InProgress\"]",
+            "[Result \"*\"]",
+        ] {
+            if line.starts_with(&format!("[{replace_key} ")) {
+                out.push_str(replacement);
+            } else {
+                out.push_str(line);
+            }
+            out.push('\n');
+        }
+        out
+    }
+
+    #[test]
+    fn decode_rejects_non_numeric_result_halves() {
+        let bad_first = header_with("Result", "[Result \"x 430\"]");
+        assert!(matches!(
+            decode(&bad_first),
+            Err(DecodeError::BadResult { .. })
+        ));
+        let bad_second = header_with("Result", "[Result \"520 y\"]");
+        assert!(matches!(
+            decode(&bad_second),
+            Err(DecodeError::BadResult { .. })
+        ));
+    }
+
+    #[test]
+    fn decode_rejects_tag_without_space() {
+        let s = header_with("GameId", "[GameId]");
+        assert!(matches!(decode(&s), Err(DecodeError::BadTag { .. })));
+    }
+
+    #[test]
+    fn decode_rejects_unquoted_tag_value() {
+        let s = header_with("MaxPoints", "[MaxPoints 500]");
+        assert!(matches!(decode(&s), Err(DecodeError::BadTag { .. })));
+    }
+
+    #[test]
+    fn decode_rejects_bad_escape_in_tag_value() {
+        let s = header_with(
+            "Termination",
+            "[Name0 \"bad\\nescape\"]\n[Termination \"InProgress\"]",
+        );
+        assert!(matches!(decode(&s), Err(DecodeError::BadEscape { .. })));
+    }
+
+    #[test]
+    fn decode_rejects_non_integer_max_points() {
+        let s = header_with("MaxPoints", "[MaxPoints \"abc\"]");
+        assert!(matches!(decode(&s), Err(DecodeError::BadInteger { .. })));
+    }
+
+    #[test]
+    fn decode_rejects_non_integer_timer() {
+        let s = header_with("Result", "[TimerInitial \"abc\"]\n[Result \"*\"]");
+        assert!(matches!(decode(&s), Err(DecodeError::BadInteger { .. })));
+    }
+
+    #[test]
+    fn decode_rejects_trick_line_without_number_prefix() {
+        let mut s = header_with("", "");
+        s.push_str(
+            "\n[Round \"1\"]\n\
+             [Hand0 \"AC\"]\n[Hand1 \"KC\"]\n[Hand2 \"QC\"]\n[Hand3 \"JC\"]\n\
+             [Bets \"1 1 1 1\"]\n\
+             AC KC QC JC\n",
+        );
+        assert!(matches!(decode(&s), Err(DecodeError::BadTag { .. })));
+    }
+
     #[test]
     fn decode_rejects_duplicate_tag() {
         let s = "\
