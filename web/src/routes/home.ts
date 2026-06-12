@@ -144,18 +144,12 @@ function template(): TemplateResult {
         <p class="menu__label">Other ways to play</p>
         <button class="menu__row" type="button" @click=${onFriends} data-testid="play-friends">
           <span class="menu__row-icon">${icon('group-fill')}</span>
-          <span class="menu__row-text">
-            <span class="menu__row-title">Play with friends</span>
-            <span class="menu__row-meta">Create a table · share a link · 500 pts</span>
-          </span>
+          <span class="menu__row-title">Play with friends</span>
           <span class="menu__row-go">${icon('arrow-right-s-line')}</span>
         </button>
         <button class="menu__row" type="button" @click=${onComputers} data-testid="play-computers">
           <span class="menu__row-icon">${icon('robot-2-fill')}</span>
-          <span class="menu__row-text">
-            <span class="menu__row-title">Play with computers</span>
-            <span class="menu__row-meta">1 vs 3 bots · 500 pts · no timer</span>
-          </span>
+          <span class="menu__row-title">Play with computers</span>
           <span class="menu__row-go">${icon('arrow-right-s-line')}</span>
         </button>
       </div>

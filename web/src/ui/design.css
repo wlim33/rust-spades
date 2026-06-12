@@ -225,17 +225,8 @@ body:has(.page--fit) main#root {
   transform: translateX(3px);
   color: var(--fg-muted);
 }
-.menu__row-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
 .menu__row-title {
   font-weight: 600;
-}
-.menu__row-meta {
-  font-size: var(--text-sm);
-  color: var(--fg-muted);
 }
 
 .card {
