@@ -43,8 +43,8 @@
   color-scheme: light;
 
   /* fonts */
-  --font-display: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
   --font-text: 'Hanken Grotesk Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: var(--font-text);
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
 
   /* fluid type scale */
