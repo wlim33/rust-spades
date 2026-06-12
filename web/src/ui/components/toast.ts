@@ -2,7 +2,7 @@ import { html, type TemplateResult } from 'lit-html';
 import { toast } from '../../state/toast';
 
 export function toastStack(): TemplateResult {
-  return html`<div class="toast-stack" role="status" aria-live="polite">
+  return html`<div class="toast-stack" aria-live="polite">
     ${toast.toasts.value.map(
       (t) =>
         html`<div class=${`toast toast--${t.kind}`} data-testid="toast">

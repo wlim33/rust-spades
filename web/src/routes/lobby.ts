@@ -14,6 +14,9 @@ import { navigateTo } from '../lib/util';
 import { appShell } from '../ui/templates';
 import { button } from '../ui/components/button';
 import { icon } from '../ui/icon';
+import { teamButton } from '../ui/components/team-button';
+import { seatTick, gameStart } from '../lib/sound';
+import { announce } from '../ui/announce';
 import type { Resources } from './play-resources';
 import type { ChallengeSeat, ChallengeStatus } from './boot';
 
@@ -60,6 +63,22 @@ export function renderLobby(args: LobbyArgs): void {
     return team.seats.filter((s) => !seats.value.some((seat) => seat !== null && seat.seat === s));
   };
 
+  const applySeatUpdate = (next: ChallengeSeat[]): void => {
+    const prev = seats.value;
+    const filled = (l: ChallengeSeat[]): number => l.filter((s) => s !== null).length;
+    const nextFilled = filled(next);
+    if (nextFilled > filled(prev)) {
+      seatTick(Math.min(nextFilled, 4) as 1 | 2 | 3 | 4);
+      for (const s of next) {
+        if (s && !prev.some((p) => p?.player_id === s.player_id)) {
+          const team = TEAMS.find((t) => (t.seats as readonly string[]).includes(s.seat));
+          announce(`${s.name ?? 'A player'} joined Team ${team?.id ?? ''}`);
+        }
+      }
+    }
+    seats.value = next;
+  };
+
   const onJoinClick = (team: 'A' | 'B'): void => {
     joiningTeam.value = team;
     joinName.value = '';
@@ -86,8 +105,9 @@ export function renderLobby(args: LobbyArgs): void {
             saveSession(args.shortId, args.challengeId, parsed.player_id as string);
             joiningTeam.value = null;
           } else if (eventType === 'seat_update') {
-            seats.value = parsed.seats as ChallengeSeat[];
+            applySeatUpdate(parsed.seats as ChallengeSeat[]);
           } else if (eventType === 'game_start') {
+            gameStart();
             const playerId =
               (parsed.player_short_id as string | undefined) ??
               (parsed.player_id as string | undefined) ??
@@ -153,36 +173,24 @@ export function renderLobby(args: LobbyArgs): void {
   }
 
   const lobbyTemplate = (): TemplateResult => {
-    // The first team with an opening is the default (Team A while it lasts).
-    const defaultTeam = TEAMS.find((t) => openTeamSeats(t.id).length > 0)?.id ?? null;
     return appShell(html`
       <section class="lobby">
         <h2>Waiting for players</h2>
         ${errorMsg.value ? html`<p class="field-error">${errorMsg.value}</p>` : null}
         <div class="team-grid">
           ${TEAMS.map((t) => {
-            const members = teamOccupants(t.id);
-            const open = openTeamSeats(t.id);
-            const joinable = !myPlayerId.value && open.length > 0;
-            return html`<div class="team-card" data-team=${t.no}>
-              <strong>Team ${t.id}</strong>
-              <ul class="team-card__members">
-                ${members.map(
-                  (m) =>
-                    html`<li class=${m.player_id === myPlayerId.value ? 'mine' : ''}>
-                      ${m.name ?? 'Player'}
-                    </li>`,
-                )}
-                ${open.map(() => html`<li class="team-card__open">Open</li>`)}
-              </ul>
-              ${joinable
-                ? button({
-                    label: `Join Team ${t.id}`,
-                    onClick: () => onJoinClick(t.id),
-                    variant: t.id === defaultTeam ? 'primary' : 'secondary',
-                  })
-                : null}
-            </div>`;
+            const members = teamOccupants(t.id).map((m) => ({
+              name: m.name ?? 'Player',
+              mine: m.player_id === myPlayerId.value,
+            }));
+            return teamButton({
+              teamNo: t.no,
+              label: `Team ${t.id}`,
+              members,
+              capacity: t.seats.length,
+              joinable: !myPlayerId.value && members.length < t.seats.length,
+              onJoin: () => onJoinClick(t.id),
+            });
           })}
         </div>
 
