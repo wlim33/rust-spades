@@ -102,7 +102,9 @@ export function renderInGame(args: {
           ? isMyTurn
             ? 'Place your bet!'
             : `Waiting for ${seatName(store.playerIds.value.indexOf(store.currentPlayerId.value ?? ''))}…`
-          : '';
+          : store.phase.value === 'PLAYING' && isMyTurn
+            ? 'Your turn'
+            : '';
 
     const playAgain =
       store.phase.value === 'GAME_OVER'

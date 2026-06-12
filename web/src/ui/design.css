@@ -360,6 +360,14 @@ main#root {
 .hand-container .card:first-child {
   margin-left: 0;
 }
+.hand-container .card.cm-clickable {
+  /* Turn cue: playable cards rise and carry an accent edge. `top`, not
+     `transform` — inline transforms belong to the animation system. */
+  top: -6px;
+  box-shadow:
+    inset 0 2px 0 var(--accent),
+    var(--shadow-card);
+}
 .hand-container .card.cm-clickable:hover {
   transform: translateY(-16px);
   z-index: 5;
@@ -1037,6 +1045,18 @@ button.seat-open {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: var(--radius-md);
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* Pulse the player's own chip when the turn lands; settles to the solid outline. */
+  .seat-south.active {
+    animation: seat-pulse 700ms var(--ease) 3;
+  }
+  @keyframes seat-pulse {
+    50% {
+      outline-offset: 5px;
+      outline-color: color-mix(in oklab, var(--accent) 55%, transparent);
+    }
+  }
 }
 .spades-trick-area {
   display: flex;
