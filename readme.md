@@ -1,7 +1,9 @@
 
 # Spades
 
-[![MIT Licence](https://img.shields.io/github/license/wlim33/rust-spades.svg)](https://github.com/wlim33/rust-spades/blob/master/LICENSE.txt)
+[![CI/CD](https://img.shields.io/github/actions/workflow/status/wlim33/rust-spades/deploy.yml?branch=master&label=CI%2FCD)](https://github.com/wlim33/rust-spades/actions/workflows/deploy.yml)
+[![coverage (core)](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwlim33%2Frust-spades%2Fmaster%2Fcoverage-baseline.json&query=%24%5B%27spades-core%27%5D.line_coverage_pct&suffix=%25&label=coverage%20%28core%29&color=brightgreen)](https://github.com/wlim33/rust-spades/blob/master/docs/coverage.md)
+[![license](https://img.shields.io/github/license/wlim33/rust-spades)](https://github.com/wlim33/rust-spades/blob/master/LICENSE.txt)
 
 Rust implementation of the four-player [trick-taking](https://en.wikipedia.org/wiki/Trick-taking_game) card game Spades. Rules: [pagat.com/auctionwhist/spades.html](https://www.pagat.com/auctionwhist/spades.html).
 
