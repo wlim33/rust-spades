@@ -366,7 +366,7 @@ impl SqliteStore {
         let rows = stmt
             .query_map(rusqlite::params![user_id.to_string()], |r| {
                 Ok(ApiTokenRow {
-                    id: uuid::Uuid::parse_str(&r.get::<_, String>(0)?).unwrap_or_default(),
+                    id: uuid_col(0, &r.get::<_, String>(0)?)?,
                     name: r.get(1)?,
                     created_at: r.get(2)?,
                     last_used_at: r.get(3)?,
@@ -455,10 +455,10 @@ impl SqliteStore {
             rusqlite::params![provider, provider_uid],
             |r| {
                 let s: String = r.get(0)?;
-                Ok(s)
+                uuid_col(0, &s)
             },
         )
-        .map(|s| Some(uuid::Uuid::parse_str(&s).unwrap()))
+        .map(Some)
         .or_else(|e| match e {
             rusqlite::Error::QueryReturnedNoRows => Ok(None),
             other => Err(other.to_string()),
@@ -975,26 +975,34 @@ pub(crate) fn consume_auth_token_in(
     Ok(crate::auth::tokens::ConsumedToken { user_id, purpose })
 }
 
+/// Parse a TEXT column as a UUID, surfacing corruption as a column
+/// conversion error. Never panic and never substitute a value: the old
+/// `unwrap_or_default()` turned a corrupt row into the nil UUID, which can
+/// silently associate data with the wrong record.
+fn uuid_col(idx: usize, s: &str) -> rusqlite::Result<uuid::Uuid> {
+    uuid::Uuid::parse_str(s).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(idx, rusqlite::types::Type::Text, Box::new(e))
+    })
+}
+
 fn seat_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<crate::auth::game_seats::SeatRow> {
     let game_id_s: String = r.get(0)?;
     let player_id_s: String = r.get(2)?;
     let user_id_s: Option<String> = r.get(3)?;
     let anon_id_s: Option<String> = r.get(4)?;
     Ok(crate::auth::game_seats::SeatRow {
-        game_id: uuid::Uuid::parse_str(&game_id_s).unwrap(),
+        game_id: uuid_col(0, &game_id_s)?,
         seat_index: r.get(1)?,
-        player_id: uuid::Uuid::parse_str(&player_id_s).unwrap(),
-        user_id: user_id_s.map(|s| uuid::Uuid::parse_str(&s).unwrap()),
-        anon_user_id: anon_id_s.map(|s| uuid::Uuid::parse_str(&s).unwrap()),
+        player_id: uuid_col(2, &player_id_s)?,
+        user_id: user_id_s.as_deref().map(|s| uuid_col(3, s)).transpose()?,
+        anon_user_id: anon_id_s.as_deref().map(|s| uuid_col(4, s)).transpose()?,
         is_bot: r.get::<_, i32>(5)? != 0,
     })
 }
 
 fn row_to_user(r: &rusqlite::Row<'_>) -> rusqlite::Result<crate::auth::users::User> {
     let id_s: String = r.get(0)?;
-    let id = uuid::Uuid::parse_str(&id_s).map_err(|e| {
-        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
-    })?;
+    let id = uuid_col(0, &id_s)?;
     Ok(crate::auth::users::User {
         id,
         username: r.get(1)?,
@@ -1734,5 +1742,56 @@ mod tests {
             .unwrap();
         assert!(cur.iter().any(|r| r.username == "active"));
         assert!(!cur.iter().any(|r| r.username == "inactive"));
+    }
+
+    /// Insert a row with raw SQL, bypassing FK checks — simulating on-disk
+    /// corruption, which by definition didn't respect the constraints.
+    fn insert_corrupt(store: &SqliteStore, sql: &str, params: &[&dyn rusqlite::ToSql]) {
+        let conn = store.conn.lock().unwrap_or_else(|p| p.into_inner());
+        conn.execute_batch("PRAGMA foreign_keys = OFF").unwrap();
+        conn.execute(sql, params).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+    }
+
+    // A corrupt UUID column must surface as an error, never be silently
+    // replaced (the old `unwrap_or_default()` turned it into the nil UUID,
+    // which can associate data with the wrong record) and never panic.
+
+    #[test]
+    fn list_api_tokens_errors_on_corrupt_token_id() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let user_id = Uuid::new_v4();
+        insert_corrupt(
+            &store,
+            "INSERT INTO api_tokens (id, user_id, token_hash, name) \
+             VALUES ('not-a-uuid', ?1, 'hash', 'token')",
+            &[&user_id.to_string()],
+        );
+        assert!(store.list_api_tokens(user_id).is_err());
+    }
+
+    #[test]
+    fn find_oauth_account_errors_on_corrupt_user_id() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        insert_corrupt(
+            &store,
+            "INSERT INTO oauth_accounts (provider, provider_uid, user_id, email) \
+             VALUES ('github', 'uid-1', 'not-a-uuid', 'a@b.c')",
+            &[],
+        );
+        assert!(store.find_oauth_account("github", "uid-1").is_err());
+    }
+
+    #[test]
+    fn game_seat_errors_on_corrupt_player_id() {
+        let store = SqliteStore::open(":memory:").unwrap();
+        let game_id = Uuid::new_v4();
+        insert_corrupt(
+            &store,
+            "INSERT INTO game_seats (game_id, seat_index, player_id, user_id, anon_user_id, is_bot) \
+             VALUES (?1, 0, 'not-a-uuid', NULL, NULL, 0)",
+            &[&game_id.to_string()],
+        );
+        assert!(store.game_seat(game_id, 0).is_err());
     }
 }
