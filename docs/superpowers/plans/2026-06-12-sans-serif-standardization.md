@@ -22,7 +22,7 @@
 **Files:**
 - Modify: `web/src/ui/tokens.css:46`
 
-- [ ] **Step 1: Edit the token**
+- [x] **Step 1: Edit the token**
 
 Change line 46 from:
 
@@ -38,12 +38,12 @@ to:
 
 (Custom properties may reference siblings declared in the same `:root` block; declaration order does not matter. Keeping the token — rather than replacing its usages — preserves the display/text semantic distinction and makes a future display-font swap a one-line change.)
 
-- [ ] **Step 2: Verify the app still builds**
+- [x] **Step 2: Verify the app still builds**
 
 Run: `pnpm -C web build`
 Expected: exits 0, no "Fraunces" warnings (the font files are still installed at this point).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add web/src/ui/tokens.css
@@ -59,7 +59,7 @@ git commit -m "style(web): point --font-display at the sans text stack" -- web/s
 - Modify: `web/package.json:23`
 - Modify: `web/pnpm-lock.yaml` (regenerated, not hand-edited)
 
-- [ ] **Step 1: Delete the Fraunces import**
+- [x] **Step 1: Delete the Fraunces import**
 
 `web/src/ui/fonts.css` currently reads:
 
@@ -78,7 +78,7 @@ Delete line 1 so it reads:
 @import '@fontsource/ibm-plex-mono/500.css';
 ```
 
-- [ ] **Step 2: Remove the dependency**
+- [x] **Step 2: Remove the dependency**
 
 In `web/package.json`, delete this line from `dependencies`:
 
@@ -86,17 +86,17 @@ In `web/package.json`, delete this line from `dependencies`:
     "@fontsource-variable/fraunces": "^5.2.9",
 ```
 
-- [ ] **Step 3: Regenerate the lockfile**
+- [x] **Step 3: Regenerate the lockfile**
 
 Run: `pnpm -C web install`
 Expected: lockfile updated, `@fontsource-variable/fraunces` removed.
 
-- [ ] **Step 4: Verify the build no longer ships Fraunces**
+- [x] **Step 4: Verify the build no longer ships Fraunces**
 
 Run: `pnpm -C web build && ls web/dist/assets | grep -ci fraunces`
 Expected: build exits 0; the grep prints `0` (grep itself exits 1 on zero matches — that is the expected outcome, not a failure).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add web/src/ui/fonts.css web/package.json web/pnpm-lock.yaml
@@ -114,7 +114,7 @@ git commit -m "style(web): drop Fraunces font package" -- web/src/ui/fonts.css w
 
 (Line numbers are pre-edit; later blocks shift up by one after the first edit. Match on content, not line number.)
 
-- [ ] **Step 1: Remove the opsz hint from .quickplay-tile__time**
+- [x] **Step 1: Remove the opsz hint from .quickplay-tile__time**
 
 Hanken Grotesk has no optical-size axis (Fraunces did), so `font-optical-sizing` is dead weight. Change:
 
@@ -143,7 +143,7 @@ to:
 }
 ```
 
-- [ ] **Step 2: Retune the heading rule**
+- [x] **Step 2: Retune the heading rule**
 
 Weight 560 was calibrated for Fraunces' serif contrast; user selected 600 for the sans (matches existing button/brand weight). Change:
 
@@ -172,7 +172,7 @@ h3 {
 }
 ```
 
-- [ ] **Step 3: Tokenize the footer-version font**
+- [x] **Step 3: Tokenize the footer-version font**
 
 `.footer-version` violates the tokens-only rule with a raw stack. Change:
 
@@ -192,12 +192,12 @@ to:
 }
 ```
 
-- [ ] **Step 4: Verify no display-font or opsz stragglers remain**
+- [x] **Step 4: Verify no display-font or opsz stragglers remain**
 
 Run: `grep -n "font-optical-sizing\|Fraunces\|ui-monospace" web/src/ui/*.css`
 Expected: exactly one match — `--font-mono`'s own fallback chain in `tokens.css:48` (`'IBM Plex Mono', ui-monospace, 'SF Mono', monospace`), which is the token definition itself and is allowed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add web/src/ui/design.css
@@ -210,7 +210,7 @@ git commit -m "style(web): retune display rules for sans; tokenize footer mono" 
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Run the full pre-push gate**
+- [x] **Step 1: Run the full pre-push gate**
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
@@ -219,7 +219,7 @@ make check
 
 Expected: fmt-check, clippy, cargo tests, and web tests all pass. (The Rust side is untouched; this guards against accidental collateral.)
 
-- [ ] **Step 2: Manual browser pass**
+- [x] **Step 2: Manual browser pass**
 
 Start the app (backend + Vite as two separate background tasks — `make dev` self-kills under the agent runner; use `cargo run -p spades-server -- --insecure-cookies --cors-allow-origin http://localhost:5173` and `pnpm -C web dev`) and check at `http://localhost:5173`:
 
@@ -229,6 +229,6 @@ Start the app (backend + Vite as two separate background tasks — `make dev` se
 - Footer: version string renders in IBM Plex Mono.
 - Network tab: no `fraunces*.woff2` requests.
 
-- [ ] **Step 3: Done — report**
+- [x] **Step 3: Done — report**
 
 No commit; summarize verification results. Deploy happens automatically on push to `master` (do not push without the user's go-ahead).
