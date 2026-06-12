@@ -4,7 +4,7 @@ import type { Resources } from '../../src/routes/play-resources';
 import type { ChallengeStatus } from '../../src/routes/boot';
 
 function makeArgs() {
-  const resources: Resources = { cleanups: [], ws: null, pollTimer: null, orchestrator: null };
+  const resources: Resources = { cleanups: [], ws: null, poller: null, orchestrator: null };
   const initialStatus: ChallengeStatus = {
     challenge_id: 'chal-1',
     max_points: 500,

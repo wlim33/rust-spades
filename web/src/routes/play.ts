@@ -2,6 +2,7 @@ import { html, render } from 'lit-html';
 import { request } from '../api/client';
 import { openGameWs } from '../api/ws';
 import type { GameStore, GameStateResponse, HandResponse, PresencePlayer } from '../state/game';
+import { applyStateWithHand, createPollLoop } from '../state/game-sync';
 import { saveSession, clearSession } from '../lib/storage';
 import { navigateTo } from '../lib/util';
 import { toast } from '../state/toast';
@@ -14,25 +15,23 @@ import { renderInGame } from './game-view';
 import { renderLobby } from './lobby';
 
 const POLL_INTERVAL = 2000;
+/** ~20s of consecutive dead polls before the fallback gives up. */
+const MAX_POLL_FAILURES = 10;
 
+/** One polling round. Throws on failure so the poll loop can count it. */
 async function pollOnce(store: GameStore, gameId: string, playerId: string): Promise<void> {
+  const state = await request<GameStateResponse>(`/games/${gameId}`, { method: 'GET' });
+  const hand = await request<HandResponse>(`/games/${gameId}/players/${playerId}/hand`, {
+    method: 'GET',
+  });
+  store.applyState(state, hand);
   try {
-    const state = await request<GameStateResponse>(`/games/${gameId}`, { method: 'GET' });
-    const hand = await request<HandResponse>(`/games/${gameId}/players/${playerId}/hand`, {
+    const presence = await request<{ players: PresencePlayer[] }>(`/games/${gameId}/presence`, {
       method: 'GET',
     });
-    store.applyState(state, hand);
-    try {
-      const presence = await request<{ players: PresencePlayer[] }>(`/games/${gameId}/presence`, {
-        method: 'GET',
-      });
-      store.applyPresence(presence.players);
-    } catch {
-      // optional
-    }
-  } catch (e) {
-    console.error('poll failed', e);
-    toast.error('Failed to fetch game state.');
+    store.applyPresence(presence.players);
+  } catch {
+    // optional
   }
 }
 
@@ -44,7 +43,7 @@ export const play: RouteModule = {
     const resources: Resources = {
       cleanups: [],
       ws: null,
-      pollTimer: null,
+      poller: null,
       orchestrator: null,
     };
 
@@ -138,31 +137,19 @@ export const play: RouteModule = {
           // order, or a slow hand fetch lets a stale snapshot win (the
           // "frozen game" bug: real-network jitter reorders concurrent
           // fetches; the last write was sometimes an old CPU-turn state).
-          return (async () => {
-            try {
-              const hand = await request<HandResponse>(
-                `/games/${gameId}/players/${playerId}/hand`,
-                {
-                  method: 'GET',
-                },
-              );
-              store.applyState(data as GameStateResponse, hand);
-            } catch {
-              // ignore
-            }
-          })();
+          return applyStateWithHand(store, gameId, playerId, data as GameStateResponse);
         },
         onClose: () => {
-          if (store.phase.value !== 'GAME_OVER') {
-            const tick = async (): Promise<void> => {
-              await pollOnce(store, gameId, playerId);
-              if (store.phase.value === 'GAME_OVER' && resources.pollTimer) {
-                clearInterval(resources.pollTimer);
-                resources.pollTimer = null;
-              }
-            };
-            resources.pollTimer = setInterval(() => void tick(), POLL_INTERVAL);
-          }
+          // WS reconnects are exhausted — fall back to bounded polling.
+          if (store.phase.value === 'GAME_OVER') return;
+          resources.poller ??= createPollLoop({
+            poll: () => pollOnce(store, gameId, playerId),
+            isDone: () => store.phase.value === 'GAME_OVER',
+            intervalMs: POLL_INTERVAL,
+            maxConsecutiveFailures: MAX_POLL_FAILURES,
+            onGiveUp: () => toast.error('Connection to the game lost. Reload the page to resume.'),
+          });
+          resources.poller.start();
         },
       });
     })();
