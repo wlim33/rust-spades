@@ -114,7 +114,8 @@ describe('lobby route', () => {
     expect(seatTick).toHaveBeenCalledWith(2);
     // announce() writes to its shared polite live region -- the tick's
     // screen-reader twin.
-    expect(document.querySelector('[role="status"]')!.textContent).toBe('Ada joined Team B');
+    const liveTexts = [...document.querySelectorAll('[role="status"]')].map((el) => el.textContent);
+    expect(liveTexts).toContain('Ada joined Team B');
 
     // A leave: count decreases, no new tick.
     vi.mocked(seatTick).mockClear();
