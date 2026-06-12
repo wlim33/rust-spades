@@ -135,7 +135,12 @@ Returns 204 on success.
 
 WebSocket subscription for real-time game state updates.
 
-Query params: `player_id` (optional).
+Query params: `player_id` (required).
+
+The stream is private to seated players: `player_id` must name a seat owned
+by the caller's identity (session cookie or bearer token), the same rule as
+`GET .../hand`. Connections without a `player_id` are rejected with 401;
+a `player_id` whose seat belongs to someone else is rejected with 403.
 
 Sends current state on connect, then pushes `GameEvent` on every transition:
 

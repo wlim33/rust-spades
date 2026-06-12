@@ -11,6 +11,7 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use super::dto::{ErrorResponse, PresenceSnapshot, ServerEvent, WsQuery};
+use super::handlers::games::seat_matches_identity;
 use super::presence::PresenceTracker;
 use super::{AppState, parse_uuid_or_short_id};
 
@@ -18,8 +19,62 @@ pub async fn game_ws(
     AxumState(state): AxumState<AppState>,
     Path(game_id): Path<Uuid>,
     Query(query): Query<WsQuery>,
+    identity: spades_server::auth::Identity,
     ws: WebSocketUpgrade,
 ) -> Result<impl axum::response::IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    // Authorize before the upgrade: the event stream is private to seated
+    // players (same rule as get_hand). Without this, anyone who learns a
+    // game_id can watch the game in real time. The status codes mirror
+    // get_hand: 401 when no seat is claimed, 400/404 for unknown seats,
+    // 403 when the seat belongs to someone else.
+    let player_id = query
+        .player_id
+        .as_deref()
+        .and_then(parse_uuid_or_short_id)
+        .ok_or((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "game stream is private; connect with the player_id of a seat you own"
+                    .to_string(),
+            }),
+        ))?;
+    let seat = state
+        .auth
+        .store
+        .game_seat_by_player_id(game_id, player_id)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e }),
+            )
+        })?;
+    let Some(seat) = seat else {
+        // Distinguish "game gone" (404) from "player not in this game"
+        // (400) by probing the game's existence, as get_hand does.
+        if state.game_manager.get_game_state(game_id).await.is_err() {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Game not found".to_string(),
+                }),
+            ));
+        }
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "player not seated in this game".to_string(),
+            }),
+        ));
+    };
+    if !seat_matches_identity(&seat, &identity) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "game stream is private to its seat owners".to_string(),
+            }),
+        ));
+    }
+
     let sub = state
         .game_manager
         .subscribe(game_id, query.since)
@@ -50,7 +105,6 @@ pub async fn game_ws(
     let presence_rx = state.presence.subscribe(game_id);
     let initial_presence = state.presence.get_snapshot(game_id);
 
-    let player_id = query.player_id.as_deref().and_then(parse_uuid_or_short_id);
     let presence = state.presence.clone();
     Ok(ws.on_upgrade(move |socket| {
         handle_game_ws(
@@ -74,7 +128,7 @@ async fn handle_game_ws(
     initial_seq: u64,
     mut rx: broadcast::Receiver<GameEvent>,
     catch_up: Option<Vec<GameEvent>>,
-    player_id: Option<Uuid>,
+    player_id: Uuid,
     game_id: Uuid,
     presence: PresenceTracker,
     presence_rx: Option<broadcast::Receiver<PresenceSnapshot>>,
@@ -140,14 +194,7 @@ async fn handle_game_ws(
         }
     }
 
-    if let Some(pid) = player_id {
-        if let Some(snapshot) = presence.player_connected(game_id, pid) {
-            presence.broadcast(game_id, snapshot);
-        }
-    } else if let Some(snapshot) = presence.spectator_connected(game_id) {
-        // No `player_id` query param → this WS is a spectator. Bump the
-        // per-game spectator count and broadcast so other subscribers see
-        // the updated viewer count.
+    if let Some(snapshot) = presence.player_connected(game_id, player_id) {
         presence.broadcast(game_id, snapshot);
     }
 
@@ -231,11 +278,7 @@ async fn handle_game_ws(
         }
     }
 
-    if let Some(pid) = player_id {
-        if let Some(snapshot) = presence.player_disconnected(game_id, pid) {
-            presence.broadcast(game_id, snapshot);
-        }
-    } else if let Some(snapshot) = presence.spectator_disconnected(game_id) {
+    if let Some(snapshot) = presence.player_disconnected(game_id, player_id) {
         presence.broadcast(game_id, snapshot);
     }
 }

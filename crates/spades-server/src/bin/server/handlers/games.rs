@@ -28,7 +28,7 @@ pub async fn root() -> Json<serde_json::Value> {
             "make_transition": "POST /games/:game_id/transition",
             "get_hand": "GET /games/:game_id/players/:player_id/hand",
             "set_player_name": "PUT /games/:game_id/players/:player_id/name",
-            "game_ws": "GET /games/:game_id/ws?player_id=<uuid>",
+            "game_ws": "GET /games/:game_id/ws?player_id=<uuid> (seat owner only)",
             "delete_game": "DELETE /games/:game_id",
             "seek": "POST /matchmaking/seek",
             "list_seeks": "GET /matchmaking/seeks",
@@ -467,7 +467,7 @@ fn bot_seat_name(seat_index: usize) -> Option<&'static str> {
 /// human player at that seat. A registered user matches by `user_id`;
 /// an anonymous session matches by `anon_user_id`. Bot seats have
 /// neither and can never be owned by a request.
-fn seat_matches_identity(
+pub(crate) fn seat_matches_identity(
     seat: &spades_server::auth::game_seats::SeatRow,
     identity: &spades_server::auth::Identity,
 ) -> bool {

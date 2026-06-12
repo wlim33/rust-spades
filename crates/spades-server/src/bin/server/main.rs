@@ -1151,28 +1151,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ws_spectator_bumps_spectator_count() {
+    async fn ws_without_player_id_is_rejected_unauthorized() {
+        // Game streams are private to seated players: a connection that
+        // doesn't claim a seat is refused before the upgrade happens.
         let server = test_app();
         let create: CreateGameResponse = server
             .post("/games")
             .json(&serde_json::json!({"max_points": 500}))
             .await
             .json();
-        let path = format!("/games/{}/ws", create.game_id);
-        let mut ws = server.get_websocket(&path).await.into_websocket().await;
+        let response = server
+            .get_websocket(&format!("/games/{}/ws", create.game_id))
+            .await;
+        response.assert_status_unauthorized();
+    }
 
-        // Spectator's connect should drive presence to include
-        // `spectator_count: 1`. The first `presence_changed` after connect
-        // may be from `initial_presence` (count 0) or from the broadcast
-        // emitted after `spectator_connected` (count 1). Drain until we
-        // see the bumped count.
-        for _ in 0..16 {
-            let msg: serde_json::Value = ws.receive_json().await;
-            if msg["event"] == "presence_changed" && msg["spectator_count"] == 1 {
-                return;
-            }
-        }
-        panic!("never observed spectator_count == 1");
+    #[tokio::test]
+    async fn ws_with_unowned_player_id_is_rejected_forbidden() {
+        let mut server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        // Drop the creator's anon-session cookie: the connect below runs as
+        // a fresh identity that owns no seat in this game, even though it
+        // presents a valid player_id (which is visible in game state).
+        server.clear_cookies();
+        let response = server
+            .get_websocket(&format!(
+                "/games/{}/ws?player_id={}",
+                create.game_id, create.player_ids[0]
+            ))
+            .await;
+        response.assert_status_forbidden();
     }
 
     #[tokio::test]
