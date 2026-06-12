@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { saveSession, loadSession, clearSession } from '../../src/lib/storage';
 import { getThemePref, setThemePref, clearThemePref } from '../../src/lib/storage';
+import { getSoundPref, setSoundPref } from '../../src/lib/storage';
 
 describe('game session storage', () => {
   beforeEach(() => {
@@ -69,5 +70,31 @@ describe('theme preference storage', () => {
     setThemePref('light');
     clearThemePref();
     expect(getThemePref()).toBe(null);
+  });
+});
+
+describe('sound preference storage', () => {
+  beforeEach(() => {
+    const store: Record<string, string> = {};
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => (k in store ? store[k]! : null),
+      setItem: (k: string, v: string) => {
+        store[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete store[k];
+      },
+    });
+  });
+
+  it('defaults to on', () => {
+    expect(getSoundPref()).toBe(true);
+  });
+
+  it('round-trips off and on', () => {
+    setSoundPref(false);
+    expect(getSoundPref()).toBe(false);
+    setSoundPref(true);
+    expect(getSoundPref()).toBe(true);
   });
 });

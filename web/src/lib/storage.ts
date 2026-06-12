@@ -105,3 +105,22 @@ export function clearThemePref(): void {
     // ignore
   }
 }
+
+const SOUND_KEY = 'spades_sound';
+
+/** Turn-chime preference; default on. */
+export function getSoundPref(): boolean {
+  try {
+    return localStorage.getItem(SOUND_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+export function setSoundPref(on: boolean): void {
+  try {
+    localStorage.setItem(SOUND_KEY, on ? 'on' : 'off');
+  } catch {
+    // ignore (private mode)
+  }
+}
