@@ -1,7 +1,26 @@
 # Placard Subtlety + Icon Foundation — Design
 
 Date: 2026-06-12
-Status: approved
+Status: implemented (see addendum)
+
+## Addendum — as-built deviations (2026-06-12)
+
+- **Presence dot/ring token**: shipped as `--fg-muted`, not the spec'd
+  `--fg-subtle` — review found `--fg-subtle` ≈1.8:1 against the chip surface in
+  light mode (it's the codebase's quietest *text* token; a presence indicator
+  is functional). Dot and disconnected ring moved together.
+- **Keel strength**: tuned by eye from the spec's 35% starting value to **30%**
+  (comment in tokens.css records the 30–40% range).
+- **Post-spec additions from review**: `vertical-align: -0.125em` on `.icon`
+  (first text-run icon usage; flex/grid usages unaffected), README icon-
+  provenance line updated for the two license files, invariant comments on the
+  `:not([fill='none'])` rule and the Lucide test.
+- **Approved scope addition**: lobby open-seat buttons dropped `btn--primary`
+  (its accent background was source-order-overridden by `.seat-open`, leaving
+  white-on-white text — pre-existing bug surfaced during visual verification).
+- **Verification note**: the 390×740 fit-mode page overflow seen during the
+  visual pass is pre-existing (101px before this work, 86px after — the glyph
+  narrows the placard) and is NOT addressed here.
 
 ## Problem
 

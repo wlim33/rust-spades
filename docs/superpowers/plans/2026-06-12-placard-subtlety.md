@@ -1,5 +1,8 @@
 # Placard Subtlety + Icon Foundation Implementation Plan
 
+> **Status: COMPLETE** (2026-06-12, commits dca4d6a..79c2df3). As-built deviations
+> are recorded in the spec addendum (`../specs/2026-06-12-placard-subtlety-design.md`).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** De-accent the felt placards (muted team keels, neutral connection dots) and add Lucide game glyphs to the icon system, replacing the scoreboard's "Bags" word with a bag glyph.
