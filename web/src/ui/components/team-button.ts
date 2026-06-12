@@ -17,16 +17,18 @@ export function teamButton(opts: {
   joinable: boolean;
   onJoin: () => void;
 }): TemplateResult {
-  const filled = opts.members.length;
-  const seats = `${filled} of ${opts.capacity} seats filled`;
-  const aria = opts.joinable ? `Join ${opts.label}, ${seats}` : `${opts.label}, ${seats}`;
+  const filled = Math.min(opts.members.length, opts.capacity);
+  const joinable = opts.joinable && filled < opts.capacity;
+  const names = opts.members.map((m) => m.name).join(', ');
+  const seats = `${filled} of ${opts.capacity} seats filled${names ? `: ${names}` : ''}`;
+  const aria = joinable ? `Join ${opts.label}, ${seats}` : `${opts.label}, ${seats}`;
   const openSlots = Math.max(0, opts.capacity - filled);
   return html`<button
     type="button"
     class="team-btn"
     data-team=${opts.teamNo}
     data-fill=${filled}
-    ?disabled=${!opts.joinable}
+    ?disabled=${!joinable}
     aria-label=${aria}
     @click=${opts.onJoin}
   >
