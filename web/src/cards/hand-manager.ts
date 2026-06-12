@@ -106,6 +106,8 @@ export class HandManager {
   }
 
   clear(): void {
+    this.resizeObs?.disconnect();
+    this.resizeObs = null;
     for (const seat of ['south', 'north', 'east', 'west'] as Seat[]) {
       for (const e of this.hands[seat]) e.el.remove();
       this.hands[seat] = [];

@@ -345,6 +345,7 @@ main#root {
 }
 .hand-container {
   gap: 0;
+  flex-wrap: nowrap;
   /* Balance the fan's overlap so it centers visually. --hand-ml is measured
      by HandManager; negative while cards overlap, small positive when spread. */
   padding-left: max(0px, calc(-1 * var(--hand-ml, -22px)));
