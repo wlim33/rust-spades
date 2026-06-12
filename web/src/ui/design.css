@@ -1082,12 +1082,12 @@ button.seat-open {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--fg-subtle);
+  background: var(--fg-muted);
   flex: none;
 }
 .spades-seat-chip.is-disconnected .spades-seat-label::before {
   background: transparent;
-  border: 1.5px solid var(--fg-subtle);
+  border: 1.5px solid var(--fg-muted);
 }
 .seat-north .spades-seat-chip,
 .seat-south .spades-seat-chip {
