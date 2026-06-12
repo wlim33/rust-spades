@@ -128,3 +128,18 @@ export function trickNumber(playerTricksWon: readonly number[]): number {
   const completed = playerTricksWon.reduce((a, b) => a + b, 0);
   return Math.min(completed + 1, 13);
 }
+
+/**
+ * True when the turn just passed to `myId` — the rising edge that triggers
+ * the turn chime. Phases without a turn never chime.
+ */
+export function becameMyTurn(
+  prev: string | null,
+  current: string | null,
+  myId: string,
+  phase: Phase,
+): boolean {
+  if (!myId) return false;
+  if (phase !== 'BETTING' && phase !== 'PLAYING') return false;
+  return current === myId && prev !== current;
+}
