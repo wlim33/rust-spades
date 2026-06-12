@@ -25,8 +25,9 @@ New `/* state cues */` block in `:root`:
 --dur-cue: 400ms;
 ```
 
-- Dark theme defines its own `--team-*-fill` with the same recipe; mix percentage
-  retuned by eye against dark surfaces.
+- No dark-theme override needed: `data-theme` lives on the root element, so the
+  `:root` recipe re-resolves through the dark `--accent`/`--surface-raised`
+  automatically. Retune only if contrast checking demands it.
 - The 22% mix must keep `--fg` text readable *inside* the filled region (names sit
   directly on the gauge, no plate/text-shadow). Tune by eye if contrast fails.
 - Existing `--team-1`/`--team-2` keel tokens **stay** (seat chips and scoreboard

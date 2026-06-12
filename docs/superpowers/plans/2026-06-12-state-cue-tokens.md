@@ -22,7 +22,7 @@
 **Files:**
 - Modify: `web/src/ui/tokens.css`
 
-- [ ] **Step 1: Add the state-cue block and deprecation note**
+- [x] **Step 1: Add the state-cue block and deprecation note**
 
 In `web/src/ui/tokens.css`, replace the existing team-keel comment + tokens (lines 18–20):
 
@@ -54,12 +54,12 @@ with:
   --dur-cue: 400ms;
 ```
 
-- [ ] **Step 2: Verify formatting and lint pass**
+- [x] **Step 2: Verify formatting and lint pass**
 
 Run: `pnpm -C web format && pnpm -C web lint`
 Expected: prettier rewrites nothing unexpected; eslint exits 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add web/src/ui/tokens.css
@@ -73,7 +73,7 @@ git commit -m "feat(web): add state-cue fill tokens; deprecate team keels" -- we
 **Files:**
 - Create: `web/src/ui/icons/user-fill.svg`
 
-- [ ] **Step 1: Add the SVG**
+- [x] **Step 1: Add the SVG**
 
 `web/src/ui/icons/user-fill.svg` (Remix Icon "user-fill", same set/format as the existing `user-line.svg` — `fill="currentColor"`, 24×24 viewBox, single path, no width/height attributes):
 
@@ -83,7 +83,7 @@ git commit -m "feat(web): add state-cue fill tokens; deprecate team keels" -- we
 
 No registry edit needed — `ui/icon.ts` globs `./icons/*.svg` at build time, so the name `user-fill` is available to `icon()` automatically.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add web/src/ui/icons/user-fill.svg
@@ -98,7 +98,7 @@ git commit -m "feat(web): vendor user-fill icon (Remix)" -- web/src/ui/icons/use
 - Modify: `web/src/lib/sound.ts`
 - Test: `web/tests/component/sound.spec.ts` (component project: happy-dom provides the `localStorage` that `getSoundPref` reads; `AudioContext` is stubbed)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `web/tests/component/sound.spec.ts`. The fakes capture scheduled oscillator frequencies; `vi.resetModules()` + dynamic import defeat the module-level `ctx` cache in `sound.ts`. `connect()` returns its target because the implementation chains `osc.connect(gain).connect(ac.destination)`.
 
@@ -193,12 +193,12 @@ describe('chime', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `pnpm -C web test -- --project component sound`
 Expected: FAIL — `seatTick`/`gameStart` are not exported.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Rewrite `web/src/lib/sound.ts` (the `chime` doc comment and autoplay-guard comment carry over onto the shared helper):
 
@@ -290,12 +290,12 @@ export function gameStart(): void {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `pnpm -C web test -- --project component sound`
 Expected: PASS (5 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add web/src/lib/sound.ts web/tests/component/sound.spec.ts
@@ -311,7 +311,7 @@ git commit -m "feat(web): lobby seat-tick ladder and game-start flourish" -- web
 - Modify: `web/src/ui/design.css` (new `.team-btn` block; do NOT touch `.team-card` yet — the lobby still renders it until Task 5)
 - Test: `web/tests/component/team-button.spec.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `web/tests/component/team-button.spec.ts` — the (members, joinable) state matrix:
 
@@ -397,12 +397,12 @@ describe('teamButton', () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `pnpm -C web test -- --project component team-button`
 Expected: FAIL — module `../../src/ui/components/team-button` does not exist.
 
-- [ ] **Step 3: Implement the component**
+- [x] **Step 3: Implement the component**
 
 Create `web/src/ui/components/team-button.ts`:
 
@@ -456,12 +456,12 @@ export function teamButton(opts: {
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `pnpm -C web test -- --project component team-button`
 Expected: PASS.
 
-- [ ] **Step 5: Add the gauge CSS**
+- [x] **Step 5: Add the gauge CSS**
 
 In `web/src/ui/design.css`, directly above the `.team-card` block (which Task 5 deletes), add:
 
@@ -549,12 +549,12 @@ In `web/src/ui/design.css`, directly above the `.team-card` block (which Task 5 
 }
 ```
 
-- [ ] **Step 6: Lint, format, full component suite**
+- [x] **Step 6: Lint, format, full component suite**
 
 Run: `pnpm -C web format && pnpm -C web lint && pnpm -C web test -- --project component`
 Expected: all green.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add web/src/ui/components/team-button.ts web/src/ui/design.css web/tests/component/team-button.spec.ts
@@ -571,7 +571,7 @@ git commit -m "feat(web): team gauge button component" -- web/src/ui/components/
 - Modify: `web/tests/component/lobby.spec.ts`
 - Modify: `web/tests/e2e/pages/lobby-page.ts:8`
 
-- [ ] **Step 1: Update the lobby component tests (failing first)**
+- [x] **Step 1: Update the lobby component tests (failing first)**
 
 In `web/tests/component/lobby.spec.ts`, add module mocks directly under the imports (sound and SSE are mocked for the whole file; existing tests don't touch them):
 
@@ -668,12 +668,12 @@ Append a new test for the sound/announce wiring (drives the join SSE by capturin
   });
 ```
 
-- [ ] **Step 2: Run the lobby tests to verify the new ones fail**
+- [x] **Step 2: Run the lobby tests to verify the new ones fail**
 
 Run: `pnpm -C web test -- --project component lobby`
 Expected: the three rewritten render tests and the sound test FAIL (no `.team-btn` yet); the copy-link test still passes.
 
-- [ ] **Step 3: Update `lobby.ts`**
+- [x] **Step 3: Update `lobby.ts`**
 
 In `web/src/routes/lobby.ts`:
 
@@ -730,7 +730,7 @@ d) In `lobbyTemplate`, delete the `defaultTeam` const and replace the whole `tea
 
 (The `[data-team]` attribute moves onto the button itself, so the `.team-grid [data-team]` keel-variable rules become dead — removed in Step 4.)
 
-- [ ] **Step 4: Delete the dead team-card CSS**
+- [x] **Step 4: Delete the dead team-card CSS**
 
 In `web/src/ui/design.css`, delete these now-unreferenced rules:
 - `.team-grid [data-team='1']` / `.team-grid [data-team='2']` (the `--team` keel indirection)
@@ -738,12 +738,12 @@ In `web/src/ui/design.css`, delete these now-unreferenced rules:
 
 Keep `.team-grid` itself (still the two-column layout) and the deprecated `--team-1`/`--team-2` tokens (seat chips/scoreboard still use them).
 
-- [ ] **Step 5: Run the component suite**
+- [x] **Step 5: Run the component suite**
 
 Run: `pnpm -C web test -- --project component`
 Expected: all PASS, including the rewritten lobby specs.
 
-- [ ] **Step 6: Update the e2e page object**
+- [x] **Step 6: Update the e2e page object**
 
 In `web/tests/e2e/pages/lobby-page.ts`, change line 8 from:
 
@@ -757,12 +757,12 @@ to:
     await this.page.locator('.team-btn:not([disabled])').first().click({ timeout: 10_000 });
 ```
 
-- [ ] **Step 7: Run e2e**
+- [x] **Step 7: Run e2e**
 
 Run: `pnpm -C web test:e2e`
 Expected: PASS (auto-starts the backend; needs the one-time `playwright install chromium` already done).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add web/src/routes/lobby.ts web/src/ui/design.css web/tests/component/lobby.spec.ts web/tests/e2e/pages/lobby-page.ts
@@ -775,12 +775,12 @@ git commit -m "feat(web): lobby team gauge buttons with seat ticks and announcem
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Full gate**
+- [x] **Step 1: Full gate**
 
 Run: `make check`
 Expected: fmt, clippy, cargo tests (untouched, still green), web unit/component tests, lint all pass.
 
-- [ ] **Step 2: Manual check**
+- [x] **Step 2: Manual check**
 
 Run the backend and Vite UI as two separate background tasks (NOT `make dev` — it self-kills under the runner; see memory note). Then in two browser profiles:
 
@@ -789,6 +789,6 @@ Run the backend and Vite UI as two separate background tasks (NOT `make dev` —
 3. Verify: full team's button is disabled but its gauge stays visible; your own row is bold; dark theme fill contrast is acceptable (retune the 22% mix or add a dark override if `--fg` text fails on the filled region); `prefers-reduced-motion: reduce` (emulate via devtools) snaps the gauge with no transition.
 4. Fill all four seats — the 4th tick lands the octave, the game-start flourish plays, everyone navigates to the table.
 
-- [ ] **Step 3: Done — hand back for review**
+- [x] **Step 3: Done — hand back for review**
 
 No version bump, no OpenAPI changes (server untouched), no coverage-baseline change (Rust untouched).
