@@ -55,14 +55,14 @@ export function chime(): void {
 /* Lobby fill ladder: A-major arpeggio, one step per filled seat. The 4th
    seat lands on the octave, so a full lobby resolves just as the game
    becomes startable. */
-const SEAT_PITCH = [440, 554.37, 659.25, 880] as const;
+const SEAT_PITCH: Record<1 | 2 | 3 | 4, number> = { 1: 440, 2: 554.37, 3: 659.25, 4: 880 };
 
 /** One rising tick per seat filled in the lobby (1-indexed total count). */
 export function seatTick(filledSeats: 1 | 2 | 3 | 4): void {
   const ac = readyCtx();
   if (!ac) return;
   try {
-    playNote(ac, SEAT_PITCH[filledSeats - 1], 0);
+    playNote(ac, SEAT_PITCH[filledSeats], 0);
   } catch {
     // audio is an enhancement, never an error
   }
