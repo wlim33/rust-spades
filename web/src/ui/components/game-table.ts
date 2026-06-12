@@ -35,6 +35,8 @@ export function gameTable(args: {
   east: SeatProps;
   south: SeatProps;
   centerText: string;
+  /** Phase controls rendered inside the felt center (bid bar, play again). */
+  centerExtra?: TemplateResult | null;
   refs: GameTableRefs;
 }): TemplateResult {
   const chip = (p: SeatProps): TemplateResult => {
@@ -69,6 +71,7 @@ export function gameTable(args: {
       <span class="spades-center-text" aria-live="polite" aria-atomic="true"
         >${args.centerText}</span
       >
+      ${args.centerExtra ?? null}
     </div>
     ${seat('seat-east', args.east, args.refs.east)}
     <div class="spades-seat seat-south${args.south.active ? ' active' : ''}">

@@ -64,7 +64,9 @@ export const play: RouteModule = {
             ${Array.from({ length: 13 }, () => html`<div class="skeleton skeleton-card"></div>`)}
           </div>
         </div>
-      `),
+      `,
+        { fit: true },
+      ),
       root,
     );
 

@@ -120,7 +120,8 @@ export function renderInGame(args: {
           })
         : html``;
 
-    return appShell(html`
+    return appShell(
+      html`
       ${scores({
         teamAScore: store.teamAScore.value,
         teamBScore: store.teamBScore.value,
@@ -182,10 +183,12 @@ export function renderInGame(args: {
           clockFrac: fracFor(i),
         },
         centerText,
+        centerExtra: store.phase.value === 'GAME_OVER' ? playAgain : betButtons(),
         refs,
       })}
-      ${betButtons()} ${playAgain}
-    `);
+    `,
+      { fit: true },
+    );
   };
 
   // Top-level effect: render the template

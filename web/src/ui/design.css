@@ -71,6 +71,25 @@ main#root {
   padding: var(--space-6) var(--space-4);
 }
 
+/* Game screens fill the viewport exactly; below the table's floor the page
+   scrolls as before. :has() scopes the constraint to fit routes only. */
+body:has(.page--fit) {
+  height: 100dvh;
+  min-height: 0;
+}
+body:has(.page--fit) main#root {
+  min-height: 0;
+}
+.page--fit {
+  flex: 1;
+  min-height: 0;
+  padding-block: var(--space-2);
+}
+.page--fit .spades-table {
+  flex: 1;
+  min-height: 0;
+}
+
 .btn {
   appearance: none;
   font: inherit;
@@ -309,7 +328,8 @@ main#root {
   gap: var(--space-3);
   width: 100%;
   max-width: var(--table-max);
-  min-height: 480px;
+  /* Scroll-fallback floor: in fit mode the table flexes; below this it scrolls. */
+  min-height: 24rem;
   padding: var(--space-4);
   border-radius: var(--radius-lg);
   color: var(--felt-ink);
@@ -340,9 +360,12 @@ main#root {
 .spades-table-center {
   grid-area: center;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--space-3);
   color: var(--felt-ink);
+  min-width: 0;
 }
 
 .card-container {
@@ -960,6 +983,26 @@ button.seat-open {
   }
   .spades-bets {
     grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Short windows: trade chrome for felt. */
+@media (max-height: 760px) {
+  main#root {
+    padding-block: var(--space-2);
+  }
+  .spades-seat-chip {
+    padding: var(--space-1) var(--space-2);
+  }
+  .spades-clock {
+    font-size: var(--text-lg);
+  }
+  .spades-scores {
+    padding: var(--space-1) 0;
+  }
+  .spades-table {
+    padding: var(--space-3);
+    gap: var(--space-2);
   }
 }
 
