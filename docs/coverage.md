@@ -62,5 +62,5 @@ Run that script, commit the updated baseline, and now the new floor is locked in
 
 - Line coverage only. No branch coverage, no per-file or per-function thresholds.
 - Two crates measured: `spades-core` (path: `crates/spades-core/src/`) and `spades-server` (path: `crates/spades-server/src/`). Test files under `src/tests/` are part of the source tree and intentionally count as covered.
-- Only enforced at push time. No CI coverage workflow yet; the gate relies on every contributor opting in via `core.hooksPath hooks`. Switch to GitHub Actions if/when remote enforcement matters.
+- Enforced locally by the opt-in pre-push hook and remotely by CI: the `coverage` job in [`deploy.yml`](../.github/workflows/deploy.yml) runs `hooks/coverage-check.sh` on pushes to `master` and on pull requests, so regressions are caught even without the local hook.
 - Coverage runs add ~30-90s to `git push`. Use `SKIP_HOOKS=1` if you need to push a docs-only change without waiting.
