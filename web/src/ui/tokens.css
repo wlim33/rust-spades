@@ -15,8 +15,9 @@
   --accent-hover: #1a796c;
   --accent-fg: #fff;
   --accent-2: #e0623f;
-  --team-1: color-mix(in oklab, var(--accent) 35%, var(--fg-muted));
-  --team-2: color-mix(in oklab, var(--accent-2) 35%, var(--fg-muted));
+  /* Team keels: tuned by eye (range 30-40%); higher = louder team hue. */
+  --team-1: color-mix(in oklab, var(--accent) 30%, var(--fg-muted));
+  --team-2: color-mix(in oklab, var(--accent-2) 30%, var(--fg-muted));
 
   /* semantic */
   --success: #1c8a51;
