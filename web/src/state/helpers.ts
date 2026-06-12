@@ -52,7 +52,9 @@ export type RelativeSeat = 'south' | 'east' | 'north' | 'west';
 
 export function seatRel(absIdx: number, myIdx: number): RelativeSeat {
   const rel = (((absIdx - myIdx) % 4) + 4) % 4;
-  return (['south', 'east', 'north', 'west'] as const)[rel]!;
+  // Clockwise like the server's seating: the next player to act sits to
+  // your left (screen west), exactly as at a physical table.
+  return (['south', 'west', 'north', 'east'] as const)[rel]!;
 }
 
 export function formatClock(ms: number | null | undefined): string {

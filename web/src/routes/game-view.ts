@@ -72,8 +72,8 @@ export function renderInGame(args: {
     void clockTick.value;
     const i = myIdx();
     const north = (i + 2) % 4;
-    const west = (i + 3) % 4;
-    const east = (i + 1) % 4;
+    const west = (i + 1) % 4;
+    const east = (i + 3) % 4;
     const teamA = i === 0 || i === 2 ? 'A' : 'B';
     const isMyTurn = store.currentPlayerId.value === store.playerId.value;
 
@@ -225,14 +225,14 @@ export function renderInGame(args: {
         playerHand: sortCards(hand),
         oppCounts: {
           north: oppCardCount(phase, tricksDone, tableCards, (i + 2) % 4),
-          west: oppCardCount(phase, tricksDone, tableCards, (i + 3) % 4),
-          east: oppCardCount(phase, tricksDone, tableCards, (i + 1) % 4),
+          west: oppCardCount(phase, tricksDone, tableCards, (i + 1) % 4),
+          east: oppCardCount(phase, tricksDone, tableCards, (i + 3) % 4),
         },
         tableCards,
         myIdx: i,
         northIdx: (i + 2) % 4,
-        westIdx: (i + 3) % 4,
-        eastIdx: (i + 1) % 4,
+        westIdx: (i + 1) % 4,
+        eastIdx: (i + 3) % 4,
         currentPlayerSeatIdx: curSeat >= 0 ? curSeat : 0,
       });
       // Snapshot current table after init to avoid replaying pre-existing cards.
@@ -247,11 +247,11 @@ export function renderInGame(args: {
       );
       orchestrator.updateOpponentCount(
         'west',
-        oppCardCount(phase, tricksDone, tableCards, (i + 3) % 4),
+        oppCardCount(phase, tricksDone, tableCards, (i + 1) % 4),
       );
       orchestrator.updateOpponentCount(
         'east',
-        oppCardCount(phase, tricksDone, tableCards, (i + 1) % 4),
+        oppCardCount(phase, tricksDone, tableCards, (i + 3) % 4),
       );
 
       // Trick-animation diff: detect opponent card plays and trick completion.

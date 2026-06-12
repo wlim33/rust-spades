@@ -51,10 +51,12 @@ describe('sortCards', () => {
 });
 
 describe('seatRel', () => {
+  // Server seats turn order clockwise: from your seat, +1 sits to your LEFT
+  // (west on screen), +3 to your right (east). Matches server bot names.
   it('south for self', () => expect(seatRel(2, 2)).toBe('south'));
-  it('east for +1', () => expect(seatRel(3, 2)).toBe('east'));
+  it('west for +1', () => expect(seatRel(3, 2)).toBe('west'));
   it('north for +2', () => expect(seatRel(0, 2)).toBe('north'));
-  it('west for +3', () => expect(seatRel(1, 2)).toBe('west'));
+  it('east for +3', () => expect(seatRel(1, 2)).toBe('east'));
 });
 
 describe('formatClock', () => {
