@@ -1,4 +1,5 @@
 import { html, type TemplateResult } from 'lit-html';
+import { icon } from '../icon';
 
 export type ScoresProps = {
   teamAScore: number;
@@ -20,7 +21,9 @@ export function scores(p: ScoresProps): TemplateResult {
   ): TemplateResult =>
     html`<span class="spades-scoreboard__team" data-team=${teamNo}>
       <span class="spades-scoreboard__label">${label}${you ? ' (You)' : ''}</span>
-      <span class="spades-scoreboard__nums">${score} · Bags ${bags}</span>
+      <span class="spades-scoreboard__nums"
+        >${score} · ${icon('shopping-bag', { label: 'Bags' })} ${bags}</span
+      >
     </span>`;
   return html`<section class="spades-scoreboard" aria-label="Scores">
     ${team('Team A', p.myTeam === 'A', 1, p.teamAScore, p.teamABags)}
