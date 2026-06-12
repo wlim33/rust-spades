@@ -620,7 +620,7 @@ Replace the first three tests (`renders one card per team…`, `offers both team
     const full = document.querySelector<HTMLButtonElement>('.team-btn[data-team="1"]')!;
     expect(full.disabled).toBe(true);
     expect(full.getAttribute('data-fill')).toBe('2');
-    expect(full.getAttribute('aria-label')).toBe('Team A, 2 of 2 seats filled');
+    expect(full.getAttribute('aria-label')).toBe('Team A, 2 of 2 seats filled: P1, P2');
     expect(full.textContent).toContain('P1');
     expect(document.querySelector<HTMLButtonElement>('.team-btn[data-team="2"]')!.disabled).toBe(
       false,

@@ -74,6 +74,9 @@ own z-layer.
 - *Disabled* (viewer already seated, or team full) — keeps the raised button
   styling with native `disabled`; no hover/cursor; gauge keeps animating as
   others join. `aria-label` drops the verb: "Team A, 2 of 2 seats filled".
+- *Accessible name* — member names are appended to the `aria-label`
+  ("…seats filled: Ada, Bo"): an explicit label replaces content-derived
+  names, and who's seated is the lobby's primary decision input.
 - *Own row* — bold name (existing `.mine` convention). No accent color on
   non-interactive internals (color-restraint rule).
 
