@@ -651,6 +651,17 @@ mod tests {
     use tower_sessions::MemoryStore;
 
     fn test_app() -> TestServer {
+        test_app_with_store().0
+    }
+
+    /// Like `test_app`, but also hands back the auth store so a test can
+    /// inspect or rewrite seat ownership directly (e.g. to simulate a game
+    /// whose seats belong to several distinct identities, which the HTTP
+    /// surface only produces via SSE-driven challenge/matchmaking flows).
+    fn test_app_with_store() -> (
+        TestServer,
+        std::sync::Arc<spades_server::sqlite_store::SqliteStore>,
+    ) {
         use axum::extract::connect_info::MockConnectInfo;
 
         let game_manager = GameManager::new();
@@ -661,7 +672,7 @@ mod tests {
             spades_server::sqlite_store::SqliteStore::open(":memory:").unwrap(),
         );
         let auth_state = spades_server::auth::AuthState {
-            store: auth_store,
+            store: auth_store.clone(),
             mailer: std::sync::Arc::new(spades_server::auth::mailer::LogMailer::new()),
             oauth: std::sync::Arc::new(spades_server::auth::oauth::OauthState::from_env()),
             rate: std::sync::Arc::new(spades_server::auth::rate_limit::RateLimitState::new()),
@@ -683,7 +694,7 @@ mod tests {
         let app = build_router(state)
             .layer(session_layer)
             .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 0))));
-        TestServer::new_with_config(
+        let server = TestServer::new_with_config(
             app,
             TestServerConfig {
                 save_cookies: true,
@@ -691,7 +702,8 @@ mod tests {
                 ..Default::default()
             },
         )
-        .unwrap()
+        .unwrap();
+        (server, auth_store)
     }
 
     #[tokio::test]
@@ -1183,6 +1195,76 @@ mod tests {
                 "/games/{}/ws?player_id={}",
                 create.game_id, create.player_ids[0]
             ))
+            .await;
+        response.assert_status_forbidden();
+    }
+
+    #[tokio::test]
+    async fn transition_by_non_seated_caller_is_forbidden() {
+        // Transitions apply to whichever player the engine says is current,
+        // so without this gate anyone who learns a game_id could play other
+        // people's turns (including rated games).
+        let mut server = test_app();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        // Fresh identity that owns no seat in the game.
+        server.clear_cookies();
+        let response = server
+            .post(&format!("/games/{}/transition", create.game_id))
+            .json(&serde_json::json!({"type": "start"}))
+            .await;
+        response.assert_status_forbidden();
+    }
+
+    #[tokio::test]
+    async fn transition_on_another_players_turn_is_forbidden() {
+        let (server, store) = test_app_with_store();
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        server
+            .post(&format!("/games/{}/transition", create.game_id))
+            .json(&serde_json::json!({"type": "start"}))
+            .await
+            .assert_status_ok();
+
+        // Find whose turn it is and hand that seat to a different identity,
+        // simulating a multi-human game (challenge/matchmaking bind each
+        // seat to its own player's identity at join time).
+        let game: serde_json::Value = server
+            .get(&format!("/games/{}", create.game_id))
+            .await
+            .json();
+        let current_id =
+            uuid::Uuid::parse_str(game["current_player_id"].as_str().unwrap()).unwrap();
+        let seat_index = create
+            .player_ids
+            .iter()
+            .position(|p| *p == current_id)
+            .unwrap();
+        store
+            .insert_game_seat(
+                create.game_id,
+                seat_index as i32,
+                current_id,
+                spades_server::auth::game_seats::SeatOwner {
+                    user_id: None,
+                    anon_user_id: Some(uuid::Uuid::new_v4()),
+                    is_bot: false,
+                },
+            )
+            .unwrap();
+
+        // The caller still owns the other three seats, but it is not their
+        // turn — betting for the current player must be refused.
+        let response = server
+            .post(&format!("/games/{}/transition", create.game_id))
+            .json(&serde_json::json!({"type": "bet", "amount": 3}))
             .await;
         response.assert_status_forbidden();
     }

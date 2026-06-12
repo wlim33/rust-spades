@@ -91,6 +91,11 @@ Remove a game. Returns 204 on success, 404 if not found.
 
 Make a move.
 
+Requires owning a seat in the game (403 otherwise). `bet` and `card`
+additionally require that it is the caller's seat's turn — the transition
+applies to the engine's current player, so only that seat's owner may post
+it. `start` may come from any seated player.
+
 ```json
 // Start
 {"type": "start"}

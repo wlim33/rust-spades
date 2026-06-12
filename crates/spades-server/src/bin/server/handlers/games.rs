@@ -333,6 +333,13 @@ pub async fn make_transition(
         };
     }
 
+    // Authorize after the idempotency replay on purpose: a retried action
+    // that already executed must replay its cached outcome even though the
+    // turn has since advanced past the caller. The cache is keyed by the
+    // caller's identity, so a replay can only return outcomes that same
+    // identity produced.
+    authorize_transition(&state, game_id, &identity, &request.transition).await?;
+
     let transition = match request.transition {
         TransitionType::Start => GameTransition::Start,
         TransitionType::Bet { amount } => GameTransition::Bet(amount),
@@ -461,6 +468,69 @@ fn bot_seat_name(seat_index: usize) -> Option<&'static str> {
         3 => Some("East (CPU)"),
         _ => None,
     }
+}
+
+/// Authorize `identity` to drive `game_id`: the caller must own at least
+/// one human seat, and Bet/Card additionally require owning the seat whose
+/// turn it is — transitions apply to whichever player the engine considers
+/// current, so without the turn check any seated player could act for an
+/// opponent (rated games included). Start is not turn-bound: any seated
+/// player may kick the game off. When the current player's seat row is
+/// missing the turn check is skipped (fails open within seated players)
+/// rather than bricking a game with incomplete seat records.
+async fn authorize_transition(
+    state: &AppState,
+    game_id: Uuid,
+    identity: &spades_server::auth::Identity,
+    transition: &TransitionType,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let game = state
+        .game_manager
+        .get_game_state(game_id)
+        .await
+        .map_err(|e| {
+            let status = match e {
+                GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (
+                status,
+                Json(ErrorResponse {
+                    error: format!("{}", e),
+                }),
+            )
+        })?;
+
+    let owns_any = (0..4).any(|seat_idx| {
+        matches!(
+            state.auth.store.game_seat(game_id, seat_idx),
+            Ok(Some(seat)) if seat_matches_identity(&seat, identity)
+        )
+    });
+    if !owns_any {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "only seated players may act in this game".to_string(),
+            }),
+        ));
+    }
+
+    if matches!(
+        transition,
+        TransitionType::Bet { .. } | TransitionType::Card { .. }
+    ) && let Some(current_id) = game.current_player_id
+        && let Ok(Some(seat)) = state.auth.store.game_seat_by_player_id(game_id, current_id)
+        && !seat_matches_identity(&seat, identity)
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "it is not your seat's turn".to_string(),
+            }),
+        ));
+    }
+    Ok(())
 }
 
 /// True when `identity` owns `seat` — meaning the requester is the
