@@ -520,6 +520,87 @@ body:has(.page--fit) main#root {
 .team-grid [data-team='2'] {
   --team: var(--team-2);
 }
+/* Team gauge button: the ::before layer is the occupancy gauge — background
+   plane carries state, border is structure only. Content stacks above it. */
+.team-btn {
+  appearance: none;
+  font: inherit;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  color: var(--fg);
+  cursor: pointer;
+  box-shadow: var(--shadow-1);
+  transition:
+    transform var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+.team-btn[data-team='1'] {
+  --team-fill: var(--team-1-fill);
+}
+.team-btn[data-team='2'] {
+  --team-fill: var(--team-2-fill);
+}
+.team-btn::before {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 0%;
+  background: var(--team-fill);
+  transition: height var(--dur-cue) var(--ease);
+}
+/* Heights enumerate capacity 2 — the only capacity that exists; the TS
+   capacity param feeds the aria-label, not this. */
+.team-btn[data-fill='1']::before {
+  height: 50%;
+}
+.team-btn[data-fill='2']::before {
+  height: 100%;
+}
+.team-btn > * {
+  position: relative;
+}
+.team-btn:hover:not([disabled]) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-2);
+}
+.team-btn:active:not([disabled]) {
+  transform: translateY(1px);
+}
+/* Disabled keeps the raised look and a live gauge; only the affordance goes.
+   (No opacity dim — that would mute the fill cue itself.) */
+.team-btn[disabled] {
+  cursor: default;
+}
+.team-btn__label {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+.team-btn__slot {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.team-btn__slot--open {
+  color: var(--fg-muted);
+}
+.team-btn__slot--mine {
+  font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  .team-btn::before {
+    transition: none;
+  }
+}
 .team-card {
   display: flex;
   flex-direction: column;
