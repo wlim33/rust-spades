@@ -89,11 +89,11 @@ describe('HandManager', () => {
     hm2.setContainers({ south: s2, north: s2, west: w2, east: e2, trick: s2 });
     hm2.setOpponentCount('west', 13);
     // happy-dom: clientHeight/offsetHeight are 0 -> full compression at the
-    // 10px strip with the 64px fallback card height: -(64 - 10) = -54.
-    expect(w2.style.getPropertyValue('--fan-mt')).toBe('-54px');
+    // 4px strip with the 64px fallback card height: -(64 - 4) = -60.
+    expect(w2.style.getPropertyValue('--fan-mt')).toBe('-60px');
     expect(e2.style.getPropertyValue('--fan-mt')).toBe('');
     hm2.setOpponentCount('east', 5);
-    expect(e2.style.getPropertyValue('--fan-mt')).toBe('-54px');
+    expect(e2.style.getPropertyValue('--fan-mt')).toBe('-60px');
   });
   it('keeps observing through clear() and disconnects only on dispose()', () => {
     const calls: string[] = [];

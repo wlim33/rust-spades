@@ -9,7 +9,7 @@ export type Containers = Record<Seat | 'trick', HTMLElement>;
 export type HandEntry = { card: Card | null; el: CardEl };
 
 /** Vertical fans show card backs only — no index to keep readable. */
-const SIDE_MIN_STRIP = 10;
+const SIDE_MIN_STRIP = 4;
 
 export class HandManager {
   private containers: Containers | null = null;
@@ -104,6 +104,11 @@ export class HandManager {
       this.hands[seat].length,
       SIDE_MIN_STRIP,
     );
+    // In content-sized rows (phone grid) the row height follows the fan, so
+    // measure -> write -> resize would loop forever on sub-pixel rounding.
+    // Skip writes that don't change the overlap by a visible amount.
+    const prev = parseFloat(container.style.getPropertyValue('--fan-mt'));
+    if (Number.isFinite(prev) && Math.abs(prev - mt) < 0.5) return;
     container.style.setProperty('--fan-mt', `${mt}px`);
   }
 

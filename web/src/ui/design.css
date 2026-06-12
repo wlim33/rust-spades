@@ -323,13 +323,15 @@ body:has(.page--fit) main#root {
 .spades-table {
   display: grid;
   grid-template-columns: 1fr 2fr 1fr;
-  grid-template-rows: auto 1fr auto;
+  /* minmax(0, 1fr): the center row must shrink with the flexed table — its
+     content (fans, bid bar) adapts; auto-min rows would overflow the felt. */
+  grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas: 'north north north' 'west center east' 'south south south';
   gap: var(--space-3);
   width: 100%;
   max-width: var(--table-max);
   /* Scroll-fallback floor: in fit mode the table flexes; below this it scrolls. */
-  min-height: 24rem;
+  min-height: 30rem;
   padding: var(--space-4);
   border-radius: var(--radius-lg);
   color: var(--felt-ink);
