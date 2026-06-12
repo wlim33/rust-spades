@@ -355,7 +355,8 @@ main#root {
   transition:
     transform var(--dur) var(--ease),
     margin-left var(--dur) var(--ease),
-    top var(--dur) var(--ease);
+    top var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
 }
 .hand-container .card:first-child {
   margin-left: 0;
