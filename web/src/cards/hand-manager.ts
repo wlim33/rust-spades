@@ -8,6 +8,9 @@ export type Containers = Record<Seat | 'trick', HTMLElement>;
 
 export type HandEntry = { card: Card | null; el: CardEl };
 
+/** Vertical fans show card backs only — no index to keep readable. */
+const SIDE_MIN_STRIP = 10;
+
 export class HandManager {
   private containers: Containers | null = null;
   private hands: Record<Seat, HandEntry[]> = { south: [], north: [], east: [], west: [] };
@@ -19,8 +22,14 @@ export class HandManager {
     // happy-dom (component tests) has no ResizeObserver; spacing still updates
     // on every hand change, so only live-resize reactivity is lost there.
     if (typeof ResizeObserver !== 'undefined') {
-      this.resizeObs = new ResizeObserver(() => this.updateHandSpacing());
+      this.resizeObs = new ResizeObserver(() => {
+        this.updateHandSpacing();
+        this.updateFanSpacing('west');
+        this.updateFanSpacing('east');
+      });
       this.resizeObs.observe(containers.south);
+      this.resizeObs.observe(containers.west);
+      this.resizeObs.observe(containers.east);
     }
   }
 
@@ -81,6 +90,21 @@ export class HandManager {
         entries.push({ card: null, el });
       }
     }
+    if (seat === 'west' || seat === 'east') this.updateFanSpacing(seat);
+  }
+
+  /** Measure and publish the per-card vertical overlap as --fan-mt on a side container. */
+  private updateFanSpacing(seat: 'west' | 'east'): void {
+    if (!this.containers) return;
+    const container = this.containers[seat];
+    const cardH = this.hands[seat][0]?.el.offsetHeight || 64;
+    const mt = computeHandOverlap(
+      container.clientHeight,
+      cardH,
+      this.hands[seat].length,
+      SIDE_MIN_STRIP,
+    );
+    container.style.setProperty('--fan-mt', `${mt}px`);
   }
 
   removeCard(card: Card): CardEl | null {

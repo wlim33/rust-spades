@@ -79,6 +79,22 @@ describe('HandManager', () => {
     hm.removeCard(c('Spade', 'Ace'));
     expect(south.style.getPropertyValue('--hand-ml')).toBe('0px');
   });
+
+  it('publishes --fan-mt vertical overlap on side-fan count changes', () => {
+    document.body.innerHTML = '<div id="s2"></div><div id="w2"></div><div id="e2"></div>';
+    const s2 = document.getElementById('s2') as HTMLDivElement;
+    const w2 = document.getElementById('w2') as HTMLDivElement;
+    const e2 = document.getElementById('e2') as HTMLDivElement;
+    const hm2 = new HandManager();
+    hm2.setContainers({ south: s2, north: s2, west: w2, east: e2, trick: s2 });
+    hm2.setOpponentCount('west', 13);
+    // happy-dom: clientHeight/offsetHeight are 0 -> full compression at the
+    // 10px strip with the 64px fallback card height: -(64 - 10) = -54.
+    expect(w2.style.getPropertyValue('--fan-mt')).toBe('-54px');
+    expect(e2.style.getPropertyValue('--fan-mt')).toBe('');
+    hm2.setOpponentCount('east', 5);
+    expect(e2.style.getPropertyValue('--fan-mt')).toBe('-54px');
+  });
   it('keeps observing through clear() and disconnects only on dispose()', () => {
     const calls: string[] = [];
     class FakeRO {
@@ -95,11 +111,12 @@ describe('HandManager', () => {
     try {
       const m = new HandManager();
       m.setContainers({ south, north, west: south, east: south, trick: south });
-      expect(calls).toEqual(['observe']);
+      // south + west + east are observed (the fans all spread adaptively)
+      expect(calls).toEqual(['observe', 'observe', 'observe']);
       m.clear(); // mid-game reset (every orchestrator setup) must not kill the observer
-      expect(calls).toEqual(['observe']);
+      expect(calls).toEqual(['observe', 'observe', 'observe']);
       m.dispose();
-      expect(calls).toEqual(['observe', 'disconnect']);
+      expect(calls).toEqual(['observe', 'observe', 'observe', 'disconnect']);
     } finally {
       vi.unstubAllGlobals();
     }

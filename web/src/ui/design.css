@@ -326,13 +326,15 @@ main#root {
   grid-area: south;
   justify-self: center;
 }
+/* Side seats stretch so their fans know the available height and can
+   compress to fit it (HandManager publishes --fan-mt from the measurement). */
 .seat-west {
   grid-area: west;
-  align-self: center;
+  align-self: stretch;
 }
 .seat-east {
   grid-area: east;
-  align-self: center;
+  align-self: stretch;
   justify-self: end;
 }
 .spades-table-center {
@@ -1071,10 +1073,13 @@ button.seat-open {
 .seat-east .opp-container,
 .seat-west .opp-container {
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  justify-content: safe center;
 }
 .seat-east .opp-container .card,
 .seat-west .opp-container .card {
-  margin-top: -44px;
+  margin-top: var(--fan-mt, calc(var(--card-h) * -0.6875)); /* ≡ -44px at 64px */
 }
 .seat-east .opp-container .card:first-child,
 .seat-west .opp-container .card:first-child {
