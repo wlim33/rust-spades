@@ -65,4 +65,18 @@ describe('HandManager', () => {
     expect(entries.length).toBe(1);
     expect(entries[0]!.card).toEqual(c('Spade', 'Ace'));
   });
+
+  it('sets --hand-ml on the south container as the hand changes', () => {
+    hm.setPlayerHand([c('Spade', 'Ace'), c('Spade', 'King')]);
+    // happy-dom reports zero widths: 2 cards clamp to full compression (-22px)
+    expect(south.style.getPropertyValue('--hand-ml')).toBe('-22px');
+    hm.setPlayerHand([c('Spade', 'Ace')]);
+    expect(south.style.getPropertyValue('--hand-ml')).toBe('0px');
+  });
+
+  it('updates --hand-ml when a card is removed via removeCard', () => {
+    hm.setPlayerHand([c('Spade', 'Ace'), c('Spade', 'King')]);
+    hm.removeCard(c('Spade', 'Ace'));
+    expect(south.style.getPropertyValue('--hand-ml')).toBe('0px');
+  });
 });

@@ -20,4 +20,8 @@ describe('computeHandOverlap', () => {
     expect(computeHandOverlap(670, 46, 0)).toBe(0);
     expect(computeHandOverlap(670, 46, 1)).toBe(0);
   });
+
+  it('handles two cards (denominator 1): full leftover, capped at the gap', () => {
+    expect(computeHandOverlap(200, 46, 2)).toBe(4); // ideal = 108, capped
+  });
 });

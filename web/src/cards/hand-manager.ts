@@ -1,6 +1,7 @@
 import type { Card } from '../state/helpers';
 import { createBack, createFront, type CardEl } from './card-el';
 import { sortCards, cardEq } from '../state/helpers';
+import { computeHandOverlap } from './hand-layout';
 
 export type Seat = 'south' | 'north' | 'east' | 'west';
 export type Containers = Record<Seat | 'trick', HTMLElement>;
@@ -10,9 +11,17 @@ export type HandEntry = { card: Card | null; el: CardEl };
 export class HandManager {
   private containers: Containers | null = null;
   private hands: Record<Seat, HandEntry[]> = { south: [], north: [], east: [], west: [] };
+  private resizeObs: ResizeObserver | null = null;
 
   setContainers(containers: Containers): void {
     this.containers = containers;
+    this.resizeObs?.disconnect();
+    // happy-dom (component tests) has no ResizeObserver; spacing still updates
+    // on every hand change, so only live-resize reactivity is lost there.
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObs = new ResizeObserver(() => this.updateHandSpacing());
+      this.resizeObs.observe(containers.south);
+    }
   }
 
   setPlayerHand(cards: readonly Card[]): void {
@@ -46,6 +55,16 @@ export class HandManager {
     container.innerHTML = '';
     for (const entry of kept) container.appendChild(entry.el);
     this.hands.south = kept;
+    this.updateHandSpacing();
+  }
+
+  /** Measure and publish the per-card overlap as --hand-ml on the south container. */
+  private updateHandSpacing(): void {
+    if (!this.containers) return;
+    const container = this.containers.south;
+    const cardW = this.hands.south[0]?.el.offsetWidth || 46;
+    const ml = computeHandOverlap(container.clientWidth, cardW, this.hands.south.length);
+    container.style.setProperty('--hand-ml', `${ml}px`);
   }
 
   setOpponentCount(seat: Exclude<Seat, 'south'>, count: number): void {
@@ -70,6 +89,7 @@ export class HandManager {
     if (idx === -1) return null;
     const [entry] = entries.splice(idx, 1);
     entry!.el.remove();
+    this.updateHandSpacing();
     return entry!.el;
   }
 

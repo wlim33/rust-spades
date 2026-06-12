@@ -1,6 +1,6 @@
 /** Layout math for the south hand fan. Pure — unit-tested in isolation. */
 
-/** Minimum visible strip of an overlapped card, px (today's fixed overlap). */
+/** Minimum visible strip of an overlapped card, px (the same value the pre-adaptive CSS used). */
 const MIN_STRIP = 24;
 /** Maximum air between fully spread cards, px — keeps endgame hands fan-like. */
 const MAX_GAP = 4;
