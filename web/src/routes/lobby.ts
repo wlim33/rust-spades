@@ -147,7 +147,7 @@ export function renderLobby(args: LobbyArgs): void {
               </div>`;
             }
             return html`<button
-              class="seat-open btn btn--primary"
+              class="seat-open btn"
               data-team=${SEAT_TEAMS[s]}
               @click=${() => onJoinClick(s)}
             >
