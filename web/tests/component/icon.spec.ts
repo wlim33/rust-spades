@@ -29,6 +29,7 @@ describe('icon', () => {
     expect(document.querySelector('.icon')).toBeNull();
   });
 
+  // Pins the fill="none" root attribute that design.css's :not([fill='none']) scoping keys on.
   it('renders vendored Lucide icons without clobbering their stroke style', () => {
     render(icon('spade'), document.getElementById('root')!);
     const svg = document.querySelector('.icon svg');

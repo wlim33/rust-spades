@@ -1189,6 +1189,7 @@ button.seat-open {
   width: 1em;
   height: 1em;
 }
+/* Lucide stroke icons carry fill="none"; only fill-family (Remix) icons get currentColor. */
 .icon svg:not([fill='none']) {
   fill: currentColor;
 }
