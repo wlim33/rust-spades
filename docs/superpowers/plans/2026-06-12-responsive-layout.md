@@ -1,5 +1,9 @@
 # Responsive Layout Implementation Plan
 
+> **STATUS: COMPLETE** — all 7 tasks executed on `responsive-layout` (2026-06-12), plus two
+> post-plan additions: the scoreboard placard (spec addendum G) and the overflow/RO-loop fixes
+> (spec addendum H). Verification: `make check` green, 12/12 e2e, live visual matrix re-audit.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the game fit any window ≥ ~560px tall with zero scrolling, scale cards/table up on large monitors, pin the footer, give the home page a two-column desktop layout, and render seat rotation clockwise to match the server.
