@@ -64,7 +64,7 @@ main#root {
 
 .page {
   width: 100%;
-  max-width: 720px;
+  max-width: var(--content-max);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -885,6 +885,8 @@ button.seat-open {
 }
 
 .site-footer {
+  /* Pin to the viewport bottom on short content; main#root is a flex column. */
+  margin-top: auto;
   width: 100%;
   display: flex;
   justify-content: center;
