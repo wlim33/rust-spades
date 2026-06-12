@@ -5,6 +5,7 @@ import { formField } from '../ui/components/form-field';
 import { button } from '../ui/components/button';
 import { session } from '../state/session';
 import { navigateTo } from '../lib/util';
+import { getSoundPref, setSoundPref } from '../lib/storage';
 import type { RouteModule } from '../router';
 
 export const settings: RouteModule = {
@@ -24,6 +25,7 @@ export const settings: RouteModule = {
     const saving = signal(false);
     const error = signal<string | null>(null);
     const saved = signal(false);
+    const soundOn = signal(getSoundPref());
 
     const onSave = async (): Promise<void> => {
       if (saving.value) return;
@@ -100,6 +102,19 @@ export const settings: RouteModule = {
               newPassword.value = (e.target as HTMLInputElement).value;
             },
           })}
+          <label class="field-checkbox">
+            <input
+              id="turn_sound"
+              type="checkbox"
+              .checked=${soundOn.value}
+              @change=${(e: Event) => {
+                const on = (e.target as HTMLInputElement).checked;
+                soundOn.value = on;
+                setSoundPref(on);
+              }}
+            />
+            Turn sound
+          </label>
           <div class="form-actions">
             ${button({
               label: saving.value ? 'Saving…' : 'Save',

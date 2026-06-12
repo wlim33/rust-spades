@@ -10,8 +10,21 @@ const mockUser: User = {
   email_verified: true,
 };
 
+function makeLocalStorage(): Storage {
+  const store: Record<string, string> = {};
+  return {
+    getItem: (k: string) => store[k] ?? null,
+    setItem: (k: string, v: string) => { store[k] = v; },
+    removeItem: (k: string) => { delete store[k]; },
+    clear: () => { for (const k of Object.keys(store)) delete store[k]; },
+    get length() { return Object.keys(store).length; },
+    key: (i: number) => Object.keys(store)[i] ?? null,
+  } as Storage;
+}
+
 describe('settings route', () => {
   beforeEach(() => {
+    vi.stubGlobal('localStorage', makeLocalStorage());
     document.body.innerHTML = '<main id="root"></main>';
     session.currentUser.value = { ...mockUser };
   });
@@ -55,6 +68,18 @@ describe('settings route', () => {
     await Promise.resolve();
     expect(upd).toHaveBeenCalledWith('newalice@x', 'hunter2');
     expect(document.querySelector('.field-success')?.textContent).toContain('Saved');
+    cleanup();
+  });
+
+  it('renders the turn-sound toggle, default on, and persists changes', () => {
+    localStorage.removeItem('spades_sound');
+    const cleanup = settings.render({}, { path: '/me', search: new URLSearchParams() });
+    const box = document.querySelector<HTMLInputElement>('#turn_sound')!;
+    expect(box).not.toBeNull();
+    expect(box.checked).toBe(true);
+    box.checked = false;
+    box.dispatchEvent(new Event('change'));
+    expect(localStorage.getItem('spades_sound')).toBe('off');
     cleanup();
   });
 });
