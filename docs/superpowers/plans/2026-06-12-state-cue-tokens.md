@@ -51,7 +51,7 @@ with:
   --team-2-fill: color-mix(in oklab, var(--accent-2) 22%, var(--surface-raised));
   /* Gauge motion: slower than --dur so a fill change reads as liquid rising,
      not a UI flicker. */
-  --cue-dur: 400ms;
+  --dur-cue: 400ms;
 ```
 
 - [ ] **Step 2: Verify formatting and lint pass**
@@ -502,7 +502,7 @@ In `web/src/ui/design.css`, directly above the `.team-card` block (which Task 5 
   inset: auto 0 0 0;
   height: 0%;
   background: var(--team-fill);
-  transition: height var(--cue-dur) var(--ease);
+  transition: height var(--dur-cue) var(--ease);
 }
 /* Heights enumerate capacity 2 — the only capacity that exists; the TS
    capacity param feeds the aria-label, not this. */

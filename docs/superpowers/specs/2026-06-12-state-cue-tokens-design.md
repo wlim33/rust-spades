@@ -22,7 +22,7 @@ New `/* state cues */` block in `:root`:
 
 /* Gauge motion: slower than --dur so a fill change reads as "liquid rising,"
    not a UI flicker. */
---cue-dur: 400ms;
+--dur-cue: 400ms;
 ```
 
 - Dark theme defines its own `--team-*-fill` with the same recipe; mix percentage
@@ -64,7 +64,7 @@ Markup (spans only — `<button>` content model is phrasing content, no `<ul>`):
 team's `--team-*-fill`, height `0% / 50% / 100%` keyed off `[data-fill]`
 (`data-fill` = `members.length`). The CSS enumerates heights for capacity 2 —
 the only capacity that exists; `capacity` in the TS API feeds the aria-label,
-not the CSS. Height transitions over `--cue-dur`;
+not the CSS. Height transitions over `--dur-cue`;
 `prefers-reduced-motion` snaps with no transition. Content sits above on its
 own z-layer.
 
