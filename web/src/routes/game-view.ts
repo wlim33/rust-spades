@@ -8,6 +8,7 @@ import {
   seatRel,
   formatClock,
   trickNumber,
+  becameMyTurn,
   type Card,
   type RelativeSeat,
 } from '../state/helpers';
@@ -20,6 +21,7 @@ import {
   LOW_CLOCK_MS,
 } from '../state/clocks';
 import { clearSession } from '../lib/storage';
+import { chime } from '../lib/sound';
 import { navigateTo } from '../lib/util';
 import { toast } from '../state/toast';
 import { CardOrchestrator } from '../cards/orchestrator';
@@ -347,9 +349,21 @@ export function renderInGame(args: {
   const disposeClock = effect(() => {
     captureActiveClock(store.activePlayerClockMs.value);
   });
+
+  // Turn chime: fire once on the edge where the turn becomes ours.
+  let prevTurnPlayer: string | null = null;
+  const disposeChime = effect(() => {
+    const current = store.currentPlayerId.value;
+    if (becameMyTurn(prevTurnPlayer, current, store.playerId.value, store.phase.value)) {
+      chime();
+    }
+    prevTurnPlayer = current;
+  });
+
   startClockTicker();
   args.resources.cleanups.push(disposeRender);
   args.resources.cleanups.push(disposeCards);
   args.resources.cleanups.push(disposeClock);
+  args.resources.cleanups.push(disposeChime);
   args.resources.cleanups.push(stopClockTicker);
 }
