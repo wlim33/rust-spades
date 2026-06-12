@@ -63,20 +63,25 @@ export function renderLobby(args: LobbyArgs): void {
     return team.seats.filter((s) => !seats.value.some((seat) => seat !== null && seat.seat === s));
   };
 
+  // Sound + live-region announcements are the audible/SR twins of the gauge
+  // change. The tick is gated on the filled count rising (the pitch ladder
+  // encodes occupancy); announcements follow joins themselves, so a
+  // same-count swap still names the newcomer. State lands first: cues are
+  // best-effort garnish and must never block a seat snapshot.
   const applySeatUpdate = (next: ChallengeSeat[]): void => {
     const prev = seats.value;
+    seats.value = next;
     const filled = (l: ChallengeSeat[]): number => l.filter((s) => s !== null).length;
     const nextFilled = filled(next);
     if (nextFilled > filled(prev)) {
       seatTick(Math.min(nextFilled, 4) as 1 | 2 | 3 | 4);
-      for (const s of next) {
-        if (s && !prev.some((p) => p?.player_id === s.player_id)) {
-          const team = TEAMS.find((t) => (t.seats as readonly string[]).includes(s.seat));
-          announce(`${s.name ?? 'A player'} joined Team ${team?.id ?? ''}`);
-        }
+    }
+    for (const s of next) {
+      if (s && !prev.some((p) => p?.player_id === s.player_id)) {
+        const team = TEAMS.find((t) => t.seats.some((x) => x === s.seat));
+        announce(`${s.name ?? 'A player'} joined Team ${team?.id ?? ''}`);
       }
     }
-    seats.value = next;
   };
 
   const onJoinClick = (team: 'A' | 'B'): void => {

@@ -122,6 +122,13 @@ describe('lobby route', () => {
     seatUpdate([{ seat: 'A', player_id: 'p1', name: 'Me' }]);
     expect(seatTick).not.toHaveBeenCalled();
 
+    // A same-count swap: no tick (occupancy unchanged) but the joiner is
+    // still announced.
+    seatUpdate([{ seat: 'B', player_id: 'p9', name: 'Eve' }]);
+    expect(seatTick).not.toHaveBeenCalled();
+    const liveNow = [...document.querySelectorAll('[role="status"]')].map((el) => el.textContent);
+    expect(liveNow).toContain('Eve joined Team B');
+
     sseOpts.onEvent('game_start', JSON.stringify({ game_id: 'g1', player_id: 'p1' }));
     expect(gameStart).toHaveBeenCalledTimes(1);
   });
