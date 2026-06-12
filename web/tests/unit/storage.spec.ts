@@ -97,4 +97,9 @@ describe('sound preference storage', () => {
     setSoundPref(true);
     expect(getSoundPref()).toBe(true);
   });
+
+  it('treats an unexpected stored value as on', () => {
+    localStorage.setItem('spades_sound', 'banana');
+    expect(getSoundPref()).toBe(true);
+  });
 });

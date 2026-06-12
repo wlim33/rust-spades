@@ -117,6 +117,7 @@ export function getSoundPref(): boolean {
   }
 }
 
+/** Persists the turn-chime preference ('on' / 'off'). */
 export function setSoundPref(on: boolean): void {
   try {
     localStorage.setItem(SOUND_KEY, on ? 'on' : 'off');
