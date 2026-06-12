@@ -122,18 +122,18 @@ export function renderInGame(args: {
 
     return appShell(
       html`
-        ${scores({
-          teamAScore: store.teamAScore.value,
-          teamBScore: store.teamBScore.value,
-          teamABags: store.teamABags.value,
-          teamBBags: store.teamBBags.value,
-          myTeam: teamA,
-          centerText:
-            store.phase.value === 'PLAYING'
-              ? `Trick ${trickNumber(store.playerTricksWon.value)}/13`
-              : '',
-        })}
         ${gameTable({
+          scoreboard: scores({
+            teamAScore: store.teamAScore.value,
+            teamBScore: store.teamBScore.value,
+            teamABags: store.teamABags.value,
+            teamBBags: store.teamBBags.value,
+            myTeam: teamA,
+            centerText:
+              store.phase.value === 'PLAYING'
+                ? `Trick ${trickNumber(store.playerTricksWon.value)}/13`
+                : '',
+          }),
           north: {
             name: seatName(north),
             active: store.playerIds.value[north] === store.currentPlayerId.value,

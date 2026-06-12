@@ -321,6 +321,7 @@ body:has(.page--fit) main#root {
 }
 
 .spades-table {
+  position: relative; /* anchors the scoreboard placard */
   display: grid;
   grid-template-columns: 1fr 2fr 1fr;
   /* minmax(0, 1fr): the center row must shrink with the flexed table — its
@@ -417,22 +418,43 @@ body:has(.page--fit) main#root {
   min-width: 240px;
 }
 
-.spades-scores {
-  display: flex;
-  justify-content: space-between;
+/* One scoreboard placard on the felt's top-left rail — the seat-chip surface
+   language. Absolute: a positioned child of the table, outside its grid. */
+.spades-scoreboard {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
   gap: var(--space-4);
-  width: 100%;
-  max-width: var(--table-max);
-  padding: var(--space-3) 0;
-  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-md);
 }
-.spades-score-team {
+.spades-scoreboard__team {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  gap: 2px;
+  /* Team-colored keel, same cue as the seat chips. */
+  border-bottom: 2px solid var(--team-1);
+  padding-bottom: 2px;
 }
-.spades-scores-center {
+.spades-scoreboard__team[data-team='2'] {
+  border-bottom-color: var(--team-2);
+}
+.spades-scoreboard__label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.spades-scoreboard__nums,
+.spades-scoreboard__center {
+  font-size: var(--text-sm);
   color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .spades-bets {
@@ -933,6 +955,24 @@ button.seat-open {
   color: inherit;
 }
 
+/* Short windows: trade chrome for felt. Declared before the width queries so
+   width-specific overrides (e.g. the phone grid's padding-top) win the cascade. */
+@media (max-height: 760px) {
+  main#root {
+    padding-block: var(--space-2);
+  }
+  .spades-seat-chip {
+    padding: var(--space-1) var(--space-2);
+  }
+  .spades-clock {
+    font-size: var(--text-lg);
+  }
+  .spades-table {
+    padding: var(--space-3);
+    gap: var(--space-2);
+  }
+}
+
 /* Phones / portrait tablets */
 @media (max-width: 600px) {
   main#root {
@@ -949,6 +989,21 @@ button.seat-open {
     grid-template-rows: auto auto auto auto;
     grid-template-areas: 'north north' 'west east' 'center center' 'south south';
     min-height: 0;
+    /* Clear the scoreboard placard; the centered north seat starts below it. */
+    padding-top: var(--space-12);
+  }
+  .spades-scoreboard {
+    top: var(--space-2);
+    left: var(--space-2);
+    right: var(--space-2);
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+  }
+  .spades-scoreboard__label,
+  .spades-scoreboard__nums,
+  .spades-scoreboard__center {
+    font-size: var(--text-xs);
   }
   .seat-east {
     justify-self: end;
@@ -985,26 +1040,6 @@ button.seat-open {
   }
   .spades-bets {
     grid-template-columns: repeat(4, 1fr);
-  }
-}
-
-/* Short windows: trade chrome for felt. */
-@media (max-height: 760px) {
-  main#root {
-    padding-block: var(--space-2);
-  }
-  .spades-seat-chip {
-    padding: var(--space-1) var(--space-2);
-  }
-  .spades-clock {
-    font-size: var(--text-lg);
-  }
-  .spades-scores {
-    padding: var(--space-1) 0;
-  }
-  .spades-table {
-    padding: var(--space-3);
-    gap: var(--space-2);
   }
 }
 
