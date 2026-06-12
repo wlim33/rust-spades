@@ -40,10 +40,7 @@ function playNote(ac: AudioContext, freq: number, at: number): void {
   osc.stop(t0 + 0.32);
 }
 
-/**
- * Soft two-note turn chime (E5 -> A5). Best-effort: any failure — including
- * autoplay policy before the first user gesture — is silently ignored.
- */
+/** Soft two-note turn chime (E5 -> A5). Best-effort, like every cue here. */
 export function chime(): void {
   const ac = readyCtx();
   if (!ac) return;

@@ -59,7 +59,12 @@ let ctx: FakeAudioContext;
 beforeEach(() => {
   vi.resetModules();
   ctx = new FakeAudioContext();
-  vi.stubGlobal('AudioContext', vi.fn(function () { return ctx; }));
+  vi.stubGlobal(
+    'AudioContext',
+    vi.fn(function () {
+      return ctx;
+    }),
+  );
   vi.stubGlobal('localStorage', makeLocalStorage());
   localStorage.clear(); // sound pref defaults to on
 });
