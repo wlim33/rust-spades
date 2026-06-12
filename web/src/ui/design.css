@@ -31,7 +31,7 @@ main#root {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-1) var(--space-4);
   background: transparent;
   border-bottom: 1px solid var(--border);
 }
@@ -908,7 +908,7 @@ button.seat-open {
     padding: var(--space-3) var(--space-2);
   }
   .site-header {
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-1) var(--space-3);
   }
   .page {
     padding: var(--space-3) var(--space-2);
@@ -1133,17 +1133,15 @@ button.seat-open {
   cursor: pointer;
   display: inline-grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-strong);
-  background: var(--surface-raised);
+  border: none;
+  background: transparent;
   color: var(--fg-muted);
-  font-size: 1.2rem;
+  font-size: var(--text-base);
 }
 .theme-toggle:hover {
-  color: var(--accent);
-  border-color: var(--accent);
+  color: var(--fg);
 }
 
 h1,
