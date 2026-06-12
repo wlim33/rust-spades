@@ -24,4 +24,17 @@ describe('computeHandOverlap', () => {
   it('handles two cards (denominator 1): full leftover, capped at the gap', () => {
     expect(computeHandOverlap(200, 46, 2)).toBe(4); // ideal = 108, capped
   });
+
+  it('scales the minimum strip with card width above the 46px baseline', () => {
+    // strip = round(64 * 24/46) = 33 -> floor -(64 - 33)
+    expect(computeHandOverlap(200, 64, 13)).toBe(-31);
+  });
+
+  it('keeps the 24px strip floor for small cards', () => {
+    expect(computeHandOverlap(0, 36, 13)).toBe(-12); // -(36 - 24)
+  });
+
+  it('accepts an explicit minStrip override (vertical fans)', () => {
+    expect(computeHandOverlap(0, 64, 13, 10)).toBe(-54); // -(64 - 10)
+  });
 });

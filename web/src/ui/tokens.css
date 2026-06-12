@@ -67,6 +67,12 @@
   --space-12: 4rem;
   --gutter: clamp(1rem, 4vw, 2.5rem);
 
+  /* cards & table sizing: 46px cards up to 1280w, ~55px at 1920, 64px at 2560+.
+     The vh term keeps cards from outgrowing short-wide windows. */
+  --card-w: clamp(46px, min(28px + 1.41vw, 10px + 5.5vh), 64px);
+  --card-h: calc(var(--card-w) * 64 / 46);
+  --table-max: 68.75rem;
+
   /* radius (tight) */
   --radius-sm: 2px;
   --radius-md: 4px;

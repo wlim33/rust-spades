@@ -215,8 +215,10 @@ main#root {
 }
 
 .card {
-  width: 46px;
-  height: 64px;
+  width: var(--card-w);
+  height: var(--card-h);
+  /* Face type keys off this size: 1em rank ≡ 16px at the 46px base card. */
+  font-size: calc(var(--card-w) * 0.348);
   border-radius: var(--radius-card);
   background: var(--card-face);
   border: 1px solid var(--card-edge);
@@ -246,18 +248,18 @@ main#root {
   pointer-events: none;
 }
 .card-corner-rank {
-  font-size: 16px;
-  letter-spacing: -0.5px;
+  font-size: 1em;
+  letter-spacing: -0.03em;
 }
 .card-corner-suit {
-  font-size: 13px;
+  font-size: 0.8125em;
   margin-top: 1px;
 }
 .card-pip {
   position: absolute;
   right: 4px;
   bottom: 2px;
-  font-size: 26px;
+  font-size: 1.625em;
   line-height: 1;
   pointer-events: none;
 }
@@ -306,7 +308,7 @@ main#root {
   grid-template-areas: 'north north north' 'west center east' 'south south south';
   gap: var(--space-3);
   width: 100%;
-  max-width: 720px;
+  max-width: var(--table-max);
   min-height: 480px;
   padding: var(--space-4);
   border-radius: var(--radius-lg);
@@ -352,10 +354,10 @@ main#root {
   flex-wrap: nowrap;
   /* Balance the fan's overlap so it centers visually. --hand-ml is measured
      by HandManager; negative while cards overlap, small positive when spread. */
-  padding-left: max(0px, calc(-1 * var(--hand-ml, -22px)));
+  padding-left: max(0px, calc(-1 * var(--hand-ml, calc(var(--card-w) * -0.478))));
 }
 .hand-container .card {
-  margin-left: var(--hand-ml, -22px);
+  margin-left: var(--hand-ml, calc(var(--card-w) * -0.478)); /* ≡ -22px at 46px */
   transition:
     transform var(--dur) var(--ease),
     margin-left var(--dur) var(--ease),
@@ -393,7 +395,7 @@ main#root {
   justify-content: space-between;
   gap: var(--space-4);
   width: 100%;
-  max-width: 720px;
+  max-width: var(--table-max);
   padding: var(--space-3) 0;
   font-size: var(--text-sm);
 }
@@ -839,8 +841,8 @@ button.seat-open {
   }
 }
 .skeleton-card {
-  width: 46px;
-  height: 64px;
+  width: var(--card-w);
+  height: var(--card-h);
 }
 .skeleton-row {
   display: flex;
@@ -868,7 +870,7 @@ button.seat-open {
   grid-template-areas: 'north north north' 'west center east' 'south south south';
   gap: var(--space-3);
   width: 100%;
-  max-width: 720px;
+  max-width: var(--table-max);
   min-height: 360px;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -943,42 +945,16 @@ button.seat-open {
   .menu__quickplay {
     grid-template-columns: repeat(3, 1fr);
   }
-  .card {
-    width: 40px;
-    height: 56px;
-    font-size: 12px;
-  }
-  .skeleton-card {
-    width: 40px;
-    height: 56px;
-  }
-  .card-corner-rank {
-    font-size: 14px;
-  }
-  .card-corner-suit {
-    font-size: 11px;
-  }
-  .card-pip {
-    font-size: 21px;
-  }
-  .seat-north .opp-container .card {
-    margin-left: -29px;
-  }
-  .seat-east .opp-container .card,
-  .seat-west .opp-container .card {
-    margin-top: -40px;
+  :root {
+    /* Card height, face type, and fan overlaps all derive from this. */
+    --card-w: 40px;
   }
 }
 
 /* Very small phones */
 @media (max-width: 360px) {
-  .card {
-    width: 36px;
-    height: 50px;
-  }
-  .skeleton-card {
-    width: 36px;
-    height: 50px;
+  :root {
+    --card-w: 36px;
   }
   .spades-bets {
     grid-template-columns: repeat(4, 1fr);
@@ -1087,7 +1063,7 @@ button.seat-open {
   flex-wrap: nowrap;
 }
 .seat-north .opp-container .card {
-  margin-left: -32px;
+  margin-left: calc(var(--card-w) * -0.7); /* ≡ -32px at the 46px base card */
 }
 .seat-north .opp-container .card:first-child {
   margin-left: 0;
