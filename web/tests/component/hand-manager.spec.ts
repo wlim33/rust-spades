@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { HandManager } from '../../src/cards/hand-manager';
 import type { Card } from '../../src/state/helpers';
 
@@ -78,5 +78,30 @@ describe('HandManager', () => {
     hm.setPlayerHand([c('Spade', 'Ace'), c('Spade', 'King')]);
     hm.removeCard(c('Spade', 'Ace'));
     expect(south.style.getPropertyValue('--hand-ml')).toBe('0px');
+  });
+  it('keeps observing through clear() and disconnects only on dispose()', () => {
+    const calls: string[] = [];
+    class FakeRO {
+      constructor(_cb: ResizeObserverCallback) {}
+      observe(): void {
+        calls.push('observe');
+      }
+      disconnect(): void {
+        calls.push('disconnect');
+      }
+      unobserve(): void {}
+    }
+    vi.stubGlobal('ResizeObserver', FakeRO);
+    try {
+      const m = new HandManager();
+      m.setContainers({ south, north, west: south, east: south, trick: south });
+      expect(calls).toEqual(['observe']);
+      m.clear(); // mid-game reset (every orchestrator setup) must not kill the observer
+      expect(calls).toEqual(['observe']);
+      m.dispose();
+      expect(calls).toEqual(['observe', 'disconnect']);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

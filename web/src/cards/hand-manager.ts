@@ -105,9 +105,17 @@ export class HandManager {
     return this.hands[seat];
   }
 
-  clear(): void {
+  /**
+   * Route teardown only. clear() is a mid-game operation (every orchestrator
+   * setup calls it), so the resize observer must survive it and die here.
+   */
+  dispose(): void {
+    this.clear();
     this.resizeObs?.disconnect();
     this.resizeObs = null;
+  }
+
+  clear(): void {
     for (const seat of ['south', 'north', 'east', 'west'] as Seat[]) {
       for (const e of this.hands[seat]) e.el.remove();
       this.hands[seat] = [];

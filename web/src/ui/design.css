@@ -284,6 +284,10 @@ main#root {
 .card.dragging {
   position: fixed;
   z-index: 999;
+  /* The drag sets inline top to a viewport coordinate; without this, the
+     hand's `top` transition makes pickup swoop in from the lifted position
+     and a quick click measures its play rect mid-flight. */
+  transition: none;
 }
 .card-will-play {
   box-shadow: 0 0 0 2px var(--accent);

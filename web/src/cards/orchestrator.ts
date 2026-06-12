@@ -406,5 +406,6 @@ export class CardOrchestrator {
 
   destroy(): void {
     this.clearAll();
+    this.hand.dispose();
   }
 }

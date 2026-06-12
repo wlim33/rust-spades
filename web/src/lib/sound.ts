@@ -20,6 +20,10 @@ export function chime(): void {
   if (!getSoundPref()) return;
   const ac = getCtx();
   if (!ac) return;
+  // A suspended context (autoplay policy) would queue these notes and replay
+  // them garbled after the first user gesture — skip instead. getCtx() has
+  // already requested resume(), so the next chime after a gesture plays.
+  if (ac.state !== 'running') return;
   try {
     const t0 = ac.currentTime;
     for (const [freq, at] of [
