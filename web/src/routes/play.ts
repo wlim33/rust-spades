@@ -49,22 +49,23 @@ export const play: RouteModule = {
 
     // Pre-render a loading shell
     render(
-      appShell(html`
-        <div class="skeleton-game" aria-busy="true" aria-label="Loading game">
-          <div class="skeleton" style="grid-area: north; height: 24px; width: 120px;"></div>
-          <div class="skeleton skeleton-card" style="grid-area: west;"></div>
-          <div class="skeleton-row" style="grid-area: center; justify-content: center;">
-            <div class="skeleton skeleton-card"></div>
-            <div class="skeleton skeleton-card"></div>
-            <div class="skeleton skeleton-card"></div>
-            <div class="skeleton skeleton-card"></div>
+      appShell(
+        html`
+          <div class="skeleton-game" aria-busy="true" aria-label="Loading game">
+            <div class="skeleton" style="grid-area: north; height: 24px; width: 120px;"></div>
+            <div class="skeleton skeleton-card" style="grid-area: west;"></div>
+            <div class="skeleton-row" style="grid-area: center; justify-content: center;">
+              <div class="skeleton skeleton-card"></div>
+              <div class="skeleton skeleton-card"></div>
+              <div class="skeleton skeleton-card"></div>
+              <div class="skeleton skeleton-card"></div>
+            </div>
+            <div class="skeleton skeleton-card" style="grid-area: east; justify-self: end;"></div>
+            <div class="skeleton-row" style="grid-area: south; justify-content: center;">
+              ${Array.from({ length: 13 }, () => html`<div class="skeleton skeleton-card"></div>`)}
+            </div>
           </div>
-          <div class="skeleton skeleton-card" style="grid-area: east; justify-self: end;"></div>
-          <div class="skeleton-row" style="grid-area: south; justify-content: center;">
-            ${Array.from({ length: 13 }, () => html`<div class="skeleton skeleton-card"></div>`)}
-          </div>
-        </div>
-      `,
+        `,
         { fit: true },
       ),
       root,

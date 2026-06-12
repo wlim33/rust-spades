@@ -122,71 +122,71 @@ export function renderInGame(args: {
 
     return appShell(
       html`
-      ${scores({
-        teamAScore: store.teamAScore.value,
-        teamBScore: store.teamBScore.value,
-        teamABags: store.teamABags.value,
-        teamBBags: store.teamBBags.value,
-        myTeam: teamA,
-        centerText:
-          store.phase.value === 'PLAYING'
-            ? `Trick ${trickNumber(store.playerTricksWon.value)}/13`
-            : '',
-      })}
-      ${gameTable({
-        north: {
-          name: seatName(north),
-          active: store.playerIds.value[north] === store.currentPlayerId.value,
-          connected: store.playerConnected.value[north] ?? true,
-          betInfo:
-            store.playerBets.value[north] != null
-              ? `Bet ${store.playerBets.value[north]} / Won ${store.playerTricksWon.value[north]}`
+        ${scores({
+          teamAScore: store.teamAScore.value,
+          teamBScore: store.teamBScore.value,
+          teamABags: store.teamABags.value,
+          teamBBags: store.teamBBags.value,
+          myTeam: teamA,
+          centerText:
+            store.phase.value === 'PLAYING'
+              ? `Trick ${trickNumber(store.playerTricksWon.value)}/13`
               : '',
-          clockText: clockFor(north),
-          low: lowFor(north),
-          clockFrac: fracFor(north),
-        },
-        west: {
-          name: seatName(west),
-          active: store.playerIds.value[west] === store.currentPlayerId.value,
-          connected: store.playerConnected.value[west] ?? true,
-          betInfo:
-            store.playerBets.value[west] != null
-              ? `Bet ${store.playerBets.value[west]} / Won ${store.playerTricksWon.value[west]}`
-              : '',
-          clockText: clockFor(west),
-          low: lowFor(west),
-          clockFrac: fracFor(west),
-        },
-        east: {
-          name: seatName(east),
-          active: store.playerIds.value[east] === store.currentPlayerId.value,
-          connected: store.playerConnected.value[east] ?? true,
-          betInfo:
-            store.playerBets.value[east] != null
-              ? `Bet ${store.playerBets.value[east]} / Won ${store.playerTricksWon.value[east]}`
-              : '',
-          clockText: clockFor(east),
-          low: lowFor(east),
-          clockFrac: fracFor(east),
-        },
-        south: {
-          name: seatName(i),
-          active: store.playerIds.value[i] === store.currentPlayerId.value,
-          connected: store.playerConnected.value[i] ?? true,
-          betInfo:
-            store.playerBets.value[i] != null
-              ? `Bet ${store.playerBets.value[i]} / Won ${store.playerTricksWon.value[i]}`
-              : '',
-          clockText: clockFor(i),
-          low: lowFor(i),
-          clockFrac: fracFor(i),
-        },
-        centerText,
-        centerExtra: store.phase.value === 'GAME_OVER' ? playAgain : betButtons(),
-        refs,
-      })}
-    `,
+        })}
+        ${gameTable({
+          north: {
+            name: seatName(north),
+            active: store.playerIds.value[north] === store.currentPlayerId.value,
+            connected: store.playerConnected.value[north] ?? true,
+            betInfo:
+              store.playerBets.value[north] != null
+                ? `Bet ${store.playerBets.value[north]} / Won ${store.playerTricksWon.value[north]}`
+                : '',
+            clockText: clockFor(north),
+            low: lowFor(north),
+            clockFrac: fracFor(north),
+          },
+          west: {
+            name: seatName(west),
+            active: store.playerIds.value[west] === store.currentPlayerId.value,
+            connected: store.playerConnected.value[west] ?? true,
+            betInfo:
+              store.playerBets.value[west] != null
+                ? `Bet ${store.playerBets.value[west]} / Won ${store.playerTricksWon.value[west]}`
+                : '',
+            clockText: clockFor(west),
+            low: lowFor(west),
+            clockFrac: fracFor(west),
+          },
+          east: {
+            name: seatName(east),
+            active: store.playerIds.value[east] === store.currentPlayerId.value,
+            connected: store.playerConnected.value[east] ?? true,
+            betInfo:
+              store.playerBets.value[east] != null
+                ? `Bet ${store.playerBets.value[east]} / Won ${store.playerTricksWon.value[east]}`
+                : '',
+            clockText: clockFor(east),
+            low: lowFor(east),
+            clockFrac: fracFor(east),
+          },
+          south: {
+            name: seatName(i),
+            active: store.playerIds.value[i] === store.currentPlayerId.value,
+            connected: store.playerConnected.value[i] ?? true,
+            betInfo:
+              store.playerBets.value[i] != null
+                ? `Bet ${store.playerBets.value[i]} / Won ${store.playerTricksWon.value[i]}`
+                : '',
+            clockText: clockFor(i),
+            low: lowFor(i),
+            clockFrac: fracFor(i),
+          },
+          centerText,
+          centerExtra: store.phase.value === 'GAME_OVER' ? playAgain : betButtons(),
+          refs,
+        })}
+      `,
       { fit: true },
     );
   };
