@@ -97,6 +97,7 @@ body:has(.page--fit) main#root {
   font-size: var(--text-sm);
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
   padding: 0.45rem 0.9rem;
   border-radius: var(--radius-md);
@@ -140,10 +141,9 @@ body:has(.page--fit) main#root {
   opacity: 0.45;
   cursor: not-allowed;
 }
-/* Square icon-only button; the glyph centers on both axes. */
+/* Square icon-only button. */
 .btn--icon {
   padding: 0.45rem;
-  justify-content: center;
 }
 
 .menu {
@@ -641,6 +641,14 @@ body:has(.page--fit) main#root {
   border: 1px solid var(--border-strong);
   font: inherit;
 }
+/* Bare text-input labels stack like .form-field; .field-checkbox stays a row. */
+.form-page > label:not(.field-checkbox) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
 .form-page fieldset {
   display: flex;
   flex-direction: column;
@@ -648,6 +656,19 @@ body:has(.page--fit) main#root {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--space-3);
+}
+.form-page > .btn {
+  margin-top: var(--space-2);
+}
+.back-link {
+  align-self: center;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.back-link:hover {
+  color: var(--fg);
 }
 .seg {
   display: flex;

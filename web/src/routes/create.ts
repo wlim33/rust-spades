@@ -81,7 +81,7 @@ export const create: RouteModule = {
       appShell(html`
         <section class="form-page">
           <h2>Create Challenge</h2>
-          ${errorMsg.value ? html`<p class="field-error">${errorMsg.value}</p>` : null}
+          ${errorMsg.value ? html`<p class="field-error" role="alert">${errorMsg.value}</p>` : null}
           <label
             >Your name
             <input
@@ -90,6 +90,9 @@ export const create: RouteModule = {
               .value=${name.value}
               @input=${(e: Event) => {
                 name.value = (e.target as HTMLInputElement).value;
+              }}
+              @keydown=${(e: KeyboardEvent) => {
+                if (e.key === 'Enter') onSubmit();
               }}
             />
           </label>
@@ -150,11 +153,7 @@ export const create: RouteModule = {
             variant: 'primary',
             disabled: submitting.value,
           })}
-          ${button({
-            label: 'Back',
-            onClick: () => navigateTo('/'),
-            variant: 'secondary',
-          })}
+          <a class="back-link" href="/" data-link>Back</a>
         </section>
       `);
 
