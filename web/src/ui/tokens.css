@@ -18,7 +18,8 @@
   /* Team keels: tuned by eye (range 30-40%); higher = louder team hue.
      DEPRECATED: border keels give way to --team-*-fill background cues
      (docs/superpowers/specs/2026-06-12-state-cue-tokens-design.md). Remove
-     once the seat chips and scoreboard migrate. */
+     once .spades-seat-chip and .spades-scoreboard__team in design.css
+     migrate. */
   --team-1: color-mix(in oklab, var(--accent) 30%, var(--fg-muted));
   --team-2: color-mix(in oklab, var(--accent-2) 30%, var(--fg-muted));
 
@@ -31,7 +32,7 @@
   --team-2-fill: color-mix(in oklab, var(--accent-2) 22%, var(--surface-raised));
   /* Gauge motion: slower than --dur so a fill change reads as liquid rising,
      not a UI flicker. */
-  --cue-dur: 400ms;
+  --dur-cue: 400ms;
 
   /* semantic */
   --success: #1c8a51;
