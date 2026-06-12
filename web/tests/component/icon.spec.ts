@@ -28,4 +28,12 @@ describe('icon', () => {
     render(icon('does-not-exist'), document.getElementById('root')!);
     expect(document.querySelector('.icon')).toBeNull();
   });
+
+  it('renders vendored Lucide icons without clobbering their stroke style', () => {
+    render(icon('spade'), document.getElementById('root')!);
+    const svg = document.querySelector('.icon svg');
+    expect(svg).not.toBeNull();
+    expect(svg!.getAttribute('fill')).toBe('none');
+    expect(svg!.getAttribute('stroke')).toBe('currentColor');
+  });
 });

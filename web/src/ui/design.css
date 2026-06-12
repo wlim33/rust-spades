@@ -1188,6 +1188,8 @@ button.seat-open {
 .icon svg {
   width: 1em;
   height: 1em;
+}
+.icon svg:not([fill='none']) {
   fill: currentColor;
 }
 
