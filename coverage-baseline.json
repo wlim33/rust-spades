@@ -1,10 +1,10 @@
 {
   "spades-core": {
-    "line_coverage_pct": 96.2,
-    "last_updated": "2026-06-11"
+    "line_coverage_pct": 99.6,
+    "last_updated": "2026-06-12"
   },
   "spades-server": {
-    "line_coverage_pct": 76.4,
-    "last_updated": "2026-06-11"
+    "line_coverage_pct": 86.5,
+    "last_updated": "2026-06-12"
   }
 }

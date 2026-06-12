@@ -7,6 +7,12 @@ repository.workspace = true
 license.workspace = true
 description = "Spades game server (axum HTTP/WebSocket + matchmaking + challenges)."
 
+[features]
+# Minimal-cost argon2 params so auth-heavy tests don't pay production hashing
+# costs. Test builds only (Makefile/CI pass it explicitly); never enable in a
+# deployed build — the Dockerfile builds with default features.
+insecure-fast-hash = []
+
 [lib]
 path = "src/lib.rs"
 

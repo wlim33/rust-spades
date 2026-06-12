@@ -337,6 +337,11 @@ async fn main() {
     init_tracing();
     validate_startup_config();
 
+    #[cfg(feature = "insecure-fast-hash")]
+    warn!(
+        "built with `insecure-fast-hash`: password hashes use throwaway argon2 params — test builds only, do NOT deploy"
+    );
+
     let args = Args::parse();
     let db_path = args.db;
 

@@ -15,7 +15,7 @@ echo "==> cargo clippy --workspace --all-targets -- -D warnings"
 cargo clippy --workspace --all-targets -- -D warnings
 
 echo "==> cargo test --workspace"
-cargo test --workspace
+cargo test --workspace --features spades-server/insecure-fast-hash
 
 echo "==> hooks/coverage-check.sh"
 "$(dirname "$0")/coverage-check.sh"

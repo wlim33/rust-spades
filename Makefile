@@ -29,8 +29,8 @@ web:         ## Only the Vite dev server
 	pnpm -C web dev
 
 test: test-rust test-web   ## All tests (rust + web unit/component)
-test-rust:   ## cargo test (workspace)
-	cargo test --workspace
+test-rust:   ## cargo test (workspace; weak argon2 params via insecure-fast-hash)
+	cargo test --workspace --features spades-server/insecure-fast-hash
 test-web:    ## web unit + component tests
 	pnpm -C web test
 e2e:         ## web e2e (Playwright auto-starts the backend)

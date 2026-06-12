@@ -18,8 +18,18 @@ fn weak_set() -> &'static std::collections::HashSet<&'static str> {
 }
 
 fn argon2() -> Argon2<'static> {
-    let params = Params::new(64 * 1024, 3, 4, None).expect("valid argon2 params");
-    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+    // `cfg!` keeps both branches compiling regardless of the feature, so the
+    // production params can't bit-rot while tests run with the cheap ones.
+    let params = if cfg!(feature = "insecure-fast-hash") {
+        Params::new(Params::MIN_M_COST, 1, 1, None)
+    } else {
+        Params::new(64 * 1024, 3, 4, None)
+    };
+    Argon2::new(
+        Algorithm::Argon2id,
+        Version::V0x13,
+        params.expect("valid argon2 params"),
+    )
 }
 
 pub fn validate_password(password: &str) -> Result<(), AuthError> {

@@ -54,17 +54,11 @@ jobs:
         working-directory: web
 
   ci:
-    name: test + build frontend
+    name: web test + build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-
-      - name: cargo test
-        run: cargo test --workspace --locked
 
       - uses: pnpm/action-setup@v6
         with:
@@ -117,6 +111,11 @@ jobs:
       - name: pnpm install
         run: pnpm install --frozen-lockfile
         working-directory: web
+      - name: Cache Playwright browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
       - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
         working-directory: web
@@ -131,19 +130,27 @@ jobs:
           retention-days: 14
 
   coverage:
-    name: coverage
+    # Single rust test run: cargo-llvm-cov executes the whole workspace test
+    # suite (via nextest) and yields coverage from the same run, so there is
+    # no separate `cargo test` job. Doctests aren't run by nextest — they get
+    # their own step.
+    name: rust test + coverage
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools
       - uses: Swatinem/rust-cache@v2
-      - name: Install cargo-tarpaulin
+      - name: Install cargo-llvm-cov + cargo-nextest
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-tarpaulin
-      - name: coverage gate
+          tool: cargo-llvm-cov,cargo-nextest
+      - name: test + coverage gate
         run: hooks/coverage-check.sh
+      - name: doctests
+        run: cargo test --doc --workspace --locked
 
   audit:
     name: dependency audit (advisory)

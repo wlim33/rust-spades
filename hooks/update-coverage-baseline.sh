@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Manually bump coverage-baseline.json after intentional coverage changes.
-# Runs tarpaulin, computes per-crate coverage, writes a new baseline,
+# Runs cargo-llvm-cov, computes per-crate coverage, writes a new baseline,
 # and prints the diff so the change can be reviewed before committing.
 #
 # Env:
-#   COVERAGE_CHECK_USE_EXISTING=1   reuse the existing tarpaulin report
+#   COVERAGE_CHECK_USE_EXISTING=1   reuse the existing coverage report
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,46 +13,15 @@ cd "$REPO_ROOT"
 export PATH="$HOME/.cargo/bin:$PATH"
 
 BASELINE_FILE="$REPO_ROOT/coverage-baseline.json"
-TARPAULIN_DIR="$REPO_ROOT/target/tarpaulin"
-REPORT_FILE="$TARPAULIN_DIR/tarpaulin-report.json"
+REPORT_DIR="$REPO_ROOT/target/llvm-cov"
+REPORT_FILE="$REPORT_DIR/coverage.json"
 CRATES=(spades-core spades-server)
 TODAY="$(date -u +%Y-%m-%d)"
 
-if ! command -v cargo-tarpaulin >/dev/null 2>&1; then
-    echo "error: cargo-tarpaulin not found on PATH" >&2
-    echo "  install:  cargo install cargo-tarpaulin" >&2
-    exit 1
-fi
+# shellcheck source=hooks/coverage-lib.sh
+source "$REPO_ROOT/hooks/coverage-lib.sh"
 
-if [ "${COVERAGE_CHECK_USE_EXISTING:-0}" = "1" ]; then
-    if [ ! -f "$REPORT_FILE" ]; then
-        echo "error: COVERAGE_CHECK_USE_EXISTING=1 set but no report at $REPORT_FILE" >&2
-        exit 1
-    fi
-    echo "==> reusing existing tarpaulin report at $REPORT_FILE" >&2
-else
-    echo "==> cargo tarpaulin --workspace (30-90s)" >&2
-    cargo tarpaulin --workspace --out Json \
-        --output-dir "$TARPAULIN_DIR" --skip-clean >&2
-    if [ ! -f "$REPORT_FILE" ]; then
-        echo "error: tarpaulin did not produce $REPORT_FILE" >&2
-        exit 1
-    fi
-fi
-
-crate_pct() {
-    local crate="$1"
-    jq -r --arg crate "$crate" '
-        [ .files[]
-          | select((.path | join("/")) | contains("/crates/" + $crate + "/src/"))
-          | { covered, coverable } ]
-        | { covered:   ([.[] | .covered]   | add // 0),
-            coverable: ([.[] | .coverable] | add // 0) }
-        | if .coverable == 0 then "0.0"
-          else (((.covered * 1000) / .coverable | floor) / 10 | tostring)
-          end
-    ' "$REPORT_FILE"
-}
+run_coverage
 
 # Build the new baseline JSON, one crate at a time, preserving key order.
 new_baseline=$(jq -n '{}')
