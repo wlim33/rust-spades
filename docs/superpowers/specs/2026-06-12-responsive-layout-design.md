@@ -128,6 +128,25 @@ Result: the bot named "West (CPU)" sits on the west (left) side, and play visibl
 clockwise like a real table. Trick-slot and animation code key off `seatRel`/these indices, so
 they follow automatically.
 
+## Addendum (user-requested during implementation)
+
+**G. Scoreboard placard.** The full-width scores strip (Team A left / trick center / Team B
+right) merges into ONE chip in the seat-chip surface language (surface-raised, 1px border with a
+2px bottom edge, radius-md; team-colored keels under each team segment). It is a positioned
+child of `.spades-table` (absolute → outside the grid), anchored to the felt's top-left rail;
+on phones (≤600px) it spans the felt top and the phone grid gains `padding-top` so the north
+seat clears it. `gameTable()` gains a `scoreboard` slot; `scores()` keeps its props. The strip's
+~50px of page height goes to the felt.
+
+**H. Implementation findings folded in:**
+- `.spades-table` rows use `minmax(0, 1fr)` for the center row (auto-min rows overflowed the
+  flexed felt); the scroll-fallback floor is `30rem`; side fans compress to 4px strips.
+- `--fan-mt` writes are epsilon-guarded (±0.5px): in content-sized rows (phone grid) the
+  measure→write→resize cycle oscillated on sub-pixel rounding and flooded ResizeObserver
+  loop errors.
+- The `max-height: 760px` compaction block is declared before the width queries so
+  width-specific overrides win the cascade.
+
 ## Testing
 
 - **Unit:** `hand-layout.spec.ts` — new `minStrip` param + scaling behavior; `helpers.spec.ts` —
