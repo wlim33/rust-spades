@@ -24,6 +24,7 @@ describe('scores placard', () => {
     expect(teams[0].textContent).toContain('3');
     expect(teams[1].textContent).toContain('94');
     expect(teams[1].textContent).toContain('1');
+    expect(document.querySelector('section[aria-label="Scores"]')).not.toBeNull();
   });
 
   it('marks the caller team with (You)', () => {
@@ -39,6 +40,8 @@ describe('scores placard', () => {
     expect(glyphs).toHaveLength(2);
     expect(glyphs[0].getAttribute('role')).toBe('img');
     expect(document.querySelector('.spades-scoreboard')!.textContent).not.toContain('Bags');
+    const nums = document.querySelector('.spades-scoreboard__nums')!;
+    expect(nums.textContent!.replace(/\s+/g, ' ').trim()).toBe('127 · 3');
   });
 
   it('renders center text only when provided', () => {

@@ -1184,6 +1184,8 @@ button.seat-open {
 .icon {
   display: inline-flex;
   line-height: 0;
+  /* Optical seat when the icon sits in a text run; inert for flex/grid-item usages. */
+  vertical-align: -0.125em;
 }
 .icon svg {
   width: 1em;
