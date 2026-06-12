@@ -8,10 +8,12 @@ import {
   clearSession,
   isChallengeCreator,
   clearChallengeCreator,
+  consumePendingJoin,
 } from '../lib/storage';
 import { navigateTo } from '../lib/util';
 import { appShell } from '../ui/templates';
 import { button } from '../ui/components/button';
+import { icon } from '../ui/icon';
 import type { Resources } from './play-resources';
 import type { ChallengeSeat, ChallengeStatus } from './boot';
 
@@ -25,7 +27,7 @@ export type LobbyArgs = {
 
 export function renderLobby(args: LobbyArgs): void {
   const seats = signal<ChallengeSeat[]>(args.initialStatus.seats);
-  const joiningSeat = signal<'A' | 'B' | 'C' | 'D' | null>(null);
+  const joiningTeam = signal<'A' | 'B' | null>(null);
   const joinName = signal('');
   const errorMsg = signal<string | null>(null);
   const copied = signal(false);
@@ -39,16 +41,41 @@ export function renderLobby(args: LobbyArgs): void {
     joinSse = null;
   };
 
-  const onJoinClick = (seat: 'A' | 'B' | 'C' | 'D'): void => {
-    joiningSeat.value = seat;
+  // Seats pair into teams: A/C vs B/D. The UI deals in teams; seats are an
+  // implementation detail of the join call.
+  const TEAMS = [
+    { id: 'A' as const, no: '1' as const, seats: ['A', 'C'] as const },
+    { id: 'B' as const, no: '2' as const, seats: ['B', 'D'] as const },
+  ];
+
+  const teamOccupants = (teamId: 'A' | 'B'): NonNullable<ChallengeSeat>[] => {
+    const team = TEAMS.find((t) => t.id === teamId)!;
+    return team.seats
+      .map((s) => seats.value.find((seat) => seat !== null && seat.seat === s) ?? null)
+      .filter((seat): seat is NonNullable<ChallengeSeat> => seat !== null);
+  };
+
+  const openTeamSeats = (teamId: 'A' | 'B'): ('A' | 'B' | 'C' | 'D')[] => {
+    const team = TEAMS.find((t) => t.id === teamId)!;
+    return team.seats.filter((s) => !seats.value.some((seat) => seat !== null && seat.seat === s));
+  };
+
+  const onJoinClick = (team: 'A' | 'B'): void => {
+    joiningTeam.value = team;
     joinName.value = '';
   };
 
-  const onJoinSubmit = (): void => {
-    if (!joiningSeat.value) return;
+  const joinTeam = (team: 'A' | 'B', name: string): void => {
+    // Seat resolves at join time: the team's first open seat may have changed
+    // while the name modal was up.
+    const seat = openTeamSeats(team)[0];
+    if (!seat) {
+      errorMsg.value = 'That team just filled up.';
+      joiningTeam.value = null;
+      return;
+    }
     cleanupSse(); // close any prior join SSE
-    const seat = joiningSeat.value;
-    const body = joinName.value.trim() ? { name: joinName.value.trim() } : {};
+    const body = name.trim() ? { name: name.trim() } : {};
 
     joinSse = openSse(`/challenges/${args.challengeId}/join/${seat}`, body, {
       onEvent: (eventType, data) => {
@@ -57,7 +84,7 @@ export function renderLobby(args: LobbyArgs): void {
           if (eventType === 'joined') {
             myPlayerId.value = parsed.player_id as string;
             saveSession(args.shortId, args.challengeId, parsed.player_id as string);
-            joiningSeat.value = null;
+            joiningTeam.value = null;
           } else if (eventType === 'seat_update') {
             seats.value = parsed.seats as ChallengeSeat[];
           } else if (eventType === 'game_start') {
@@ -83,6 +110,11 @@ export function renderLobby(args: LobbyArgs): void {
         cleanupSse();
       },
     });
+  };
+
+  const onJoinSubmit = (): void => {
+    if (!joiningTeam.value) return;
+    joinTeam(joiningTeam.value, joinName.value);
   };
 
   const onCancel = async (): Promise<void> => {
@@ -113,54 +145,51 @@ export function renderLobby(args: LobbyArgs): void {
 
   const isCreator = (): boolean => isChallengeCreator(args.shortId);
 
-  const SEAT_TEAMS: Record<'A' | 'B' | 'C' | 'D', '1' | '2'> = {
-    A: '1',
-    B: '2',
-    C: '1',
-    D: '2',
-  };
+  // A pending intent from the create form: the creator's team choice can only
+  // become a seat here, over this route's long-lived join SSE.
+  const pending = consumePendingJoin(args.shortId);
+  if (pending && !myPlayerId.value) {
+    joinTeam(pending.team, pending.name);
+  }
 
-  const lobbyTemplate = (): TemplateResult =>
-    appShell(html`
+  const lobbyTemplate = (): TemplateResult => {
+    // The first team with an opening is the default (Team A while it lasts).
+    const defaultTeam = TEAMS.find((t) => openTeamSeats(t.id).length > 0)?.id ?? null;
+    return appShell(html`
       <section class="lobby">
         <h2>Waiting for players</h2>
         ${errorMsg.value ? html`<p class="field-error">${errorMsg.value}</p>` : null}
-        <div class="seat-grid">
-          ${(['A', 'B', 'C', 'D'] as const).map((s) => {
-            const occupant = seats.value.find((seat) => seat !== null && seat.seat === s) ?? null;
-            if (occupant) {
-              return html`<div
-                class="seat-taken ${occupant.player_id === myPlayerId.value ? 'mine' : ''}"
-                data-team=${SEAT_TEAMS[s]}
-              >
-                <strong>Seat ${s}</strong>
-                <span>Team ${SEAT_TEAMS[s]}</span>
-                <span>${occupant.name ?? 'Player'}</span>
-                ${occupant.player_id === myPlayerId.value ? html`<small>(You)</small>` : null}
-              </div>`;
-            }
-            if (myPlayerId.value) {
-              return html`<div class="seat-open" data-team=${SEAT_TEAMS[s]}>
-                <strong>Seat ${s}</strong>
-                <span>Team ${SEAT_TEAMS[s]}</span>
-                <span>Open</span>
-              </div>`;
-            }
-            return html`<button
-              class="seat-open btn"
-              data-team=${SEAT_TEAMS[s]}
-              @click=${() => onJoinClick(s)}
-            >
-              <strong>Seat ${s}</strong>
-              <span>Team ${SEAT_TEAMS[s]}</span>
-            </button>`;
+        <div class="team-grid">
+          ${TEAMS.map((t) => {
+            const members = teamOccupants(t.id);
+            const open = openTeamSeats(t.id);
+            const joinable = !myPlayerId.value && open.length > 0;
+            return html`<div class="team-card" data-team=${t.no}>
+              <strong>Team ${t.id}</strong>
+              <ul class="team-card__members">
+                ${members.map(
+                  (m) =>
+                    html`<li class=${m.player_id === myPlayerId.value ? 'mine' : ''}>
+                      ${m.name ?? 'Player'}
+                    </li>`,
+                )}
+                ${open.map(() => html`<li class="team-card__open">Open</li>`)}
+              </ul>
+              ${joinable
+                ? button({
+                    label: `Join Team ${t.id}`,
+                    onClick: () => onJoinClick(t.id),
+                    variant: t.id === defaultTeam ? 'primary' : 'secondary',
+                  })
+                : null}
+            </div>`;
           })}
         </div>
 
-        ${joiningSeat.value
+        ${joiningTeam.value
           ? html`<div class="join-modal">
               <label
-                >Enter your name to join Seat ${joiningSeat.value}:
+                >Enter your name to join Team ${joiningTeam.value}:
                 <input
                   type="text"
                   maxlength="20"
@@ -174,7 +203,7 @@ export function renderLobby(args: LobbyArgs): void {
               ${button({
                 label: 'Cancel',
                 onClick: () => {
-                  joiningSeat.value = null;
+                  joiningTeam.value = null;
                 },
                 variant: 'secondary',
               })}
@@ -182,15 +211,20 @@ export function renderLobby(args: LobbyArgs): void {
           : null}
 
         <div class="share-link">
-          <label
-            >Share this link:
-            <input type="text" readonly .value=${`${location.origin}/play/${args.shortId}`} />
-          </label>
-          ${button({
-            label: copied.value ? 'Copied!' : 'Copy',
-            onClick: () => void copyShareLink(),
-            variant: 'secondary',
-          })}
+          <input
+            type="text"
+            readonly
+            aria-label="Share link"
+            .value=${`${location.origin}/play/${args.shortId}`}
+          />
+          <button
+            type="button"
+            class="btn btn--secondary btn--icon"
+            aria-label=${copied.value ? 'Copied' : 'Copy link'}
+            @click=${() => void copyShareLink()}
+          >
+            ${icon(copied.value ? 'checkbox-circle-fill' : 'file-copy-line')}
+          </button>
         </div>
 
         ${isCreator()
@@ -202,6 +236,7 @@ export function renderLobby(args: LobbyArgs): void {
           : null}
       </section>
     `);
+  };
 
   const dispose = effect(() => {
     render(lobbyTemplate(), args.root);

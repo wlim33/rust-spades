@@ -54,6 +54,33 @@ export function clearChallengeCreator(shortId: string): void {
   }
 }
 
+/* Seats are presence leases: the server holds one only while a join SSE stream
+   stays open. Create can't seat the creator (its stream closes on navigation),
+   so it parks the team choice here and the lobby auto-joins over its own SSE. */
+const pendingJoinKey = (shortId: string): string => `spades_pending_join_${shortId}`;
+
+export type PendingJoin = { team: 'A' | 'B'; name: string };
+
+export function setPendingJoin(shortId: string, pending: PendingJoin): void {
+  try {
+    sessionStorage.setItem(pendingJoinKey(shortId), JSON.stringify(pending));
+  } catch {
+    // ignore
+  }
+}
+
+export function consumePendingJoin(shortId: string): PendingJoin | null {
+  try {
+    const raw = sessionStorage.getItem(pendingJoinKey(shortId));
+    sessionStorage.removeItem(pendingJoinKey(shortId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PendingJoin;
+    return parsed.team === 'A' || parsed.team === 'B' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 const OAUTH_IN_PROGRESS_KEY = 'spades_oauth_in_progress';
 const OAUTH_NEXT_KEY = 'spades_oauth_next';
 

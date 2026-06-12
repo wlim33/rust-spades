@@ -13,31 +13,26 @@ describe('create route', () => {
     cleanup();
   });
 
-  it('marks the default points (500) and timer (None) segments pressed', () => {
+  it('marks the default team (A), points (500) and timer (None) segments pressed', () => {
     const cleanup = create.render({}, { path: '/create', search: new URLSearchParams() });
     const pressed = [...document.querySelectorAll('.seg button[aria-pressed="true"]')].map((b) =>
       b.textContent?.trim(),
     );
+    expect(pressed).toContain('Team A');
     expect(pressed).toContain('500');
     expect(pressed).toContain('None');
     cleanup();
   });
 
-  it('clicking a seat segment moves aria-pressed to it', () => {
+  it('clicking Team B moves aria-pressed to it', () => {
     const cleanup = create.render({}, { path: '/create', search: new URLSearchParams() });
-    const seatSeg = document.querySelector('.seg[aria-label="Pick seat"]')!;
-    seatSeg.querySelectorAll('button')[0]!.click(); // 'A'
-    expect(seatSeg.querySelector('button[aria-pressed="true"]')?.textContent?.trim()).toBe('A');
-    cleanup();
-  });
-
-  it('clicking the selected seat again de-selects it', () => {
-    const cleanup = create.render({}, { path: '/create', search: new URLSearchParams() });
-    const seatSeg = document.querySelector('.seg[aria-label="Pick seat"]')!;
-    const seatA = seatSeg.querySelectorAll('button')[0]!;
-    seatA.click(); // select A
-    seatA.click(); // de-select A
-    expect(seatSeg.querySelector('button[aria-pressed="true"]')).toBeNull();
+    const teamSeg = document.querySelector('.seg[aria-label="Team"]')!;
+    teamSeg.querySelectorAll('button')[1]!.click(); // 'Team B'
+    expect(teamSeg.querySelector('button[aria-pressed="true"]')?.textContent?.trim()).toBe(
+      'Team B',
+    );
+    // Exactly one team is always selected.
+    expect(teamSeg.querySelectorAll('button[aria-pressed="true"]')).toHaveLength(1);
     cleanup();
   });
 

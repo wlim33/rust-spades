@@ -74,10 +74,11 @@ export function leaderboardPreview(): TemplateResult {
       data-testid="home-leaderboard"
     >
       <div class="home-leaderboard__head">
-        <h2 id="home-lb-title" class="home-leaderboard__title">Top players</h2>
-        <a class="home-leaderboard__more" href="/leaderboard" data-link
-          >View full leaderboard ${icon('arrow-right-s-line')}</a
-        >
+        <h2 id="home-lb-title" class="home-leaderboard__title">
+          <a class="home-leaderboard__title-link" href="/leaderboard" data-link
+            >Top players ${icon('arrow-right-s-line')}</a
+          >
+        </h2>
       </div>
       <div class="leaderboard__tabs" role="group" aria-label="Leaderboard period">
         <button

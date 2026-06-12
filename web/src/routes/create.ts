@@ -4,7 +4,7 @@ import { appShell } from '../ui/templates';
 import { button } from '../ui/components/button';
 import { openSse, type SseHandle } from '../api/sse';
 import { navigateTo } from '../lib/util';
-import { saveSession, markChallengeCreator } from '../lib/storage';
+import { markChallengeCreator, setPendingJoin } from '../lib/storage';
 import type { RouteModule } from '../router';
 
 type TimerCfg = { initial_time_secs: number; increment_secs: number } | null;
@@ -15,7 +15,10 @@ const TIMER_PRESETS: { label: string; value: TimerCfg }[] = [
   { label: '15+10', value: { initial_time_secs: 900, increment_secs: 10 } },
 ];
 
-type Seat = 'A' | 'B' | 'C' | 'D';
+// Seats are presence leases held by an open SSE stream, so the creator can't be
+// seated here (this stream closes on navigation). The team choice rides to the
+// lobby as a pending-join intent and the lobby auto-joins on arrival.
+type Team = 'A' | 'B';
 
 export const create: RouteModule = {
   render: () => {
@@ -23,7 +26,7 @@ export const create: RouteModule = {
     if (!root) return () => {};
 
     const name = signal('');
-    const seat = signal<Seat | null>(null);
+    const team = signal<Team>('A');
     const points = signal<200 | 300 | 500>(500);
     const timerIdx = signal(0);
     const errorMsg = signal<string | null>(null);
@@ -39,8 +42,6 @@ export const create: RouteModule = {
         '/challenges',
         {
           max_points: points.value,
-          creator_name: name.value || undefined,
-          creator_seat: seat.value ?? undefined,
           timer_config: TIMER_PRESETS[timerIdx.value]!.value ?? undefined,
         },
         {
@@ -49,13 +50,10 @@ export const create: RouteModule = {
               const parsed = JSON.parse(data) as {
                 challenge_id: string;
                 short_id: string;
-                creator_player_id?: string;
               };
               if (eventType === 'challenge_created') {
-                if (parsed.creator_player_id) {
-                  saveSession(parsed.short_id, parsed.challenge_id, parsed.creator_player_id);
-                  markChallengeCreator(parsed.short_id);
-                }
+                markChallengeCreator(parsed.short_id);
+                setPendingJoin(parsed.short_id, { team: team.value, name: name.value.trim() });
                 sse?.close();
                 sse = null;
                 navigateTo(`/play/${parsed.short_id}`);
@@ -96,18 +94,18 @@ export const create: RouteModule = {
             />
           </label>
           <fieldset>
-            <legend>Pick seat</legend>
-            <div class="seg" role="group" aria-label="Pick seat">
-              ${(['A', 'B', 'C', 'D'] as const).map(
-                (s) =>
+            <legend>Team</legend>
+            <div class="seg" role="group" aria-label="Team">
+              ${(['A', 'B'] as const).map(
+                (t) =>
                   html`<button
                     type="button"
-                    aria-pressed=${seat.value === s}
+                    aria-pressed=${team.value === t}
                     @click=${() => {
-                      seat.value = seat.value === s ? null : s;
+                      team.value = t;
                     }}
                   >
-                    ${s}
+                    Team ${t}
                   </button>`,
               )}
             </div>

@@ -8,7 +8,7 @@ import { waitForGameUrl } from '../helpers/routing';
 test('friends challenge: create, four players join, reach betting', async ({ browser }) => {
   const players = await Promise.all([0, 1, 2, 3].map(() => newPlayerContext(browser)));
   try {
-    // Creator opens a challenge with four empty seats and lands in the lobby.
+    // Creator opens a challenge, takes the default Team A seat, and lands in the lobby.
     const creator = players[0]!.page;
     await new HomePage(creator).goto();
     await new HomePage(creator).playWithFriends();
@@ -17,15 +17,15 @@ test('friends challenge: create, four players join, reach betting', async ({ bro
     await waitForGameUrl(creator);
     const shareUrl = creator.url();
 
-    // Each player claims the first open seat. Sequential so two players never
-    // grab the same seat at the same instant.
-    for (let i = 0; i < players.length; i++) {
+    // The other three each claim the first joinable team. Sequential so two
+    // players never grab the same slot at the same instant.
+    for (let i = 1; i < players.length; i++) {
       const p = players[i]!.page;
-      if (i > 0) await p.goto(shareUrl);
-      await new LobbyPage(p).joinFirstOpenSeat(`Player${i + 1}`);
+      await p.goto(shareUrl);
+      await new LobbyPage(p).joinFirstOpenTeam(`Player${i + 1}`);
     }
 
-    // When the fourth seat fills, everyone navigates into the game and bets.
+    // When the fourth slot fills, everyone navigates into the game and bets.
     await Promise.all(players.map((p) => waitForGameUrl(p.page)));
     await Promise.all(players.map((p) => new GamePage(p.page).waitForBetting()));
   } finally {

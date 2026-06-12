@@ -68,7 +68,7 @@ describe('home leaderboard preview', () => {
     cleanup();
   });
 
-  it('links rows to profiles and the header to the full board', async () => {
+  it('links rows to profiles and the title to the full board', async () => {
     vi.stubGlobal('fetch', stubLeaderboardFetch([entry(1, 'alice', 1800)]));
     const cleanup = renderHome();
     await flush();
@@ -76,8 +76,13 @@ describe('home leaderboard preview', () => {
       '[data-testid="home-leaderboard"] .leaderboard__name',
     ) as HTMLAnchorElement;
     expect(nameLink.getAttribute('href')).toBe('/u/alice');
-    const moreLink = document.querySelector('.home-leaderboard__more') as HTMLAnchorElement;
-    expect(moreLink.getAttribute('href')).toBe('/leaderboard');
+    const titleLink = document.querySelector(
+      '.home-leaderboard__title .home-leaderboard__title-link',
+    ) as HTMLAnchorElement;
+    expect(titleLink.getAttribute('href')).toBe('/leaderboard');
+    expect(titleLink.textContent).toContain('Top players');
+    // The standalone "View full leaderboard" link is gone.
+    expect(document.querySelector('.home-leaderboard__more')).toBeNull();
     cleanup();
   });
 

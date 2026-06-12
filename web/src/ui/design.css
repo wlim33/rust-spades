@@ -140,6 +140,11 @@ body:has(.page--fit) main#root {
   opacity: 0.45;
   cursor: not-allowed;
 }
+/* Square icon-only button; the glyph centers on both axes. */
+.btn--icon {
+  padding: 0.45rem;
+  justify-content: center;
+}
 
 .menu {
   display: flex;
@@ -438,6 +443,7 @@ body:has(.page--fit) main#root {
 .spades-scoreboard__team {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 2px;
   /* Team-colored keel, same cue as the seat chips. */
   border-bottom: 2px solid var(--team-1);
@@ -455,6 +461,12 @@ body:has(.page--fit) main#root {
   font-size: var(--text-sm);
   color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
+}
+/* Flex centers the bag glyph on the axis; the .icon baseline shim goes inert. */
+.spades-scoreboard__nums {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
 }
 
 .spades-bets {
@@ -505,49 +517,58 @@ body:has(.page--fit) main#root {
 .lobby h2 {
   margin: 0;
 }
-.seat-grid {
+.team-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-2);
   width: 100%;
 }
-.seat-grid [data-team='1'] {
+.team-grid [data-team='1'] {
   --team: var(--team-1);
 }
-.seat-grid [data-team='2'] {
+.team-grid [data-team='2'] {
   --team: var(--team-2);
 }
-.seat-taken,
-.seat-open {
+.team-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-1);
+  justify-content: center;
+  text-align: center;
+  gap: var(--space-2);
   padding: var(--space-3);
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   border-left: 3px solid var(--team, var(--border));
   background: var(--surface-raised);
 }
-.seat-taken.mine {
-  border-color: var(--accent);
-  background: var(--success-tint);
-}
-.seat-taken strong,
-.seat-open strong {
+.team-card strong {
   font-size: var(--text-lg);
 }
-button.seat-open {
-  cursor: pointer;
+.team-card__members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+.team-card__members .mine {
+  font-weight: 600;
+}
+.team-card__open {
+  color: var(--fg-muted);
 }
 .share-link {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
+  align-items: center;
   gap: var(--space-2);
   width: 100%;
 }
 .share-link input {
+  flex: 1;
+  min-width: 0;
   padding: var(--space-2);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
@@ -1422,13 +1443,15 @@ h3 {
   font-size: var(--text-lg);
   margin: 0;
 }
-.home-leaderboard__more {
+.home-leaderboard__title-link {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  font-size: var(--text-sm);
+  color: var(--fg);
+  text-decoration: none;
+}
+.home-leaderboard__title-link:hover {
   color: var(--accent);
-  white-space: nowrap;
 }
 .home-leaderboard__status {
   margin: var(--space-2) 0 0;

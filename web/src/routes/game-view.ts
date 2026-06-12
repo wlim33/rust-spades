@@ -74,7 +74,6 @@ export function renderInGame(args: {
     const north = (i + 2) % 4;
     const west = (i + 1) % 4;
     const east = (i + 3) % 4;
-    const teamA = i === 0 || i === 2 ? 'A' : 'B';
     const isMyTurn = store.currentPlayerId.value === store.playerId.value;
 
     const betButtons = (): TemplateResult => {
@@ -128,7 +127,6 @@ export function renderInGame(args: {
             teamBScore: store.teamBScore.value,
             teamABags: store.teamABags.value,
             teamBBags: store.teamBBags.value,
-            myTeam: teamA,
             centerText:
               store.phase.value === 'PLAYING'
                 ? `Trick ${trickNumber(store.playerTricksWon.value)}/13`
