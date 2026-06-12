@@ -782,7 +782,6 @@ body:has(.page--fit) main#root {
 }
 .quickplay-tile__time {
   font-family: var(--font-display);
-  font-optical-sizing: auto;
   font-weight: 600;
   font-size: 1.55rem;
   line-height: 1;
@@ -969,7 +968,7 @@ body:has(.page--fit) main#root {
   border-top: 1px solid var(--border);
 }
 .footer-version {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   opacity: 0.8;
 }
 .site-footer a {
@@ -1237,8 +1236,7 @@ h1,
 h2,
 h3 {
   font-family: var(--font-display);
-  font-optical-sizing: auto;
-  font-weight: 560;
+  font-weight: 600;
   line-height: 1.1;
   letter-spacing: -0.01em;
 }
