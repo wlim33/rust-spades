@@ -1,7 +1,7 @@
 //! Single-use email tokens (verify-email, password-reset).
 
 use base64::Engine;
-use rand::RngCore;
+use rand::Rng;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 

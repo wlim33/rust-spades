@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && vite build",
     "preview": "vite preview",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint . --max-warnings=0",
+    "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:unit": "vitest run --project=unit",
@@ -28,19 +28,20 @@
     "openapi-fetch": "^0.17.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.0",
     "@playwright/test": "^1.48.0",
     "@testing-library/dom": "^10.4.0",
-    "@types/node": "^22.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0",
-    "eslint": "^9.0.0",
-    "eslint-config-prettier": "^9.1.0",
-    "happy-dom": "^20.9.0",
+    "@types/node": "^25.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.61.0",
+    "@typescript-eslint/parser": "^8.61.0",
+    "eslint": "10.4.1",
+    "eslint-config-prettier": "^10.1.8",
+    "happy-dom": "20.10.2",
     "openapi-typescript": "^7.13.0",
-    "prettier": "^3.3.0",
-    "typescript": "^5.6.0",
-    "vite": "^6.4.2",
+    "prettier": "^3.8.4",
+    "typescript": "^6.0.0",
+    "vite": "^8.0.0",
     "vitest": "^4.1.8"
   },
-  "packageManager": "pnpm@9.12.0"
+  "packageManager": "pnpm@11.6.0"
 }

@@ -15,12 +15,12 @@ name = "spades"
 path = "src/lib.rs"
 
 [dependencies]
-rand = "0.9"
+rand = "0.10"
 uuid.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqids = "0.4"
-thiserror = "1"
+thiserror = "2"
 oasgen = { version = "0.25", features = ["uuid"], optional = true }
 
 [features]

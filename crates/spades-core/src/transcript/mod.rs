@@ -189,7 +189,7 @@ mod property_tests {
     use crate::{Game, GameTransition, State};
     use rand::rngs::StdRng;
     use rand::seq::IndexedRandom;
-    use rand::{RngCore, SeedableRng};
+    use rand::{Rng, SeedableRng};
     use uuid::Uuid;
 
     fn play_full_random_game(seed: u64) -> Game {

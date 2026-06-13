@@ -1,5 +1,5 @@
 use crate::{Card, Game, GetError};
-use rand::Rng;
+use rand::RngExt;
 use rand::seq::IndexedRandom;
 
 /// Trait for AI decision-making in Spades. Implement this to create new AI strategies.

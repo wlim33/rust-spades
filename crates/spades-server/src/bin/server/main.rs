@@ -197,7 +197,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/readyz", get(readyz))
         .with_state(state)
         .layer(RequestBodyLimitLayer::new(1024 * 1024))
-        .layer(TimeoutLayer::new(Duration::from_secs(30)))
+        .layer(TimeoutLayer::with_status_code(
+            axum::http::StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(30),
+        ))
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(TraceLayer::new_for_http())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
@@ -1801,9 +1804,13 @@ mod tests {
             "ok"
         }
 
-        let app: Router = Router::new()
-            .route("/slow", get(slow))
-            .layer(TimeoutLayer::new(std::time::Duration::from_millis(50)));
+        let app: Router =
+            Router::new()
+                .route("/slow", get(slow))
+                .layer(TimeoutLayer::with_status_code(
+                    StatusCode::REQUEST_TIMEOUT,
+                    std::time::Duration::from_millis(50),
+                ));
         let server = TestServer::new(app).unwrap();
 
         let resp = server.get("/slow").await;

@@ -34,7 +34,6 @@ export function openSse<Body>(path: string, body: Body | undefined, opts: SseOpt
       const decoder = new TextDecoder();
       let buffer = '';
       let eventType: string | null = null;
-      // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;

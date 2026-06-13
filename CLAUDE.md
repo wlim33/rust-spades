@@ -35,8 +35,8 @@ One-time setup: `pnpm -C web install && pnpm -C web exec playwright install chro
   schema.d.ts ↔ openapi.json — a stale openapi.json vs the live server is NOT caught.
 - **Version bumps touch two files**: `workspace.package.version` in the root Cargo.toml AND the
   `spades = { path = …, version = "…" }` pin in crates/spades-server/Cargo.toml.
-- **ESLint runs in legacy-config mode** (`ESLINT_USE_FLAT_CONFIG=false`, set inside the pnpm
-  script); a bare `eslint` without it fails.
+- **ESLint uses flat config** (`web/eslint.config.js`); ESLint 10 removed the legacy `.eslintrc`
+  system and the `ESLINT_USE_FLAT_CONFIG` escape hatch.
 - **Coverage ratchet**: per-crate line coverage vs committed `coverage-baseline.json`, enforced by
   the opt-in pre-push hook and CI. Intentional drops: `hooks/update-coverage-baseline.sh`, commit.
 - **CORS is off by default**; dev needs `--insecure-cookies --cors-allow-origin http://localhost:5173`

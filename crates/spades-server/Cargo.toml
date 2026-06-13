@@ -29,13 +29,16 @@ tower-http = { version = "0.6", features = ["catch-panic", "cors", "limit", "req
 tokio-stream = "0.1"
 futures-util = "0.3"
 async-stream = "0.3"
+# Capped at 0.32: must share `libsqlite3-sys` (0.30.x) with sqlx, which is
+# pulled by tower-sessions-sqlx-store. Newer rusqlite needs libsqlite3-sys
+# 0.38, and only one crate may link the native `sqlite3` library.
 rusqlite = { version = "0.32", features = ["bundled"] }
 rustrict = "0.7"
 tower-sessions = "0.14"
 tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }
 oasgen = { version = "0.25", features = ["axum", "uuid", "swagger-ui"] }
 time = "0.3"
-rand = "0.9"
+rand = "0.10"
 uuid.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -43,9 +46,11 @@ argon2 = "0.5"
 async-trait = "0.1"
 oauth2 = { version = "5.0", default-features = false, features = ["reqwest", "rustls-tls"] }
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "tokio1-rustls-tls", "builder"] }
-governor = { version = "0.7", default-features = false, features = ["std"] }
+governor = { version = "0.10", default-features = false, features = ["std"] }
 sha2 = "0.10"
-thiserror = "1"
+thiserror = "2"
+# Capped at 0.12: oauth2 5.0 (latest) implements AsyncHttpClient only for
+# reqwest 0.12's Client; bumping to 0.13 breaks the OAuth token exchange.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 axum-extra = { version = "0.10", features = ["cookie"] }
 base64 = "0.22"
@@ -56,6 +61,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive", "env"] }
 
 [dev-dependencies]
+# Capped at 18: axum-test 20 requires reqwest 0.13, but reqwest is pinned to
+# 0.12 by oauth2 (see [dependencies]).
 axum-test = { version = "18", features = ["reqwest", "ws"] }
 ntest = "0.9"
 wiremock = "0.6"
