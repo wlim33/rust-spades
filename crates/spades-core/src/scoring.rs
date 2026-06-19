@@ -1,6 +1,13 @@
 use crate::cards::{Card, get_trick_winner};
 use serde::{Deserialize, Serialize};
 
+/// A team at or below this cumulative score loses — the standard Spades
+/// "minimum score" rule. Without it, two teams that both keep losing points
+/// never reach `max_points` and the game runs forever (unbounded `hands_played`,
+/// which OOM'd the server on 2026-06-19). See
+/// docs/superpowers/specs/2026-06-19-game-termination-guarantee-design.md.
+const MIN_POINTS: i32 = -200;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GameConfig {
     pub(crate) max_points: i32,
@@ -159,6 +166,13 @@ impl Scoring {
                 } else {
                     self.is_over = true;
                 }
+            }
+            // Loss floor: a team at or below MIN_POINTS loses. Unconditional —
+            // no tie escape — so a perpetually-losing game still terminates.
+            if self.team_a.cumulative_points <= MIN_POINTS
+                || self.team_b.cumulative_points <= MIN_POINTS
+            {
+                self.is_over = true;
             }
             self.round += 1;
         } else {
@@ -724,6 +738,28 @@ mod tests {
 
         assert_eq!(s.team_a.cumulative_points, -160);
         assert_eq!(s.team_a.bags, 0);
+    }
+
+    #[test]
+    fn test_is_over_team_below_loss_floor() {
+        // A team that keeps getting set eventually drops to the loss floor and
+        // loses, even though neither team ever reached max_points.
+        let mut s = Scoring::new(500);
+        s.team_b.cumulative_points = -100; // just above the floor going in
+
+        // Team A bets 6 (3+3) and wins all 13 -> makes bid.
+        // Team B bets 13 (7+6) and wins 0 -> set -> -130 -> ends at -230.
+        s.add_bet(0, 3);
+        s.add_bet(1, 7);
+        s.add_bet(2, 3);
+        s.add_bet(3, 6);
+        s.bet();
+
+        play_round(&mut s, 13); // team A wins all 13, team B wins 0
+
+        assert!(s.is_over, "game must end when a team hits the loss floor");
+        assert!(s.team_b.cumulative_points <= MIN_POINTS);
+        assert!(s.team_a.cumulative_points < s.config.max_points); // not a max-points win
     }
 
     #[test]
