@@ -36,6 +36,9 @@ export class CardOrchestrator {
   private dragCleanups: Array<() => void> = [];
   private lastPlayRect: DOMRect | null = null;
   private initialized = false;
+  // Flight clones currently parented to document.body, so a clearAll() that
+  // races a flight can remove them instead of leaving them orphaned.
+  private flyingClones = new Set<CardEl>();
 
   // Visual steps run strictly one after another through this promise chain,
   // so a burst of state updates (AI plays resolve in milliseconds) still
@@ -131,10 +134,11 @@ export class CardOrchestrator {
 
   /** Fly a card clone between two rects, hiding the destination slot meanwhile. */
   private async flyToSlot(flying: CardEl, srcRect: DOMRect, slotEl: CardEl): Promise<void> {
+    const gen = this.generation;
     slotEl.style.visibility = 'hidden';
-    // Note: if clearAll() races this animation, `flying` lingers in
-    // document.body until animateTo resolves and flying.remove() runs below.
-    // Matches the reference card-manager.js behavior — acceptable trade-off.
+    // Track the clone so a racing clearAll() removes it (and cancels the flight
+    // via the generation check below) instead of leaving it orphaned in body.
+    this.flyingClones.add(flying);
     document.body.appendChild(flying);
     flying.style.position = 'fixed';
     flying.style.left = srcRect.left + 'px';
@@ -152,8 +156,10 @@ export class CardOrchestrator {
       y: targetRect.top - srcRect.top,
       duration: 250,
       ease: 'quartOut',
+      cancelled: () => gen !== this.generation,
     });
     flying.remove();
+    this.flyingClones.delete(flying);
     slotEl.style.visibility = '';
   }
 
@@ -234,6 +240,7 @@ export class CardOrchestrator {
   /** Pause → stack → slide toward winner → fade. */
   private async runCollect(winnerSeat: Seat): Promise<void> {
     if (this.trick.count() === 0) return;
+    const gen = this.generation;
     announce(`${SEAT_LABEL[winnerSeat]} won the trick`);
     if (this.skipAnims()) {
       this.trick.clear();
@@ -290,7 +297,13 @@ export class CardOrchestrator {
         const pos = positions[i]!;
         const targetX = centerX - pos.left + (i - 1.5) * 2;
         const targetY = centerY - pos.top + (i - 1.5) * 1;
-        return animateTo(entry.el, { x: targetX, y: targetY, duration: 200, ease: 'quartOut' });
+        return animateTo(entry.el, {
+          x: targetX,
+          y: targetY,
+          duration: 200,
+          ease: 'quartOut',
+          cancelled: () => gen !== this.generation,
+        });
       }),
     );
 
@@ -308,6 +321,7 @@ export class CardOrchestrator {
           onComplete: () => {
             entry.el.style.opacity = '';
           },
+          cancelled: () => gen !== this.generation,
         }),
       ),
     );
@@ -399,6 +413,10 @@ export class CardOrchestrator {
     // Invalidate queued steps: they belong to DOM this method is wiping.
     this.generation++;
     this.detachInteraction();
+    // Remove flight clones still parented to body: their animateTo sees the new
+    // generation and resolves, but we drop the orphaned nodes now.
+    for (const el of this.flyingClones) el.remove();
+    this.flyingClones.clear();
     this.hand.clear();
     this.trick.clear();
     this.initialized = false;

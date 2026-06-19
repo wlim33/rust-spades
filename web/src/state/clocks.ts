@@ -30,6 +30,10 @@ export function startClockTicker(): void {
     // re-rendering the entire game table four times a second (and waking the
     // table ResizeObserver with it).
     if (snapshotMs == null) return;
+    // No point re-rendering an invisible table; liveActiveMs() is computed from
+    // performance.now() on demand, so the clock is accurate again the moment we
+    // resume. Saves battery/CPU while backgrounded.
+    if (typeof document !== 'undefined' && document.hidden) return;
     clockTick.value = clockTick.value + 1;
   }, 250);
 }

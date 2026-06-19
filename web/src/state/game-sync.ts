@@ -14,20 +14,21 @@ export async function applyStateWithHand(
   gameId: string,
   playerId: string,
   state: GameStateResponse,
+  isSnapshot = false,
 ): Promise<void> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const hand = await request<HandResponse>(`/games/${gameId}/players/${playerId}/hand`, {
         method: 'GET',
       });
-      store.applyState(state, hand);
+      store.applyState(state, hand, isSnapshot);
       return;
     } catch {
       // retry once, then fall through to the stale-hand fallback
     }
   }
   console.warn('hand fetch failed twice; applying snapshot with the previous hand');
-  store.applyState(state, { player_id: playerId, cards: store.hand.value });
+  store.applyState(state, { player_id: playerId, cards: store.hand.value }, isSnapshot);
 }
 
 export type PollLoop = { start(): void; stop(): void };

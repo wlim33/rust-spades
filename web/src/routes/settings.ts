@@ -13,140 +13,170 @@ export const settings: RouteModule = {
     const root = document.getElementById('root');
     if (!root) return () => {};
 
-    // Auth gate: if not signed in, redirect to login.
-    if (!session.currentUser.value) {
-      navigateTo('/login?next=/me');
-      return () => {};
-    }
+    let disposed = false;
+    let innerCleanup: (() => void) | null = null;
 
-    const email = signal(session.currentUser.value.email);
-    const currentPassword = signal('');
-    const newPassword = signal('');
-    const saving = signal(false);
-    const error = signal<string | null>(null);
-    const saved = signal(false);
-    const soundOn = signal(getSoundPref());
+    // Build the authed settings UI. Only invoked once we know a user is signed
+    // in, so currentUser.value is safe to read here.
+    const mount = (): void => {
+      const user = session.currentUser.value;
+      if (!user) return;
 
-    const onSave = async (): Promise<void> => {
-      if (saving.value) return;
-      saving.value = true;
-      error.value = null;
-      saved.value = false;
-      try {
-        const u = session.currentUser.value!;
-        const wantsEmailChange = email.value !== u.email;
-        const wantsPasswordChange = newPassword.value.length > 0;
-        if (!wantsEmailChange && !wantsPasswordChange) {
-          error.value = 'No changes to save.';
-          return;
-        }
-        if (!currentPassword.value) {
-          error.value = 'Current password is required for any change.';
-          return;
-        }
-        if (wantsEmailChange) {
-          await session.updateEmail(email.value, currentPassword.value);
-        }
-        if (wantsPasswordChange) {
-          await session.updatePassword(currentPassword.value, newPassword.value);
-        }
-        currentPassword.value = '';
-        newPassword.value = '';
-        saved.value = true;
-      } catch (e) {
-        error.value = e instanceof Error ? e.message : 'Could not save.';
-      } finally {
-        saving.value = false;
-      }
-    };
+      const email = signal(user.email);
+      const currentPassword = signal('');
+      const newPassword = signal('');
+      const saving = signal(false);
+      const error = signal<string | null>(null);
+      const saved = signal(false);
+      const soundOn = signal(getSoundPref());
 
-    const template = () => {
-      const u = session.currentUser.value;
-      if (!u) return appShell(html`<p>Redirecting…</p>`);
-      return appShell(html`
-        <section class="form-page panel">
-          <h2>Settings</h2>
-          <p>Signed in as <strong>${u.username}</strong> (${u.email})</p>
-          ${error.value
-            ? html`<p data-testid="form-error" class="field-error">${error.value}</p>`
-            : nothing}
-          ${saved.value ? html`<p class="field-success">Saved.</p>` : nothing}
-          ${formField({
-            id: 'email',
-            label: 'Email',
-            type: 'email',
-            value: email.value,
-            autocomplete: 'email',
-            onInput: (e) => {
-              email.value = (e.target as HTMLInputElement).value;
-              saved.value = false;
-            },
-          })}
-          ${formField({
-            id: 'current_password',
-            label: 'Current password',
-            type: 'password',
-            value: currentPassword.value,
-            autocomplete: 'current-password',
-            onInput: (e) => {
-              currentPassword.value = (e.target as HTMLInputElement).value;
-            },
-          })}
-          ${formField({
-            id: 'new_password',
-            label: 'New password (leave blank to keep current)',
-            type: 'password',
-            value: newPassword.value,
-            autocomplete: 'new-password',
-            onInput: (e) => {
-              newPassword.value = (e.target as HTMLInputElement).value;
-            },
-          })}
-          <label class="field-checkbox">
-            <input
-              id="turn_sound"
-              type="checkbox"
-              .checked=${soundOn.value}
-              @change=${(e: Event) => {
-                const on = (e.target as HTMLInputElement).checked;
-                soundOn.value = on;
-                setSoundPref(on);
-              }}
-            />
-            Turn sound
-          </label>
-          <div class="form-actions">
-            ${button({
-              label: saving.value ? 'Saving…' : 'Save',
-              onClick: () => void onSave(),
-              variant: 'primary',
-              disabled: saving.value,
-            })}
-            ${button({
-              label: 'Sign out',
-              variant: 'secondary',
-              onClick: () => {
-                void session.logout().then(() => navigateTo('/'));
+      const onSave = async (): Promise<void> => {
+        if (saving.value) return;
+        saving.value = true;
+        error.value = null;
+        saved.value = false;
+        try {
+          const u = session.currentUser.value!;
+          const wantsEmailChange = email.value !== u.email;
+          const wantsPasswordChange = newPassword.value.length > 0;
+          if (!wantsEmailChange && !wantsPasswordChange) {
+            error.value = 'No changes to save.';
+            return;
+          }
+          if (!currentPassword.value) {
+            error.value = 'Current password is required for any change.';
+            return;
+          }
+          if (wantsEmailChange) {
+            await session.updateEmail(email.value, currentPassword.value);
+          }
+          if (wantsPasswordChange) {
+            await session.updatePassword(currentPassword.value, newPassword.value);
+          }
+          currentPassword.value = '';
+          newPassword.value = '';
+          saved.value = true;
+        } catch (e) {
+          error.value = e instanceof Error ? e.message : 'Could not save.';
+        } finally {
+          saving.value = false;
+        }
+      };
+
+      const template = () => {
+        const u = session.currentUser.value;
+        if (!u) return appShell(html`<p>Redirecting…</p>`);
+        return appShell(html`
+          <section class="form-page panel">
+            <h2>Settings</h2>
+            <p>Signed in as <strong>${u.username}</strong> (${u.email})</p>
+            ${error.value
+              ? html`<p data-testid="form-error" class="field-error">${error.value}</p>`
+              : nothing}
+            ${saved.value ? html`<p class="field-success">Saved.</p>` : nothing}
+            ${formField({
+              id: 'email',
+              label: 'Email',
+              type: 'email',
+              value: email.value,
+              autocomplete: 'email',
+              onInput: (e) => {
+                email.value = (e.target as HTMLInputElement).value;
+                saved.value = false;
               },
             })}
-          </div>
-        </section>
-      `);
+            ${formField({
+              id: 'current_password',
+              label: 'Current password',
+              type: 'password',
+              value: currentPassword.value,
+              autocomplete: 'current-password',
+              onInput: (e) => {
+                currentPassword.value = (e.target as HTMLInputElement).value;
+              },
+            })}
+            ${formField({
+              id: 'new_password',
+              label: 'New password (leave blank to keep current)',
+              type: 'password',
+              value: newPassword.value,
+              autocomplete: 'new-password',
+              onInput: (e) => {
+                newPassword.value = (e.target as HTMLInputElement).value;
+              },
+            })}
+            <label class="field-checkbox">
+              <input
+                id="turn_sound"
+                type="checkbox"
+                .checked=${soundOn.value}
+                @change=${(e: Event) => {
+                  const on = (e.target as HTMLInputElement).checked;
+                  soundOn.value = on;
+                  setSoundPref(on);
+                }}
+              />
+              Turn sound
+            </label>
+            <div class="form-actions">
+              ${button({
+                label: saving.value ? 'Saving…' : 'Save',
+                onClick: () => void onSave(),
+                variant: 'primary',
+                disabled: saving.value,
+              })}
+              ${button({
+                label: 'Sign out',
+                variant: 'secondary',
+                onClick: () => {
+                  void session.logout().then(() => navigateTo('/'));
+                },
+              })}
+            </div>
+          </section>
+        `);
+      };
+
+      const tagSave = (): void => {
+        const btns = root.querySelectorAll<HTMLButtonElement>('.form-actions .btn');
+        if (btns[0]) btns[0].setAttribute('data-testid', 'save');
+      };
+
+      const dispose = effect(() => {
+        render(template(), root);
+        tagSave();
+      });
+      innerCleanup = (): void => {
+        dispose();
+        render(nothing, root);
+      };
     };
 
-    const tagSave = (): void => {
-      const btns = root.querySelectorAll<HTMLButtonElement>('.form-actions .btn');
-      if (btns[0]) btns[0].setAttribute('data-testid', 'save');
+    const decide = (): void => {
+      if (disposed) return;
+      // Auth gate: bounce to login only once we actually know the user is signed
+      // out — avoids a flash-redirect on cold load before /auth/me resolves.
+      if (!session.currentUser.value) {
+        navigateTo('/login?next=/me');
+        return;
+      }
+      mount();
     };
 
-    const dispose = effect(() => {
-      render(template(), root);
-      tagSave();
-    });
+    // Decide synchronously when the user is already known, or when no first-load
+    // refresh is in flight (warm navigations and tests). Otherwise show a brief
+    // placeholder and wait for hydration so a signed-in user isn't bounced.
+    if (session.currentUser.value || !session.isHydrating()) {
+      decide();
+    } else {
+      render(appShell(html`<p>Loading…</p>`), root);
+      void session.hydrated.then(decide);
+    }
 
     return () => {
-      dispose();
-      render(nothing, root);
+      disposed = true;
+      if (innerCleanup) innerCleanup();
+      else render(nothing, root);
     };
   },
 };

@@ -44,6 +44,18 @@ export function renderLobby(args: LobbyArgs): void {
     joinSse = null;
   };
 
+  // Track timers so route teardown can cancel them — otherwise a pending
+  // cancelled-redirect or copy-reset fires after the user has navigated away
+  // (the redirect would yank them home from an unrelated route).
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  const later = (fn: () => void, ms: number): void => {
+    const id = setTimeout(() => {
+      timers.delete(id);
+      fn();
+    }, ms);
+    timers.add(id);
+  };
+
   // Seats pair into teams: A/C vs B/D. The UI deals in teams; seats are an
   // implementation detail of the join call.
   const TEAMS = [
@@ -124,15 +136,19 @@ export function renderLobby(args: LobbyArgs): void {
           } else if (eventType === 'cancelled') {
             errorMsg.value = 'Challenge was cancelled.';
             cleanupSse();
-            setTimeout(() => navigateTo('/'), 1500);
+            later(() => navigateTo('/'), 1500);
           }
         } catch {
           // ignore
         }
       },
       onError: () => {
-        errorMsg.value = 'Connection lost.';
+        errorMsg.value = 'Connection lost. Rejoin to take your seat again.';
         cleanupSse();
+        // The seat is a presence lease held only while this SSE is open; once it
+        // drops the server reclaims our seat. Clear local "I'm seated" state so
+        // the join buttons re-enable instead of showing a seat we no longer hold.
+        myPlayerId.value = null;
       },
     });
   };
@@ -160,7 +176,7 @@ export function renderLobby(args: LobbyArgs): void {
     try {
       await navigator.clipboard.writeText(url);
       copied.value = true;
-      setTimeout(() => {
+      later(() => {
         copied.value = false;
       }, 1500);
     } catch {
@@ -256,4 +272,8 @@ export function renderLobby(args: LobbyArgs): void {
   });
   args.resources.cleanups.push(dispose);
   args.resources.cleanups.push(cleanupSse);
+  args.resources.cleanups.push(() => {
+    for (const id of timers) clearTimeout(id);
+    timers.clear();
+  });
 }

@@ -115,7 +115,7 @@ export const play: RouteModule = {
 
       // Open WS; on close, fall back to polling
       resources.ws = openGameWs(gameId, playerId, {
-        onEvent: (data) => {
+        onEvent: (data, isSnapshot) => {
           const obj = data as {
             event?: string;
             reason?: string;
@@ -135,12 +135,26 @@ export const play: RouteModule = {
             return;
           }
 
-          // Otherwise: state snapshot. Fetch hand and apply. The returned
-          // promise is awaited by the WS event queue — events must apply in
-          // order, or a slow hand fetch lets a stale snapshot win (the
-          // "frozen game" bug: real-network jitter reorders concurrent
-          // fetches; the last write was sometimes an old CPU-turn state).
-          return applyStateWithHand(store, gameId, playerId, data as GameStateResponse);
+          if (obj.event === 'resync') {
+            // Server dropped us past its broadcast buffer; it follows this with
+            // a Close that drives a clean reconnect + fresh snapshot. The
+            // payload carries no game state, so just log and wait for that.
+            console.warn('ws resync:', obj.reason);
+            return;
+          }
+
+          // Only `state_changed` carries game state. chat_message (and any
+          // future event types) must NOT reach applyState: they'd blank the
+          // store, and chat even carries a seq that would advance the cursor
+          // and drop the next real event.
+          if (obj.event && obj.event !== 'state_changed') return;
+
+          // State snapshot. Fetch hand and apply. The returned promise is
+          // awaited by the WS event queue — events must apply in order, or a
+          // slow hand fetch lets a stale snapshot win (the "frozen game" bug:
+          // real-network jitter reorders concurrent fetches; the last write was
+          // sometimes an old CPU-turn state).
+          return applyStateWithHand(store, gameId, playerId, data as GameStateResponse, isSnapshot);
         },
         onClose: () => {
           // WS reconnects are exhausted — fall back to bounded polling.

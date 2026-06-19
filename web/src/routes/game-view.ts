@@ -30,7 +30,7 @@ import { button } from '../ui/components/button';
 import { bidBar } from '../ui/components/bid-bar';
 import { scores } from '../ui/components/scores';
 import { gameTable, type GameTableRefs } from '../ui/components/game-table';
-import type { GameStore } from '../state/game';
+import type { GameStore, GameStateResponse, HandResponse } from '../state/game';
 import type { Resources } from './play-resources';
 
 export function renderInGame(args: {
@@ -219,11 +219,14 @@ export function renderInGame(args: {
     if (phase !== 'BETTING' && phase !== 'PLAYING' && phase !== 'GAME_OVER') return;
 
     const tricksDone = store.playerTricksWon.value.reduce((a, b) => a + b, 0);
+    // Sort once per run and reuse: setup, hand sync, and valid-move computation
+    // below all need it (signals re-run this effect on every event).
+    const sortedHand = sortCards(hand);
 
     if (!orchestrator.isInitialized() && hand.length > 0) {
       const curSeat = store.playerIds.value.indexOf(currentPlayerId ?? '');
       orchestrator.setupImmediate({
-        playerHand: sortCards(hand),
+        playerHand: sortedHand,
         oppCounts: {
           north: oppCardCount(phase, tricksDone, tableCards, (i + 2) % 4),
           west: oppCardCount(phase, tricksDone, tableCards, (i + 1) % 4),
@@ -241,7 +244,7 @@ export function renderInGame(args: {
     }
 
     if (orchestrator.isInitialized()) {
-      orchestrator.updatePlayerHand(sortCards(hand));
+      orchestrator.updatePlayerHand(sortedHand);
       orchestrator.updateOpponentCount(
         'north',
         oppCardCount(phase, tricksDone, tableCards, (i + 2) % 4),
@@ -307,7 +310,7 @@ export function renderInGame(args: {
         const leaderSeat = (((currentSeat - n) % 4) + 4) % 4;
         return tableCards[leaderSeat]?.suit ?? null;
       })();
-      const validCards = sortCards(hand).filter((card: Card) =>
+      const validCards = sortedHand.filter((card: Card) =>
         isCardValid({
           hand,
           leadSuit,
@@ -333,6 +336,24 @@ export function renderInGame(args: {
             } catch (e) {
               console.error('play failed', e);
               toast.error('Play failed.');
+              // The optimistic play pulled the card from the hand and dropped it
+              // in the trick (orchestrator only — the store is untouched until a
+              // server event). A rejected move yields no corrective event, so
+              // rebuild from authoritative state: reset the orchestrator and
+              // re-apply, which re-runs setupImmediate to restore hand + trick.
+              try {
+                const pid = store.playerId.value;
+                const [fresh, freshHand] = await Promise.all([
+                  request<GameStateResponse>(`/games/${args.gameId}`, { method: 'GET' }),
+                  request<HandResponse>(`/games/${args.gameId}/players/${pid}/hand`, {
+                    method: 'GET',
+                  }),
+                ]);
+                orchestrator.clearAll();
+                store.applyState(fresh, freshHand);
+              } catch (reErr) {
+                console.error('resync after failed play failed', reErr);
+              }
             }
           });
           orchestrator.disableInteraction();

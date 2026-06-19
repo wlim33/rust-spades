@@ -11,7 +11,10 @@ const buildVersion = (() => {
 
 export default defineConfig({
   base: '/',
-  build: { outDir: 'dist', sourcemap: true },
+  // No public sourcemaps: they ship to Cloudflare Pages (~3× the JS size) and
+  // expose the full un-minified source. Use 'hidden' instead if an error
+  // tracker is wired up later (emits maps to upload, without referencing them).
+  build: { outDir: 'dist', sourcemap: false },
   server: {
     port: 5173,
     strictPort: true,

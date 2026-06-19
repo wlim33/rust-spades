@@ -1,4 +1,4 @@
-import { request } from '../api/client';
+import { ApiError, request } from '../api/client';
 import {
   createGameStore,
   type GameStore,
@@ -98,7 +98,15 @@ export async function bootFromUrl(shortId: string): Promise<BootResult> {
     if (status.status === 'started')
       return { kind: 'error', message: 'This game has already started.' };
     return { kind: 'error', message: 'This challenge is no longer available.' };
-  } catch {
-    return { kind: 'error', message: 'Game or challenge not found.' };
+  } catch (e) {
+    // Distinguish a real 404 from a server/network failure: a transient outage
+    // on a valid link shouldn't read as "this game doesn't exist".
+    const notFound = e instanceof ApiError && e.status >= 400 && e.status < 500;
+    return {
+      kind: 'error',
+      message: notFound
+        ? 'Game or challenge not found.'
+        : 'Couldn’t reach the server. Please try again.',
+    };
   }
 }

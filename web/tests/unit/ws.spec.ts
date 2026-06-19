@@ -69,4 +69,18 @@ describe('openGameWs reconnect', () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(MockWebSocket.instances).toHaveLength(1);
   });
+
+  it('flags only the first message after each open as a snapshot', async () => {
+    // The server's initial snapshot carries a "next expected" seq; the consumer
+    // needs to know which message is that snapshot so it can seed the seq cursor
+    // without dropping the first real event.
+    const seen: boolean[] = [];
+    openGameWs('g1', 'p1', { onEvent: (_data, isSnapshot) => void seen.push(isSnapshot) });
+    const ws = latest();
+    ws.onopen?.();
+    ws.onmessage?.({ data: JSON.stringify({ event: 'state_changed', seq: 5 }) });
+    ws.onmessage?.({ data: JSON.stringify({ event: 'state_changed', seq: 6 }) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(seen).toEqual([true, false]);
+  });
 });

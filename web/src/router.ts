@@ -9,7 +9,13 @@ export type RouteModule<P extends Record<string, string> = Record<string, string
   render: (params: P, ctx: RouteContext) => () => void;
 };
 
-type Routes = Record<string, RouteModule>;
+/** A route entry is either an eager module or a loader that code-splits it. */
+export type RouteLoader<P extends Record<string, string> = Record<string, string>> = () => Promise<
+  RouteModule<P>
+>;
+
+type RouteEntry = RouteModule | RouteLoader;
+type Routes = Record<string, RouteEntry>;
 
 export type Router = {
   handle: (path: string) => void;
@@ -27,26 +33,39 @@ export function createRouter(routes: Routes): Router {
   };
 
   const r = navaid('/', (uri) => {
-    const mod = routes['*'];
-    if (!mod) return;
+    const entry = routes['*'];
+    if (!entry) return;
     const wild = (uri ?? '').replace(/^\//, '');
-    runRoute(mod, { wild }, currentFullPath());
+    void runRoute(entry, { wild }, currentFullPath());
   });
 
   let currentCleanup: (() => void) | null = null;
+  // Bumped on every navigation so a slow lazy-route load can detect that a newer
+  // navigation superseded it and bail without mounting.
+  let nav = 0;
 
-  function runRoute(mod: RouteModule, params: Record<string, string>, fullPath: string): void {
-    if (currentCleanup) currentCleanup();
+  async function runRoute(
+    entry: RouteEntry,
+    params: Record<string, string>,
+    fullPath: string,
+  ): Promise<void> {
+    const myNav = ++nav;
     const search = new URLSearchParams(
       fullPath.includes('?') ? fullPath.slice(fullPath.indexOf('?')) : '',
     );
+    // Eager modules resolve synchronously; a loader code-splits its own chunk.
+    const mod = typeof entry === 'function' ? await entry() : entry;
+    if (myNav !== nav) return; // a newer navigation started while the chunk loaded
+    // Tear down the previous route only once the next is ready — no blank gap
+    // while a lazy chunk is in flight.
+    if (currentCleanup) currentCleanup();
     currentCleanup = mod.render(params, { path: fullPath, search });
   }
 
-  for (const [pattern, mod] of Object.entries(routes)) {
+  for (const [pattern, entry] of Object.entries(routes)) {
     if (pattern === '*') continue;
     r.on(pattern, (params) => {
-      runRoute(mod, (params ?? {}) as Record<string, string>, currentFullPath());
+      void runRoute(entry, (params ?? {}) as Record<string, string>, currentFullPath());
     });
   }
 

@@ -13,6 +13,10 @@ export function initialTheme(): Theme {
 
 const theme = signal<Theme>(initialTheme());
 
+// initTheme is called once at boot, but guard so a second call (tests, HMR, a
+// future re-init) can't stack duplicate OS-theme listeners.
+let systemListenerInstalled = false;
+
 function apply(t: Theme): void {
   document.documentElement.setAttribute('data-theme', t);
 }
@@ -30,6 +34,8 @@ function toggle(): void {
 /** Apply current theme and follow the OS while the user hasn't chosen explicitly. */
 function initTheme(): void {
   apply(theme.value);
+  if (systemListenerInstalled) return;
+  systemListenerInstalled = true;
   const mq = globalThis.matchMedia?.('(prefers-color-scheme: dark)');
   mq?.addEventListener?.('change', (e: MediaQueryListEvent) => {
     if (getThemePref() === null) {

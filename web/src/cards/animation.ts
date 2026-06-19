@@ -20,6 +20,8 @@ export type AnimateOpts = {
   onStart?: () => void;
   onProgress?: (raw: number, eased: number) => void;
   onComplete?: () => void;
+  /** Stop early and settle at the final position when this returns true. */
+  cancelled?: () => boolean;
 };
 
 export function animateTo(el: CardEl, opts: AnimateOpts): Promise<void> {
@@ -31,7 +33,26 @@ export function animateTo(el: CardEl, opts: AnimateOpts): Promise<void> {
     const run = (): void => {
       const startTime = performance.now();
       if (opts.onStart) opts.onStart();
+      let settled = false;
+      const finish = (snapToEnd: boolean): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(watchdog);
+        if (snapToEnd) setPos(el, opts.x, opts.y);
+        if (opts.onComplete) opts.onComplete();
+        resolve();
+      };
+      // Wall-clock safety net: requestAnimationFrame is paused in background
+      // tabs, so a flight started while visible can stall forever and block the
+      // whole serial animation chain (and the player's next turn). setTimeout
+      // still fires (throttled) when hidden, so it guarantees settlement.
+      const watchdog = setTimeout(() => finish(true), duration + 1000);
       const tick = (now: number): void => {
+        if (settled) return;
+        if (opts.cancelled?.()) {
+          finish(true);
+          return;
+        }
         const elapsed = now - startTime;
         const raw = Math.min(elapsed / duration, 1);
         const t = easeFn(raw);
@@ -40,10 +61,7 @@ export function animateTo(el: CardEl, opts: AnimateOpts): Promise<void> {
         setPos(el, cx, cy);
         if (opts.onProgress) opts.onProgress(raw, t);
         if (raw < 1) requestAnimationFrame(tick);
-        else {
-          if (opts.onComplete) opts.onComplete();
-          resolve();
-        }
+        else finish(false);
       };
       requestAnimationFrame(tick);
     };

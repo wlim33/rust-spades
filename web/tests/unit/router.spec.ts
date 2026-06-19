@@ -61,4 +61,36 @@ describe('createRouter', () => {
     router.handle('/login?next=/me');
     expect(seen).toEqual(['/me']);
   });
+
+  it('awaits a lazy route loader and tears down the previous route only after it resolves', async () => {
+    const router = createRouter({
+      '/': makeRoute('home'),
+      '/play': () => Promise.resolve(makeRoute('play')),
+    });
+    router.handle('/');
+    router.handle('/play');
+    // The loader is async: the previous route is still mounted, nothing new yet.
+    expect(calls).toEqual(['home({})']);
+    expect(cleanups).toEqual([]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(cleanups).toEqual(['home']);
+    expect(calls).toEqual(['home({})', 'play({})']);
+  });
+
+  it('does not mount a lazy route that a newer navigation superseded', async () => {
+    let resolvePlay!: (m: RouteModule) => void;
+    const router = createRouter({
+      '/': makeRoute('home'),
+      '/play': () => new Promise<RouteModule>((r) => (resolvePlay = r)),
+      '/u/:name': makeRoute('profile'),
+    });
+    router.handle('/play'); // starts loading (pending)
+    router.handle('/u/zoe'); // supersedes before the chunk resolves
+    resolvePlay(makeRoute('play'));
+    await Promise.resolve();
+    await Promise.resolve();
+    // The stale play load must not mount over the newer profile route.
+    expect(calls).toEqual(['profile({"name":"zoe"})']);
+  });
 });

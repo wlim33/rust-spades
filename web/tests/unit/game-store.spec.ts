@@ -88,4 +88,56 @@ describe('createGameStore', () => {
     s.applyState(withTrick as never, { player_id: 'p0', cards: [] });
     expect(s.lastCompletedTrick.value?.[0]).toEqual({ suit: 'Club', rank: 'Ace' });
   });
+
+  it('applies the first streamed event whose seq matches the connect snapshot cursor', () => {
+    // The connect snapshot's seq is the cursor the NEXT streamed event will
+    // carry (server contract), not an already-applied event. Seeding the
+    // cursor from it must not drop that first event.
+    const s = createGameStore('p0');
+    s.applyState({ ...(betting as object), seq: 5 } as never, { player_id: 'p0', cards: [] }, true);
+    expect(s.phase.value).toBe('BETTING');
+    // First streamed event carries the same seq (5) — must still apply.
+    s.applyState({ ...(trick as object), seq: 5 } as never, { player_id: 'p0', cards: [] });
+    expect(s.phase.value).toBe('PLAYING');
+  });
+
+  it('a connect snapshot still drops events older than its cursor', () => {
+    const s = createGameStore('p0');
+    s.applyState({ ...(trick as object), seq: 5 } as never, { player_id: 'p0', cards: [] }, true);
+    // seq 4 < cursor (5) → already reflected in the snapshot → dropped.
+    s.applyState({ ...(betting as object), seq: 4 } as never, { player_id: 'p0', cards: [] });
+    expect(s.phase.value).toBe('PLAYING');
+  });
+
+  it('ignores a payload with no game state and leaves the seq cursor intact', () => {
+    // A mis-routed non-state WS event (e.g. chat_message) carries a seq but no
+    // `state`. It must neither blank the board nor advance the cursor (which
+    // would then drop the next real event).
+    const s = createGameStore('p0');
+    s.applyState({ ...(trick as object), seq: 5 } as never, { player_id: 'p0', cards: [] });
+    expect(s.phase.value).toBe('PLAYING');
+    s.applyState({ event: 'chat_message', seq: 6, content: 'hi' } as never, {
+      player_id: 'p0',
+      cards: [],
+    });
+    expect(s.phase.value).toBe('PLAYING');
+    // The real event at seq 6 still applies — the cursor wasn't corrupted.
+    s.applyState({ ...(completed as object), seq: 6 } as never, { player_id: 'p0', cards: [] });
+    expect(s.phase.value).toBe('GAME_OVER');
+  });
+
+  it('applyPresence keeps a player’s prior state when absent from a partial frame', () => {
+    const s = createGameStore('p0');
+    s.applyState(trick as never, { player_id: 'p0', cards: [] });
+    s.applyPresence([
+      { player_id: 'p0', connected: true },
+      { player_id: 'p1', connected: false },
+      { player_id: 'p2', connected: true },
+      { player_id: 'p3', connected: true },
+    ]);
+    expect(s.playerConnected.value).toEqual([true, false, true, true]);
+    // A later partial frame that omits p1 must not resurrect it to connected.
+    s.applyPresence([{ player_id: 'p3', connected: false }]);
+    expect(s.playerConnected.value).toEqual([true, false, true, false]);
+  });
 });

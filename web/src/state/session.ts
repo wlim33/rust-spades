@@ -6,16 +6,41 @@ import { API_URL } from '../lib/util';
 
 const currentUser = signal<User | null>(null);
 
+// Hydration state for the first session refresh. `hydrated` resolves once the
+// initial /auth/me settles (success OR failure); `isHydrating()` is true only
+// while that first refresh is in flight. Auth-gated routes use these to avoid
+// bouncing a signed-in user to /login before the cold-load refresh resolves.
+let hydrating = false;
+let settledOnce = false;
+let resolveHydrated!: () => void;
+const hydrated = new Promise<void>((r) => {
+  resolveHydrated = r;
+});
+
+function isHydrating(): boolean {
+  return hydrating;
+}
+
 async function refresh(): Promise<void> {
+  hydrating = true;
   try {
     const me = await request<User>('/auth/me', { method: 'GET' });
     currentUser.value = me;
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) {
       currentUser.value = null;
-      return;
+    } else {
+      // Network / 5xx: the auth state is unknown. Leave currentUser as-is and
+      // never throw — boot is best-effort and must not hinge on this, and the
+      // global unhandledrejection net shouldn't fire for a hydration blip.
+      console.error('session refresh failed', e);
     }
-    throw e;
+  } finally {
+    hydrating = false;
+    if (!settledOnce) {
+      settledOnce = true;
+      resolveHydrated();
+    }
   }
 }
 
@@ -75,6 +100,8 @@ async function updatePassword(currentPassword: string, newPassword: string): Pro
 
 export const session = {
   currentUser,
+  hydrated,
+  isHydrating,
   refresh,
   loginWithPassword,
   signupWithPassword,

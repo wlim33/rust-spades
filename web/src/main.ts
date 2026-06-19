@@ -4,7 +4,6 @@ import './ui/design.css';
 import { createRouter } from './router';
 import { home } from './routes/home';
 import { create } from './routes/create';
-import { play } from './routes/play';
 import { login } from './routes/login';
 import { signup } from './routes/signup';
 import { oauthComplete } from './routes/oauth-complete';
@@ -18,18 +17,22 @@ import { installGlobalErrorHandlers } from './lib/global-errors';
 import { themeState } from './state/theme';
 
 void (async () => {
+  // Install the safety nets first: nothing below should be able to blank the
+  // page with an unhandled error before the handlers exist.
+  installGlobalErrorHandlers();
   themeState.initTheme();
-  // Best-effort: hydrate the session before mounting the first route.
-  // If the user just returned from an OAuth provider, detour to the
-  // username-picker when the server set the __oauth_pending cookie (signaled
-  // by /auth/me returning 401 while we have a recent oauth-in-progress marker).
+  // If the user just returned from an OAuth provider, we may need to detour to
+  // the username-picker (server set __oauth_pending: /auth/me 401s while we hold
+  // a recent oauth-in-progress marker).
   const oauthMarker = consumeOauthInProgress();
-  await session.refresh();
 
   const router = createRouter({
     '/': home,
     '/create': create,
-    '/play/:shortId': play,
+    // Lazy: the play route pulls in the card orchestrator, game-view, lobby and
+    // boot — kept out of the initial bundle so the landing page doesn't pay for
+    // the whole game UI.
+    '/play/:shortId': () => import('./routes/play').then((m) => m.play),
     '/login': login,
     '/signup': signup,
     '/auth/oauth/complete': oauthComplete,
@@ -61,18 +64,39 @@ void (async () => {
     history.pushState(null, '', url.pathname + url.search);
   });
 
-  // If we have an oauth marker and we're NOT signed in, the server is awaiting
-  // a username pick. Detour to /auth/oauth/complete (route added in Plan 3 Task 7).
-  if (oauthMarker && session.currentUser.value === null) {
-    try {
-      sessionStorage.setItem('spades_oauth_lingering', '1');
-    } catch {
-      // ignore
+  // Hydrate the session in the background — don't block first paint on an
+  // /auth/me round-trip, and never let it reject boot. Auth-dependent UI reacts
+  // to the currentUser signal; auth-gated routes await session.hydrated.
+  const refreshing = session.refresh();
+
+  // The OAuth detour is the one path that must know the result first: with a
+  // recent oauth marker and still signed out, the server is awaiting a username
+  // pick, so detour to /auth/oauth/complete.
+  if (oauthMarker) {
+    await refreshing;
+    if (session.currentUser.value === null) {
+      try {
+        sessionStorage.setItem('spades_oauth_lingering', '1');
+      } catch {
+        // ignore
+      }
+      history.replaceState(null, '', '/auth/oauth/complete');
     }
-    history.replaceState(null, '', '/auth/oauth/complete');
   }
 
-  installGlobalErrorHandlers();
-
   router.listen();
-})();
+})().catch((err) => {
+  // Boot should never reject (refresh is caught internally), but if some
+  // unexpected failure escapes, show a recoverable message instead of leaving a
+  // blank page — whatever failed, the user can at least reload.
+  console.error('boot failed', err);
+  const root = document.getElementById('root');
+  if (root) {
+    root.replaceChildren();
+    const p = document.createElement('p');
+    p.style.padding = '2rem';
+    p.style.textAlign = 'center';
+    p.textContent = 'Something went wrong starting Spades. Please reload the page.';
+    root.append(p);
+  }
+});

@@ -57,7 +57,7 @@ export type GameStore = {
   playerClocksMs: Signal<(number | null)[] | null>;
   activePlayerClockMs: Signal<number | null>;
   spadesBroken: Signal<boolean>;
-  applyState: (state: GameStateResponse, hand: HandResponse) => void;
+  applyState: (state: GameStateResponse, hand: HandResponse, isSnapshot?: boolean) => void;
   applyPresence: (players: PresencePlayer[]) => void;
 };
 
@@ -70,6 +70,19 @@ function phaseFromState(g: GameStateValue): Phase {
     if (g.startsWith('Trick')) return 'PLAYING';
   }
   return 'LOBBY';
+}
+
+/**
+ * Assign to an array signal only when its contents actually changed. Signals
+ * compare by Object.is, so a freshly built array always notifies even when it
+ * holds identical values; this shallow compare (over our ≤13-element game
+ * arrays of primitives) keeps unchanged signals quiet, so one WS event doesn't
+ * re-render everything subscribed to seats/bets/tricks that didn't move.
+ */
+function setIfChanged<T>(sig: Signal<T[]>, next: T[]): void {
+  const cur = sig.value;
+  if (cur.length === next.length && cur.every((v, i) => v === next[i])) return;
+  sig.value = next;
 }
 
 export function createGameStore(playerIdInit: string): GameStore {
@@ -117,10 +130,23 @@ export function createGameStore(playerIdInit: string): GameStore {
   // the per-game `seq` cursor lets us drop anything older than what we hold.
   let lastSeq = -1;
 
-  const applyState: GameStore['applyState'] = (state, handData) => {
+  const applyState: GameStore['applyState'] = (state, handData, isSnapshot = false) => {
+    // A non-state WS event (resync / chat_message) mis-routed here carries no
+    // `state`. Ignore it outright: applying it would blank the board, and for
+    // chat (which carries a seq) it would also advance the cursor and drop the
+    // next real event.
+    if (state == null || state.state === undefined) return;
     if (typeof state.seq === 'number') {
-      if (state.seq <= lastSeq) return;
-      lastSeq = state.seq;
+      if (isSnapshot) {
+        // The connect snapshot's seq is the cursor the NEXT streamed event will
+        // carry (server contract) — not an event we've applied. Seed one below
+        // it so that first event passes the `<=` guard instead of being dropped.
+        // (max() guards against a snapshot somehow trailing applied events.)
+        lastSeq = Math.max(lastSeq, state.seq - 1);
+      } else {
+        if (state.seq <= lastSeq) return;
+        lastSeq = state.seq;
+      }
     }
     gameState.value = state.state;
     currentPlayerId.value = state.current_player_id;
@@ -131,11 +157,20 @@ export function createGameStore(playerIdInit: string): GameStore {
     timerConfig.value = state.timer_config ?? null;
     playerClocksMs.value = state.player_clocks_ms ?? null;
     activePlayerClockMs.value = state.active_player_clock_ms ?? null;
-    playerNames.value = (state.player_names ?? []).map((e) => e.name);
-    playerIds.value = (state.player_names ?? []).map((e) => e.player_id);
+    // Identity-stable arrays that rarely change mid-game: assign only on real
+    // change so unchanged signals stay quiet. The object arrays (table/hand/
+    // last-trick) change most events anyway, so they're direct assignments.
+    setIfChanged(
+      playerNames,
+      (state.player_names ?? []).map((e) => e.name),
+    );
+    setIfChanged(
+      playerIds,
+      (state.player_names ?? []).map((e) => e.player_id),
+    );
     tableCards.value = state.table_cards ?? [null, null, null, null];
-    playerBets.value = state.player_bets ?? [null, null, null, null];
-    playerTricksWon.value = state.player_tricks_won ?? [0, 0, 0, 0];
+    setIfChanged(playerBets, state.player_bets ?? [null, null, null, null]);
+    setIfChanged(playerTricksWon, state.player_tricks_won ?? [0, 0, 0, 0]);
     lastTrickWinnerId.value = state.last_trick_winner_id ?? null;
     lastCompletedTrick.value = state.last_completed_trick ?? null;
     hand.value = handData.cards ?? [];
@@ -144,12 +179,15 @@ export function createGameStore(playerIdInit: string): GameStore {
   };
 
   const applyPresence: GameStore['applyPresence'] = (players) => {
-    const next: boolean[] = [true, true, true, true];
+    // Seed from the current flags, not all-connected: a partial frame (or one
+    // that arrives before playerIds is populated) must not resurrect a player
+    // we already know is disconnected.
+    const next = [...playerConnected.value];
     for (const p of players) {
       const idx = playerIds.value.indexOf(p.player_id);
       if (idx !== -1) next[idx] = p.connected;
     }
-    playerConnected.value = next;
+    setIfChanged(playerConnected, next);
   };
 
   return {
