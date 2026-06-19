@@ -25,6 +25,11 @@ export function liveActiveMs(): number | null {
 export function startClockTicker(): void {
   if (timer != null) return;
   timer = setInterval(() => {
+    // Only churn renders while a timed clock is actually running. Untimed
+    // games never capture a snapshot, so the ticker stays silent instead of
+    // re-rendering the entire game table four times a second (and waking the
+    // table ResizeObserver with it).
+    if (snapshotMs == null) return;
     clockTick.value = clockTick.value + 1;
   }, 250);
 }

@@ -15,6 +15,7 @@ export class HandManager {
   private containers: Containers | null = null;
   private hands: Record<Seat, HandEntry[]> = { south: [], north: [], east: [], west: [] };
   private resizeObs: ResizeObserver | null = null;
+  private resizeRaf = 0;
 
   setContainers(containers: Containers): void {
     this.containers = containers;
@@ -23,9 +24,17 @@ export class HandManager {
     // on every hand change, so only live-resize reactivity is lost there.
     if (typeof ResizeObserver !== 'undefined') {
       this.resizeObs = new ResizeObserver(() => {
-        this.updateHandSpacing();
-        this.updateFanSpacing('west');
-        this.updateFanSpacing('east');
+        // Coalesce every observed-element fire in this frame into one rAF
+        // pass. The callback writes the layout it just measured, which makes
+        // the browser re-fire the observer ("ResizeObserver loop…"); batching
+        // collapses the dozens-of-reflows settle storm into a single update.
+        if (this.resizeRaf !== 0) return;
+        this.resizeRaf = requestAnimationFrame(() => {
+          this.resizeRaf = 0;
+          this.updateHandSpacing();
+          this.updateFanSpacing('west');
+          this.updateFanSpacing('east');
+        });
       });
       this.resizeObs.observe(containers.south);
       this.resizeObs.observe(containers.west);
@@ -73,6 +82,10 @@ export class HandManager {
     const container = this.containers.south;
     const cardW = this.hands.south[0]?.el.offsetWidth || 46;
     const ml = computeHandOverlap(container.clientWidth, cardW, this.hands.south.length);
+    // Idempotent like updateFanSpacing: a write that doesn't move the overlap a
+    // visible amount can still re-fire the ResizeObserver, so skip no-op writes.
+    const prev = parseFloat(container.style.getPropertyValue('--hand-ml'));
+    if (Number.isFinite(prev) && Math.abs(prev - ml) < 0.5) return;
     container.style.setProperty('--hand-ml', `${ml}px`);
   }
 
@@ -142,6 +155,10 @@ export class HandManager {
     this.clear();
     this.resizeObs?.disconnect();
     this.resizeObs = null;
+    if (this.resizeRaf !== 0) {
+      cancelAnimationFrame(this.resizeRaf);
+      this.resizeRaf = 0;
+    }
   }
 
   clear(): void {
