@@ -213,6 +213,23 @@ async fn health() -> &'static str {
     "ok"
 }
 
+/// Derive the session-store SQLite URL from the game DB path.
+///
+/// The session store (sqlx) MUST NOT share the game DB file (rusqlite): a
+/// single SQLite file opened by two libraries contends for the WAL lock when a
+/// deploy swaps the container, which stalled startup long enough to fail the
+/// healthcheck and abort the deploy. A sibling `sessions.sqlite` removes the
+/// coupling entirely. In-memory / no-DB runs keep an in-memory session store.
+fn session_db_url(db_path: Option<&str>) -> String {
+    match db_path {
+        None | Some(":memory:") => "sqlite::memory:".to_string(),
+        Some(path) => {
+            let sessions = std::path::Path::new(path).with_file_name("sessions.sqlite");
+            format!("sqlite:{}?mode=rwc", sessions.display())
+        }
+    }
+}
+
 /// Readiness probe — returns 200 when the server is ready to accept traffic.
 /// Currently only verifies the in-process state is reachable; a future
 /// version should ping the SQLite store with a cheap query.
@@ -490,12 +507,12 @@ async fn main() {
         idempotency: idempotency_cache,
     };
 
-    // Session store setup
-    let session_db_url = match db_path {
-        Some(ref path) => format!("sqlite:{}?mode=rwc", path),
-        None => "sqlite::memory:".to_string(),
-    };
-    let session_pool = tower_sessions_sqlx_store::sqlx::SqlitePool::connect(&session_db_url)
+    // Session store setup. Keep it on its OWN SQLite file (sibling of the game
+    // DB): sharing one file between sqlx (here) and rusqlite (the game store)
+    // makes the container contend for the WAL lock during a deploy swap, which
+    // failed the healthcheck and took the backend down.
+    let session_url = session_db_url(db_path.as_deref());
+    let session_pool = tower_sessions_sqlx_store::sqlx::SqlitePool::connect(&session_url)
         .await
         .expect("Failed to connect session SQLite pool");
     let session_store = SessionSqliteStore::new(session_pool);
@@ -1005,6 +1022,23 @@ mod tests {
         let response = server.get("/health").await;
         response.assert_status_ok();
         response.assert_text("ok");
+    }
+
+    #[test]
+    fn session_db_url_is_a_sibling_file_not_the_game_db() {
+        // The session store must not open the game DB file (WAL-lock contention
+        // during a deploy swap). It lives next to it as sessions.sqlite.
+        assert_eq!(
+            session_db_url(Some("/data/games.sqlite")),
+            "sqlite:/data/sessions.sqlite?mode=rwc"
+        );
+        assert_eq!(
+            session_db_url(Some("dev.sqlite")),
+            "sqlite:sessions.sqlite?mode=rwc"
+        );
+        // In-memory / no-DB runs stay in memory.
+        assert_eq!(session_db_url(None), "sqlite::memory:");
+        assert_eq!(session_db_url(Some(":memory:")), "sqlite::memory:");
     }
 
     #[tokio::test]
