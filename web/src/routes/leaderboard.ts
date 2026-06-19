@@ -2,6 +2,7 @@ import { html, render, nothing } from 'lit-html';
 import { effect, signal } from '@preact/signals-core';
 import { appShell } from '../ui/templates';
 import { request } from '../api/client';
+import { session } from '../state/session';
 import type { Leaderboard, LeaderboardPeriod } from '../state/user-types';
 import type { RouteModule } from '../router';
 
@@ -47,6 +48,7 @@ export const leaderboard: RouteModule = {
       const err = error.value;
       const b = board.value;
       const cur = period.value;
+      const me = session.currentUser.value?.username ?? null;
       const entries = b?.entries ?? [];
       const showEmpty = !l && !err && entries.length === 0;
       const showList = !l && !err && entries.length > 0;
@@ -55,6 +57,11 @@ export const leaderboard: RouteModule = {
         appShell(html`
           <section class="leaderboard panel">
             <h2>Leaderboard</h2>
+            <p class="leaderboard__caption">
+              Ranked by a conservative Glicko-2 score — each rating discounted by its uncertainty
+              (RD), so settled ratings outrank volatile ones. A minimum number of games is required
+              to appear.
+            </p>
             <div class="leaderboard__tabs" role="group" aria-label="Leaderboard period">
               <button
                 class="leaderboard__tab ${cur === 'all-time' ? 'is-active' : ''}"
@@ -79,21 +86,46 @@ export const leaderboard: RouteModule = {
               ? html`<div class="empty-state"><p>No ranked players yet.</p></div>`
               : nothing}
             ${showList
-              ? html`<ol class="leaderboard__list">
-                  ${entries.map(
-                    (e) =>
-                      html`<li class="leaderboard__row">
-                        <span class="leaderboard__rank">${e.rank}</span>
-                        <a
-                          class="leaderboard__name"
-                          href="/u/${encodeURIComponent(e.username)}"
-                          data-link
-                          >${e.username}</a
-                        >
-                        <span class="leaderboard__rating">${e.rating}</span>
-                      </li>`,
-                  )}
-                </ol>`
+              ? html`<div class="leaderboard__scroll">
+                  <table class="leaderboard__list">
+                    <thead>
+                      <tr>
+                        <th scope="col" class="leaderboard__rank">#</th>
+                        <th scope="col">Player</th>
+                        <th scope="col" class="leaderboard__rating">Rating</th>
+                        <th scope="col" class="leaderboard__games">Games</th>
+                        <th scope="col" class="leaderboard__score">Score</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${entries.map((e) => {
+                        const isMe = me != null && e.username.toLowerCase() === me.toLowerCase();
+                        return html`<tr class="leaderboard__row ${isMe ? 'is-me' : ''}">
+                          <td class="leaderboard__rank ${e.rank <= 3 ? 'is-top' : ''}">
+                            ${e.rank}
+                          </td>
+                          <td class="leaderboard__player">
+                            <a
+                              class="leaderboard__name"
+                              href="/u/${encodeURIComponent(e.username)}"
+                              data-link
+                              >${e.username}</a
+                            >${isMe ? html`<span class="leaderboard__you">You</span>` : nothing}
+                          </td>
+                          <td class="leaderboard__rating">
+                            ${Math.round(e.rating)}<span
+                              class="leaderboard__rd"
+                              title="Rating deviation — lower means a more settled rating"
+                              >±${Math.round(e.rd)}</span
+                            >
+                          </td>
+                          <td class="leaderboard__games">${e.games_played}</td>
+                          <td class="leaderboard__score">${Math.round(e.score)}</td>
+                        </tr>`;
+                      })}
+                    </tbody>
+                  </table>
+                </div>`
               : nothing}
           </section>
         `),

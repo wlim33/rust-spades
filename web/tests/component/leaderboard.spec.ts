@@ -37,6 +37,32 @@ describe('leaderboard route', () => {
     cleanup();
   });
 
+  it('shows detailed columns: rounded rating with ±RD, games, and conservative score', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            // 1723.4 rating, rd 50, games 10, score 1623.4 — exercises rounding.
+            JSON.stringify({ period: 'all-time', entries: [entry(1, 'alice', 1723.4)] }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+      ),
+    );
+    const cleanup = leaderboard.render({}, { path: '/leaderboard', search: new URLSearchParams() });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const ratingCell = document.querySelector('tbody .leaderboard__rating');
+    expect(ratingCell?.textContent).toContain('1723'); // rounded from 1723.4
+    expect(ratingCell?.textContent).toContain('±50');
+    expect(document.querySelector('tbody .leaderboard__games')?.textContent?.trim()).toBe('10');
+    expect(document.querySelector('tbody .leaderboard__score')?.textContent?.trim()).toBe('1623');
+    // Top-3 rank gets neutral emphasis.
+    expect(document.querySelector('tbody .leaderboard__rank.is-top')).not.toBeNull();
+    cleanup();
+  });
+
   it('switches to this-month and refetches', async () => {
     const periods: string[] = [];
     vi.stubGlobal(

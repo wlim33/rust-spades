@@ -102,18 +102,32 @@ export function leaderboardPreview(): TemplateResult {
       ${err ? html`<p class="home-leaderboard__status">Leaderboard unavailable.</p>` : nothing}
       ${showEmpty ? html`<p class="home-leaderboard__status">No ranked players yet.</p>` : nothing}
       ${showList
-        ? html`<ol class="leaderboard__list">
-            ${entries.map(
-              (e) =>
-                html`<li class="leaderboard__row">
-                  <span class="leaderboard__rank">${e.rank}</span>
-                  <a class="leaderboard__name" href="/u/${encodeURIComponent(e.username)}" data-link
-                    >${e.username}</a
-                  >
-                  <span class="leaderboard__rating">${e.rating}</span>
-                </li>`,
-            )}
-          </ol>`
+        ? html`<table class="leaderboard__list">
+            <thead>
+              <tr>
+                <th scope="col" class="leaderboard__rank">#</th>
+                <th scope="col">Player</th>
+                <th scope="col" class="leaderboard__rating">Rating</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${entries.map(
+                (e) =>
+                  html`<tr class="leaderboard__row">
+                    <td class="leaderboard__rank">${e.rank}</td>
+                    <td>
+                      <a
+                        class="leaderboard__name"
+                        href="/u/${encodeURIComponent(e.username)}"
+                        data-link
+                        >${e.username}</a
+                      >
+                    </td>
+                    <td class="leaderboard__rating">${Math.round(e.rating)}</td>
+                  </tr>`,
+              )}
+            </tbody>
+          </table>`
         : nothing}
     </section>
   `;

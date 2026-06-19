@@ -1446,43 +1446,114 @@ h3 {
 }
 .leaderboard__tabs {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
+/* Period selectors read as plain text links — the active one is weighted and
+   underlined. They stay <button>s: switching period is an in-place action,
+   not navigation, so an href-less <a> would be wrong. */
 .leaderboard__tab {
   font: inherit;
+  font-size: var(--text-sm);
   cursor: pointer;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid currentColor;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: inherit;
-  opacity: 0.7;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fg-muted);
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+.leaderboard__tab:hover {
+  color: var(--fg);
+  text-decoration: underline;
 }
 .leaderboard__tab.is-active {
-  font-weight: 700;
-  opacity: 1;
+  color: var(--fg);
+  font-weight: 600;
+  text-decoration: underline;
 }
 .leaderboard__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
 }
-.leaderboard__row {
-  display: grid;
-  grid-template-columns: 2.5rem 1fr auto;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) 0;
+.leaderboard__list th,
+.leaderboard__list td {
+  padding: var(--space-2);
+  text-align: left;
+}
+.leaderboard__list thead th {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-subtle);
+  padding: var(--space-1) var(--space-2);
   border-bottom: 1px solid var(--border);
 }
-.leaderboard__rank {
+.leaderboard__list .leaderboard__rank {
+  width: 2.5rem;
   text-align: right;
-  opacity: 0.7;
-  font-variant-numeric: tabular-nums;
 }
-.leaderboard__rating {
-  font-variant-numeric: tabular-nums;
+.leaderboard__list .leaderboard__rating,
+.leaderboard__list .leaderboard__games,
+.leaderboard__list .leaderboard__score {
+  text-align: right;
+}
+.leaderboard__list tbody .leaderboard__rank {
+  color: var(--fg-muted);
+}
+/* Zebra shading: a panel-background-independent overlay so it reads in both
+   themes. */
+.leaderboard__row:nth-child(odd) {
+  background: color-mix(in oklab, var(--fg) 5%, transparent);
+}
+.leaderboard__name {
+  color: var(--accent);
+  text-decoration: none;
+}
+.leaderboard__name:hover {
+  text-decoration: underline;
+}
+
+/* ── Detailed full-board extras ────────────────────────────────────────── */
+.leaderboard__caption {
+  margin: 0 0 var(--space-4);
+  max-width: 60ch;
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+/* Horizontal scroll on narrow viewports so the extra columns never truncate. */
+.leaderboard__scroll {
+  overflow-x: auto;
+}
+/* Rating deviation: a muted companion to the rating it qualifies. */
+.leaderboard__rd {
+  margin-left: var(--space-2);
+  color: var(--fg-subtle);
+  font-size: var(--text-xs);
+}
+.leaderboard__score {
+  font-weight: 600;
+}
+/* Top three ranks: neutral emphasis only — no decorative medal colors. */
+.leaderboard__list tbody .leaderboard__rank.is-top {
+  color: var(--fg);
+  font-weight: 700;
+}
+/* The viewer's own row: a neutral highlight (defined after the zebra rule so it
+   wins on equal specificity). Accent stays reserved for the name link. */
+.leaderboard__row.is-me {
+  background: color-mix(in oklab, var(--fg) 12%, transparent);
+}
+.leaderboard__you {
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+  vertical-align: middle;
 }
 
 /* Landing-page leaderboard preview */
@@ -1493,14 +1564,16 @@ h3 {
 }
 .home-leaderboard__head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
+  justify-content: center;
   margin-bottom: var(--space-3);
 }
 .home-leaderboard__title {
   font-size: var(--text-lg);
   margin: 0;
+  text-align: center;
+}
+.home-leaderboard .leaderboard__tabs {
+  justify-content: center;
 }
 .home-leaderboard__title-link {
   display: inline-flex;
@@ -1516,6 +1589,7 @@ h3 {
   margin: var(--space-2) 0 0;
   color: var(--fg-muted);
   font-size: var(--text-sm);
+  text-align: center;
 }
 
 /* ── Home: refined surface ─────────────────────────────────────────────── */
