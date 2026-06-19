@@ -8,6 +8,11 @@ use serde::{Deserialize, Serialize};
 /// docs/superpowers/specs/2026-06-19-game-termination-guarantee-design.md.
 const MIN_POINTS: i32 = -200;
 
+/// Hard cap on rounds per game — a final backstop against any non-terminating
+/// edge case beyond the loss floor. Far above any realistic game (a game to 500
+/// is well under ~30 rounds).
+const MAX_ROUNDS: usize = 100;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GameConfig {
     pub(crate) max_points: i32,
@@ -172,6 +177,12 @@ impl Scoring {
             if self.team_a.cumulative_points <= MIN_POINTS
                 || self.team_b.cumulative_points <= MIN_POINTS
             {
+                self.is_over = true;
+            }
+            // Round cap: a final backstop. self.round is the just-completed
+            // round's 0-based index and is incremented just below, so the cap
+            // fires as the MAX_ROUNDS-th round completes.
+            if self.round + 1 >= MAX_ROUNDS {
                 self.is_over = true;
             }
             self.round += 1;
@@ -760,6 +771,37 @@ mod tests {
         assert!(s.is_over, "game must end when a team hits the loss floor");
         assert!(s.team_b.cumulative_points <= MIN_POINTS);
         assert!(s.team_a.cumulative_points < s.config.max_points); // not a max-points win
+    }
+
+    #[test]
+    fn test_is_over_round_cap() {
+        let mut s = Scoring::new(500);
+        // Jump to the final allowed round with scores comfortably inside the band.
+        s.round = MAX_ROUNDS - 1;
+        s.team_a.cumulative_points = 50;
+        s.team_b.cumulative_points = 40;
+        // bets_placed is normally grown one entry per round; pre-fill so the
+        // round-end read of bets_placed[self.round] is in bounds.
+        s.bets_placed = vec![[1, 1, 1, 1]; MAX_ROUNDS];
+
+        // Play 13 tricks directly (team A wins 7, team B wins 6) — modest deltas
+        // that cross neither max_points nor the loss floor.
+        for t in 0..13 {
+            let cards = if t < 7 {
+                make_trick(Suit::Club, [Rank::Ace, Rank::King, Rank::Queen, Rank::Jack])
+            } else {
+                make_trick(Suit::Club, [Rank::Two, Rank::Ace, Rank::Three, Rank::Four])
+            };
+            s.trick(0, &cards);
+        }
+
+        assert!(s.is_over, "game must end at the round cap");
+        assert!(s.round >= MAX_ROUNDS);
+        // Ended by the cap, not by a score threshold:
+        assert!(s.team_a.cumulative_points < s.config.max_points);
+        assert!(s.team_b.cumulative_points < s.config.max_points);
+        assert!(s.team_a.cumulative_points > MIN_POINTS);
+        assert!(s.team_b.cumulative_points > MIN_POINTS);
     }
 
     #[test]
