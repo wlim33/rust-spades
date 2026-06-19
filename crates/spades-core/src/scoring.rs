@@ -805,6 +805,31 @@ mod tests {
     }
 
     #[test]
+    fn test_round_cap_does_not_fire_one_round_early() {
+        let mut s = Scoring::new(500);
+        // One round before the cap: completing this round leaves round = MAX_ROUNDS - 1,
+        // which is strictly below MAX_ROUNDS, so is_over must NOT be set.
+        s.round = MAX_ROUNDS - 2;
+        s.team_a.cumulative_points = 50;
+        s.team_b.cumulative_points = 40;
+        s.bets_placed = vec![[1, 1, 1, 1]; MAX_ROUNDS];
+
+        // Play 13 tricks directly (team A wins 7, team B wins 6) — modest deltas
+        // that cross neither max_points nor the loss floor.
+        for t in 0..13 {
+            let cards = if t < 7 {
+                make_trick(Suit::Club, [Rank::Ace, Rank::King, Rank::Queen, Rank::Jack])
+            } else {
+                make_trick(Suit::Club, [Rank::Two, Rank::Ace, Rank::Three, Rank::Four])
+            };
+            s.trick(0, &cards);
+        }
+
+        assert!(!s.is_over, "game must NOT end one round before the cap");
+        assert_eq!(s.round, MAX_ROUNDS - 1, "round must advance by exactly one");
+    }
+
+    #[test]
     fn test_trick_13th_resets_round() {
         let mut s = Scoring::new(500);
         s.add_bet(0, 3);
