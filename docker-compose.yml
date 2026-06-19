@@ -14,7 +14,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
-      start_period: 10s
+      # Grace for the new container to take over the WAL SQLite file during a
+      # deploy swap: the session store opens games.sqlite via sqlx and migrates
+      # (a write) while the game store holds it via rusqlite, so a brief lock on
+      # startup is normal. A passing check still flips to healthy immediately, so
+      # a clean start (~1.3s) is unaffected — this window only helps a slow swap.
+      start_period: 60s
+      start_interval: 3s
 
   caddy:
     image: caddy:2-alpine
