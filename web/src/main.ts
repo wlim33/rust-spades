@@ -14,7 +14,7 @@ import { leaderboard } from './routes/leaderboard';
 import { notFound } from './routes/notfound';
 import { session } from './state/session';
 import { consumeOauthInProgress } from './lib/storage';
-import { toast } from './state/toast';
+import { installGlobalErrorHandlers } from './lib/global-errors';
 import { themeState } from './state/theme';
 
 void (async () => {
@@ -72,15 +72,7 @@ void (async () => {
     history.replaceState(null, '', '/auth/oauth/complete');
   }
 
-  window.addEventListener('unhandledrejection', (e) => {
-    console.error('Unhandled rejection', e.reason);
-    toast.error('Something went wrong.');
-  });
-
-  window.addEventListener('error', (e) => {
-    console.error('Uncaught error', e.error ?? e.message);
-    toast.error('Something went wrong.');
-  });
+  installGlobalErrorHandlers();
 
   router.listen();
 })();
