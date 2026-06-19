@@ -174,7 +174,7 @@ body:has(.page--fit) main#root {
 .menu__quickplay {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 .menu__row {
   appearance: none;
@@ -813,9 +813,13 @@ body:has(.page--fit) main#root {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: var(--space-1);
   width: 100%;
-  padding: var(--space-4) var(--space-2);
+  /* Equal-width grid columns + a 1:1 ratio make every time control a literal
+     same-size square. */
+  aspect-ratio: 1;
+  padding: var(--space-2);
   background: var(--surface-raised);
   border: 1px solid var(--border);
   border-top: 2px solid var(--border-strong);
