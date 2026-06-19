@@ -151,7 +151,7 @@ body:has(.page--fit) main#root {
   flex-direction: column;
   gap: var(--space-3);
   width: 100%;
-  max-width: clamp(22.5rem, 30vw, 26.25rem);
+  max-width: clamp(24rem, 36vw, 32rem);
 }
 .menu__label {
   display: flex;
