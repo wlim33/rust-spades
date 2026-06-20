@@ -10,10 +10,61 @@ use spades_server::game_manager::{GameEvent, GameStateResponse};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use std::time::Duration;
+
 use super::dto::{ErrorResponse, PresenceSnapshot, ServerEvent, WsQuery};
 use super::handlers::games::seat_matches_identity;
 use super::presence::PresenceTracker;
 use super::{AppState, parse_uuid_or_short_id};
+
+/// How often the server pings an idle game socket to confirm the peer is
+/// still there. When it isn't our turn (or the game is over) no events
+/// flow, so a peer whose TCP connection has silently died (laptop sleep,
+/// dropped mobile link) never trips the send path and would linger as a
+/// ghost "connected" presence holding a broadcast slot. The detection
+/// window is one-to-two intervals.
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
+
+/// What a heartbeat tick should do, given whether the previous ping was
+/// answered.
+#[derive(Debug, PartialEq, Eq)]
+enum Beat {
+    /// Peer answered (or this is the first tick); send a fresh ping.
+    Ping,
+    /// The previous ping went unanswered for a full interval — treat the
+    /// peer as dead and close the socket.
+    Drop,
+}
+
+/// Tracks WebSocket peer liveness across heartbeat ticks. A tick that
+/// finds the previous ping still unanswered means the peer is gone.
+struct Heartbeat {
+    awaiting_pong: bool,
+}
+
+impl Heartbeat {
+    fn new() -> Self {
+        Self {
+            awaiting_pong: false,
+        }
+    }
+
+    /// Called on each heartbeat tick.
+    fn on_tick(&mut self) -> Beat {
+        if self.awaiting_pong {
+            // A full interval elapsed with the last ping unanswered.
+            Beat::Drop
+        } else {
+            self.awaiting_pong = true;
+            Beat::Ping
+        }
+    }
+
+    /// Any frame from the peer (pong, ping, text, …) is proof of life.
+    fn on_peer_activity(&mut self) {
+        self.awaiting_pong = false;
+    }
+}
 
 pub async fn game_ws(
     AxumState(state): AxumState<AppState>,
@@ -200,8 +251,30 @@ async fn handle_game_ws(
 
     let mut presence_rx = presence_rx;
 
+    let mut heartbeat = Heartbeat::new();
+    let mut heartbeat_interval = tokio::time::interval(HEARTBEAT_INTERVAL);
+    // The first tick fires immediately; let it pass so we don't ping the
+    // instant the socket opens.
+    heartbeat_interval.tick().await;
+
     loop {
         tokio::select! {
+            _ = heartbeat_interval.tick() => {
+                match heartbeat.on_tick() {
+                    Beat::Ping => {
+                        if socket.send(Message::Ping(Vec::new().into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Beat::Drop => {
+                        // Peer never answered the previous ping; close the
+                        // socket so its presence is released instead of
+                        // lingering as a ghost.
+                        let _ = socket.send(Message::Close(None)).await;
+                        break;
+                    }
+                }
+            }
             event = rx.recv() => {
                 match event {
                     Ok(game_event) => {
@@ -266,13 +339,21 @@ async fn handle_game_ws(
             }
             msg = socket.recv() => {
                 match msg {
-                    Some(Ok(Message::Ping(data))) => {
-                        if socket.send(Message::Pong(data)).await.is_err() {
-                            break;
+                    Some(Ok(message)) => {
+                        // Any frame from the peer proves the connection is
+                        // alive, resetting the heartbeat's pending ping.
+                        heartbeat.on_peer_activity();
+                        match message {
+                            Message::Ping(data) => {
+                                if socket.send(Message::Pong(data)).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Message::Close(_) => break,
+                            _ => {}
                         }
                     }
-                    Some(Ok(Message::Close(_))) | None => break,
-                    _ => {}
+                    Some(Err(_)) | None => break,
                 }
             }
         }
@@ -280,5 +361,38 @@ async fn handle_game_ws(
 
     if let Some(snapshot) = presence.player_disconnected(game_id, player_id) {
         presence.broadcast(game_id, snapshot);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn heartbeat_first_tick_pings() {
+        // Nothing outstanding yet, so the first tick just sends a ping.
+        let mut hb = Heartbeat::new();
+        assert_eq!(hb.on_tick(), Beat::Ping);
+    }
+
+    #[test]
+    fn heartbeat_drops_when_ping_goes_unanswered() {
+        // First tick pings; if the next tick arrives with no peer activity
+        // in between, the ping was never answered — the peer is dead.
+        let mut hb = Heartbeat::new();
+        assert_eq!(hb.on_tick(), Beat::Ping);
+        assert_eq!(hb.on_tick(), Beat::Drop);
+    }
+
+    #[test]
+    fn heartbeat_peer_activity_keeps_socket_alive() {
+        // A pong (or any frame) between ticks proves the peer is alive, so
+        // the following tick pings again instead of dropping.
+        let mut hb = Heartbeat::new();
+        assert_eq!(hb.on_tick(), Beat::Ping);
+        hb.on_peer_activity();
+        assert_eq!(hb.on_tick(), Beat::Ping);
+        hb.on_peer_activity();
+        assert_eq!(hb.on_tick(), Beat::Ping);
     }
 }
