@@ -33,8 +33,9 @@ One-time setup: `pnpm -C web install && pnpm -C web exec playwright install chro
   server, `pnpm -C web openapi:fetch`, then `pnpm -C web openapi:generate`; commit both
   `web/openapi/openapi.json` and `web/src/api/schema.d.ts`. CI's `openapi:check` only verifies
   schema.d.ts ↔ openapi.json — a stale openapi.json vs the live server is NOT caught.
-- **Version bumps touch two files**: `workspace.package.version` in the root Cargo.toml AND the
-  `spades = { path = …, version = "…" }` pin in crates/spades-server/Cargo.toml.
+- **Version bumps touch three files**: `workspace.package.version` in the root Cargo.toml, the
+  `spades = { path = …, version = "…" }` pin in crates/spades-server/Cargo.toml, AND `version` in
+  web/package.json (kept in lockstep with the workspace version).
 - **ESLint uses flat config** (`web/eslint.config.js`); ESLint 10 removed the legacy `.eslintrc`
   system and the `ESLINT_USE_FLAT_CONFIG` escape hatch.
 - **Coverage ratchet**: per-crate line coverage vs committed `coverage-baseline.json`, enforced by
