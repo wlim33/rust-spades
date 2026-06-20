@@ -79,3 +79,38 @@ test('chaos: opponent plays do not trigger redundant hand fetches under latency'
   expect(report.handFetches).toBeGreaterThanOrEqual(TRICKS - 1);
   expect(report.handFetches).toBeLessThanOrEqual(MAX_HAND_FETCHES);
 });
+
+// Stress test (not a physically realistic transport fault — WS is over TCP, so
+// frames don't drop on the wire). It probes whether the seq-guard + completeTrick
+// backfill survive lost STATE events, and specifically whether a lost
+// turn-transfer event can deadlock the client: the server then waits on south,
+// the socket stays OPEN (no reconnect/poll), so nothing arrives to recover.
+//
+// KNOWN GAP — currently wedges. There is no application-level liveness watchdog:
+// a silently-stalled-but-OPEN socket during active play is only recovered via
+// visibilitychange/online (ws.ts), which don't fire if the tab stays focused.
+// fixme until an idle-reconnect watchdog lands; then this becomes its gate.
+test.fixme('chaos: a full hand still completes under WS frame loss', async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const game = await createAiGame(page.request);
+  await seedAiSession(page, game);
+  await page.goto(`/play/${game.shortId}?chaos=1&lat=0&jit=0&wsdrop=0.15`);
+
+  const g = new GamePage(page);
+  await g.waitForBetting();
+  await g.bet(3);
+
+  // Drain the whole hand. If a lost turn-transfer event wedges the client, the
+  // hand stops dropping and playOutHand times out here — the failure we're hunting.
+  await g.playOutHand();
+  await expect(g.hand()).toHaveCount(0, { timeout: 20_000 });
+
+  const dropped = await page.evaluate(
+    () =>
+      (window as unknown as { chaos: { report(): { wsDropped: number } } }).chaos.report()
+        .wsDropped,
+  );
+  console.log('[chaos] ws frames dropped during the hand:', dropped);
+  expect(dropped).toBeGreaterThan(0); // confirm the fault actually fired
+});
