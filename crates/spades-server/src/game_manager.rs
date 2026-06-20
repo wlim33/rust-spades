@@ -221,16 +221,35 @@ impl GameManager {
     /// the database and spawns an actor for each — actors self-restart
     /// any outstanding turn timer on construction.
     pub fn with_db(path: &str) -> Result<Self, String> {
-        let store = Arc::new(SqliteStore::open(path)?);
+        Self::from_store(Arc::new(SqliteStore::open(path)?))
+    }
+
+    /// Build a manager over an already-open store. Loads outstanding games
+    /// and spawns an actor for each live one, pruning any terminal game it
+    /// finds. A finished game in the DB at startup is a leftover from a
+    /// crash before the TTL sweep deleted it (see `sweep_completed_games`);
+    /// re-spawning a dead actor for it only re-creates the runaway-game OOM,
+    /// so we delete the row instead of loading it.
+    fn from_store(store: Arc<SqliteStore>) -> Result<Self, String> {
         let existing_games = store.load_all_games()?;
-        let count = existing_games.len();
         let mut games_map = HashMap::new();
+        let mut pruned = 0usize;
         for game in existing_games {
             let id = *game.get_id();
+            if matches!(game.get_state(), State::Completed | State::Aborted) {
+                if let Err(e) = store.delete_game(id) {
+                    error!(game_id = %id, error = %e, "failed to prune terminal game at startup");
+                }
+                pruned += 1;
+                continue;
+            }
             let handle = GameActor::spawn(game, Some(store.clone()), None);
             games_map.insert(id, handle);
         }
-        info!(count, "loaded games from database");
+        info!(
+            count = games_map.len(),
+            pruned, "loaded games from database"
+        );
         Ok(GameManager {
             games: Arc::new(RwLock::new(games_map)),
             db: Some(store),
@@ -736,6 +755,58 @@ mod tests {
         assert!(
             store.load_all_games().unwrap().is_empty(),
             "evicted terminal game must also be deleted from the DB"
+        );
+    }
+
+    #[tokio::test]
+    async fn from_store_prunes_terminal_games_at_startup() {
+        // Defense in depth for the runaway-game OOM: a finished game still
+        // in the DB at startup (crash before the TTL sweep deleted it) must
+        // not be re-loaded as a dead actor. Only live games are spawned;
+        // terminal rows are pruned.
+        let store = Arc::new(SqliteStore::open(":memory:").unwrap());
+
+        let live = Game::new(
+            Uuid::new_v4(),
+            [
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+            ],
+            500,
+            None,
+        );
+        let live_id = *live.get_id();
+        store.insert_game(&live).unwrap();
+
+        let mut dead = Game::new(
+            Uuid::new_v4(),
+            [
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+            ],
+            500,
+            None,
+        );
+        dead.play(GameTransition::Abort).unwrap();
+        let dead_id = *dead.get_id();
+        store.insert_game(&dead).unwrap();
+
+        let m = GameManager::from_store(store.clone()).unwrap();
+
+        let loaded = m.list_games().unwrap();
+        assert!(loaded.contains(&live_id), "live game is loaded");
+        assert!(
+            !loaded.contains(&dead_id),
+            "terminal game must not be spawned as an actor"
+        );
+        assert_eq!(
+            store.load_all_games().unwrap().len(),
+            1,
+            "terminal game must be pruned from the DB at startup"
         );
     }
 
