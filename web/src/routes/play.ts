@@ -18,6 +18,15 @@ const POLL_INTERVAL = 2000;
 /** ~20s of consecutive dead polls before the fallback gives up. */
 const MAX_POLL_FAILURES = 10;
 
+/**
+ * Idle-watchdog window for the live socket. Comfortably above bot think time and
+ * normal network gaps, so it only fires on a genuine silent stall (a half-open
+ * socket while we await a peer move). A dev-only `?idlems=` override lets the
+ * chaos e2e drive it fast.
+ */
+const IDLE_RECONNECT_MS =
+  (import.meta.env.DEV ? Number(new URLSearchParams(location.search).get('idlems')) : 0) || 20_000;
+
 /** One polling round. Throws on failure so the poll loop can count it. */
 async function pollOnce(store: GameStore, gameId: string, playerId: string): Promise<void> {
   const state = await request<GameStateResponse>(`/games/${gameId}`, { method: 'GET' });
@@ -115,6 +124,13 @@ export const play: RouteModule = {
 
       // Open WS; on close, fall back to polling
       resources.ws = openGameWs(gameId, playerId, {
+        idleReconnectMs: IDLE_RECONNECT_MS,
+        // Silence is only a stall while we're waiting on someone else to move.
+        // On our own turn (or at game over) the server legitimately sends
+        // nothing, so the watchdog must not churn the socket.
+        expectingActivity: () =>
+          (store.phase.value === 'BETTING' || store.phase.value === 'PLAYING') &&
+          store.currentPlayerId.value !== store.playerId.value,
         onEvent: (data, isSnapshot) => {
           const obj = data as {
             event?: string;

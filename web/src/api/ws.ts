@@ -13,6 +13,22 @@ export type WsOptions = {
   onOpen?: () => void;
   onClose?: () => void;
   onError?: (e: unknown) => void;
+  /**
+   * Idle-watchdog window, ms. If set, going this long without a frame while
+   * {@link expectingActivity} returns true triggers a proactive reconnect. This
+   * is the only recovery for a half-open-but-OPEN socket during active play —
+   * onclose never fires, so the backoff reconnect never engages, and the server
+   * may now be waiting on a peer move, so no frame arrives on its own. Unset
+   * disables the watchdog entirely.
+   */
+  idleReconnectMs?: number;
+  /**
+   * Whether the server is expected to be sending us something right now (a move
+   * is pending elsewhere). Silence is only a stall when this is true; when it's
+   * our turn or the game is over, silence is normal and the watchdog must not
+   * churn the socket. Absent ⇒ always treat silence as a stall.
+   */
+  expectingActivity?: () => boolean;
 };
 
 const MAX_RECONNECT_ATTEMPTS = 6;
@@ -51,8 +67,32 @@ export function openGameWs(gameId: string, playerId: string | null, opts: WsOpti
   let attempts = 0;
   let ws: WebSocket | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
   // The first message after each (re)open is the server's initial snapshot.
   let expectSnapshot = false;
+
+  const clearIdleWatchdog = (): void => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = null;
+  };
+
+  // (Re)start the idle countdown. Called on open and reset on every frame, so it
+  // only fires after a genuine gap in server traffic. When it fires during
+  // expected activity we force a reconnect (→ fresh snapshot); otherwise we keep
+  // watching without touching the socket.
+  const armIdleWatchdog = (): void => {
+    if (!opts.idleReconnectMs || closed) return;
+    clearIdleWatchdog();
+    idleTimer = setTimeout(() => {
+      idleTimer = null;
+      if (closed) return;
+      if (opts.expectingActivity && !opts.expectingActivity()) {
+        armIdleWatchdog();
+        return;
+      }
+      forceReconnect();
+    }, opts.idleReconnectMs);
+  };
 
   const drain = async (): Promise<void> => {
     if (draining) return;
@@ -72,8 +112,11 @@ export function openGameWs(gameId: string, playerId: string | null, opts: WsOpti
   };
 
   const connect = (): void => {
+    clearIdleWatchdog();
     ws = new WebSocket(wsUrl);
     ws.onmessage = (evt) => {
+      // Any frame proves the socket is live — restart the idle countdown.
+      armIdleWatchdog();
       try {
         const data = JSON.parse(evt.data as string);
         const snapshot = expectSnapshot;
@@ -89,10 +132,12 @@ export function openGameWs(gameId: string, playerId: string | null, opts: WsOpti
       // The server sends the state snapshot first; tag it so the consumer can
       // seed its seq cursor without dropping the first streamed event.
       expectSnapshot = true;
+      armIdleWatchdog();
       opts.onOpen?.();
     };
     ws.onclose = () => {
       if (closed) return;
+      clearIdleWatchdog();
       if (attempts < MAX_RECONNECT_ATTEMPTS) {
         reconnectTimer = setTimeout(connect, reconnectDelay(attempts));
         attempts++;
@@ -157,6 +202,7 @@ export function openGameWs(gameId: string, playerId: string | null, opts: WsOpti
       if (hasDocument) document.removeEventListener('visibilitychange', onVisibility);
       if (reconnectTimer) clearTimeout(reconnectTimer);
       reconnectTimer = null;
+      clearIdleWatchdog();
       try {
         ws?.close();
       } catch {

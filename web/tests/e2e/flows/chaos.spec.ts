@@ -80,29 +80,30 @@ test('chaos: opponent plays do not trigger redundant hand fetches under latency'
   expect(report.handFetches).toBeLessThanOrEqual(MAX_HAND_FETCHES);
 });
 
-// Stress test (not a physically realistic transport fault — WS is over TCP, so
-// frames don't drop on the wire). It probes whether the seq-guard + completeTrick
-// backfill survive lost STATE events, and specifically whether a lost
-// turn-transfer event can deadlock the client: the server then waits on south,
-// the socket stays OPEN (no reconnect/poll), so nothing arrives to recover.
-//
-// KNOWN GAP — currently wedges. There is no application-level liveness watchdog:
-// a silently-stalled-but-OPEN socket during active play is only recovered via
-// visibilitychange/online (ws.ts), which don't fire if the tab stays focused.
-// fixme until an idle-reconnect watchdog lands; then this becomes its gate.
-test.fixme('chaos: a full hand still completes under WS frame loss', async ({ page }) => {
+// Integration check for the idle-reconnect watchdog (ws.ts). Simulated WS frame
+// loss isn't a physically realistic transport fault (WS is over TCP), but it
+// cheaply produces the wedge the watchdog exists to break: a lost turn-transfer
+// event leaves the client thinking it's still a peer's turn, the socket stays
+// OPEN (so onclose/backoff never fire) and the tab stays focused (so the
+// visibility/online reconnects never fire) — nothing recovers. The watchdog
+// notices the silence and reconnects to a fresh snapshot. `?idlems=2000` shrinks
+// the production 20s window so the test recovers fast. Deterministic coverage of
+// the watchdog logic itself lives in tests/unit/ws.spec.ts.
+test('chaos: the idle watchdog recovers a wedged socket and the hand completes', async ({
+  page,
+}) => {
   test.setTimeout(120_000);
 
   const game = await createAiGame(page.request);
   await seedAiSession(page, game);
-  await page.goto(`/play/${game.shortId}?chaos=1&lat=0&jit=0&wsdrop=0.15`);
+  await page.goto(`/play/${game.shortId}?chaos=1&lat=0&jit=0&wsdrop=0.12&idlems=2000`);
 
   const g = new GamePage(page);
   await g.waitForBetting();
   await g.bet(3);
 
-  // Drain the whole hand. If a lost turn-transfer event wedges the client, the
-  // hand stops dropping and playOutHand times out here — the failure we're hunting.
+  // Drain the whole hand. Without the watchdog a lost turn-transfer event wedges
+  // the client and playOutHand times out; with it, each stall self-heals.
   await g.playOutHand();
   await expect(g.hand()).toHaveCount(0, { timeout: 20_000 });
 
