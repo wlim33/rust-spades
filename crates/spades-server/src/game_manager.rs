@@ -478,6 +478,10 @@ impl GameManager {
         for game_id in to_evict {
             if games.remove(&game_id).is_some() {
                 completed_at.remove(&game_id);
+                // Drop the persisted row too: a terminal game is disposable,
+                // so leaving it in the DB only grows the table and the
+                // restart-time load/spawn cost (the runaway-game OOM).
+                self.persist_delete(game_id);
                 count += 1;
             }
         }
@@ -697,6 +701,42 @@ mod tests {
             "ttl=0 should evict the aborted game on first sweep"
         );
         assert!(!m.list_games().unwrap().contains(&r.game_id));
+    }
+
+    #[tokio::test]
+    async fn sweep_deletes_evicted_game_from_db() {
+        // Evicting a terminal game from memory must also delete its
+        // persisted row. Otherwise the `games` table grows unbounded and
+        // every restart re-loads + re-spawns an actor for each dead game
+        // — the runaway-game OOM. The in-memory sweep is the single point
+        // that decides a completed game is disposable, so the DB delete
+        // rides along with it.
+        let store = Arc::new(SqliteStore::open(":memory:").unwrap());
+        let m = GameManager {
+            games: Arc::new(RwLock::new(HashMap::new())),
+            db: Some(store.clone()),
+            completed_at: Arc::new(Mutex::new(HashMap::new())),
+        };
+        let tc = TimerConfig {
+            initial_time_secs: 0,
+            increment_secs: 0,
+        };
+        let r = m.create_game(100, Some(tc)).unwrap();
+        m.make_transition(r.game_id, GameTransition::Start)
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(
+            store.load_all_games().unwrap().len(),
+            1,
+            "game is persisted before the sweep"
+        );
+        let evicted = m.sweep_completed_games(Duration::from_secs(0)).await;
+        assert_eq!(evicted, 1, "ttl=0 evicts the aborted game");
+        assert!(
+            store.load_all_games().unwrap().is_empty(),
+            "evicted terminal game must also be deleted from the DB"
+        );
     }
 
     #[tokio::test]
