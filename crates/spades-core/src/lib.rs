@@ -311,8 +311,10 @@ impl Game {
                 {
                     Ok((self.players[1].id, self.players[3].id))
                 } else {
-                    // Unreachable: Scoring keeps is_over = false on a tie at max_points,
-                    // so the game never transitions to State::Completed with equal scores.
+                    // A tie at State::Completed is reachable only when the game
+                    // ends via the loss floor or round cap (max_points keeps
+                    // playing on a tie). No production code calls this on a tied
+                    // game; the server's rating path compares scores directly.
                     Err(GetError::GameNotCompleted)
                 }
             }

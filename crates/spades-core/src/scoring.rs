@@ -1,6 +1,18 @@
 use crate::cards::{Card, get_trick_winner};
 use serde::{Deserialize, Serialize};
 
+/// A team at or below this cumulative score loses — the standard Spades
+/// "minimum score" rule. Without it, two teams that both keep losing points
+/// never reach `max_points` and the game runs forever (unbounded `hands_played`,
+/// which OOM'd the server on 2026-06-19). See
+/// docs/superpowers/specs/2026-06-19-game-termination-guarantee-design.md.
+const MIN_POINTS: i32 = -200;
+
+/// Hard cap on rounds per game — a final backstop against any non-terminating
+/// edge case beyond the loss floor. Far above any realistic game (a game to 500
+/// is well under ~30 rounds).
+const MAX_ROUNDS: usize = 100;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GameConfig {
     pub(crate) max_points: i32,
@@ -159,6 +171,19 @@ impl Scoring {
                 } else {
                     self.is_over = true;
                 }
+            }
+            // Loss floor: a team at or below MIN_POINTS loses. Unconditional —
+            // no tie escape — so a perpetually-losing game still terminates.
+            if self.team_a.cumulative_points <= MIN_POINTS
+                || self.team_b.cumulative_points <= MIN_POINTS
+            {
+                self.is_over = true;
+            }
+            // Round cap: a final backstop. self.round is the just-completed
+            // round's 0-based index and is incremented just below, so the cap
+            // fires as the MAX_ROUNDS-th round completes.
+            if self.round + 1 >= MAX_ROUNDS {
+                self.is_over = true;
             }
             self.round += 1;
         } else {
@@ -724,6 +749,84 @@ mod tests {
 
         assert_eq!(s.team_a.cumulative_points, -160);
         assert_eq!(s.team_a.bags, 0);
+    }
+
+    #[test]
+    fn test_is_over_team_below_loss_floor() {
+        // A team that keeps getting set eventually drops to the loss floor and
+        // loses, even though neither team ever reached max_points.
+        let mut s = Scoring::new(500);
+        s.team_b.cumulative_points = -100; // just above the floor going in
+
+        // Team A bets 6 (3+3) and wins all 13 -> makes bid.
+        // Team B bets 13 (7+6) and wins 0 -> set -> -130 -> ends at -230.
+        s.add_bet(0, 3);
+        s.add_bet(1, 7);
+        s.add_bet(2, 3);
+        s.add_bet(3, 6);
+        s.bet();
+
+        play_round(&mut s, 13); // team A wins all 13, team B wins 0
+
+        assert!(s.is_over, "game must end when a team hits the loss floor");
+        assert!(s.team_b.cumulative_points <= MIN_POINTS);
+        assert!(s.team_a.cumulative_points < s.config.max_points); // not a max-points win
+    }
+
+    #[test]
+    fn test_is_over_round_cap() {
+        let mut s = Scoring::new(500);
+        // Jump to the final allowed round with scores comfortably inside the band.
+        s.round = MAX_ROUNDS - 1;
+        s.team_a.cumulative_points = 50;
+        s.team_b.cumulative_points = 40;
+        // bets_placed is normally grown one entry per round; pre-fill so the
+        // round-end read of bets_placed[self.round] is in bounds.
+        s.bets_placed = vec![[1, 1, 1, 1]; MAX_ROUNDS];
+
+        // Play 13 tricks directly (team A wins 7, team B wins 6) — modest deltas
+        // that cross neither max_points nor the loss floor.
+        for t in 0..13 {
+            let cards = if t < 7 {
+                make_trick(Suit::Club, [Rank::Ace, Rank::King, Rank::Queen, Rank::Jack])
+            } else {
+                make_trick(Suit::Club, [Rank::Two, Rank::Ace, Rank::Three, Rank::Four])
+            };
+            s.trick(0, &cards);
+        }
+
+        assert!(s.is_over, "game must end at the round cap");
+        assert!(s.round >= MAX_ROUNDS);
+        // Ended by the cap, not by a score threshold:
+        assert!(s.team_a.cumulative_points < s.config.max_points);
+        assert!(s.team_b.cumulative_points < s.config.max_points);
+        assert!(s.team_a.cumulative_points > MIN_POINTS);
+        assert!(s.team_b.cumulative_points > MIN_POINTS);
+    }
+
+    #[test]
+    fn test_round_cap_does_not_fire_one_round_early() {
+        let mut s = Scoring::new(500);
+        // One round before the cap: completing this round leaves round = MAX_ROUNDS - 1,
+        // which is strictly below MAX_ROUNDS, so is_over must NOT be set.
+        s.round = MAX_ROUNDS - 2;
+        s.team_a.cumulative_points = 50;
+        s.team_b.cumulative_points = 40;
+        s.bets_placed = vec![[1, 1, 1, 1]; MAX_ROUNDS];
+
+        // Play 13 tricks directly (team A wins 7, team B wins 6) — modest deltas
+        // that cross neither max_points nor the loss floor.
+        for t in 0..13 {
+            let cards = if t < 7 {
+                make_trick(Suit::Club, [Rank::Ace, Rank::King, Rank::Queen, Rank::Jack])
+            } else {
+                make_trick(Suit::Club, [Rank::Two, Rank::Ace, Rank::Three, Rank::Four])
+            };
+            s.trick(0, &cards);
+        }
+
+        assert!(!s.is_over, "game must NOT end one round before the cap");
+        assert_eq!(s.round, MAX_ROUNDS - 1, "round must advance by exactly one");
     }
 
     #[test]
