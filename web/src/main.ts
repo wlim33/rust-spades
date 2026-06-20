@@ -20,6 +20,12 @@ void (async () => {
   // Install the safety nets first: nothing below should be able to blank the
   // page with an unhandled error before the handlers exist.
   installGlobalErrorHandlers();
+  // Local-only: when ?chaos is in the URL, monkeypatch fetch/WebSocket to inject
+  // network faults before any connection is opened. Dynamically imported so the
+  // chaos module is tree-shaken out of production builds entirely.
+  if (import.meta.env.DEV) {
+    await import('./lib/chaos').then((m) => m.installChaos());
+  }
   themeState.initTheme();
   // If the user just returned from an OAuth provider, we may need to detour to
   // the username-picker (server set __oauth_pending: /auth/me 401s while we hold
