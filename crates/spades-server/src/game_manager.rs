@@ -41,13 +41,20 @@ pub enum GameEvent {
     },
 }
 
-/// Extract the seq from a `GameEvent` regardless of variant.
-pub fn event_seq(event: &GameEvent) -> u64 {
-    match event {
-        GameEvent::StateChanged { seq, .. } => *seq,
-        GameEvent::GameAborted { seq, .. } => *seq,
-        GameEvent::ChatMessage { seq, .. } => *seq,
-    }
+/// A broadcast-ready game event: the wire JSON serialized once by the actor,
+/// paired with its `seq` for ring-buffer catch-up filtering. Subscribers get
+/// a cheap `Arc` clone and write `json` straight to their socket, so an event
+/// is serialized a single time no matter how many sockets are connected
+/// (previously every WS task re-serialized its own copy).
+///
+/// `json` is `GameEvent` serialized, which is byte-identical to `ServerEvent`
+/// for the three streamed variants (StateChanged / GameAborted / ChatMessage)
+/// — same `#[serde(tag = "event", rename_all = "snake_case")]`, same fields.
+/// The WS integration tests parse real frames and guard that equivalence.
+#[derive(Debug)]
+pub struct CachedEvent {
+    pub seq: u64,
+    pub json: Arc<str>,
 }
 
 /// Outcome of subscribing to a game's event stream. Captures the receiver,
@@ -56,7 +63,7 @@ pub fn event_seq(event: &GameEvent) -> u64 {
 /// passed `?since=N` and whether the ring buffer still holds the requested
 /// events.
 pub struct Subscription {
-    pub rx: broadcast::Receiver<GameEvent>,
+    pub rx: broadcast::Receiver<Arc<CachedEvent>>,
     pub current_seq: u64,
     pub initial_state: GameStateResponse,
     /// `Some(events)` when the caller passed `since` and the ring buffer
@@ -65,7 +72,7 @@ pub struct Subscription {
     /// handler should send `initial_state` as a fresh snapshot — either
     /// no `since` was given, the cursor was beyond `current_seq`, or the
     /// ring buffer was pruned past it.
-    pub catch_up: Option<Vec<GameEvent>>,
+    pub catch_up: Option<Vec<Arc<CachedEvent>>>,
 }
 
 /// Configuration for AI players in a game. Constructed by `create_ai_game`
@@ -207,6 +214,13 @@ pub(crate) fn epoch_ms_now() -> u64 {
         .as_millis() as u64
 }
 
+/// Upper bound on a persisted game's trick history (`hands_played` length)
+/// before it's treated as a never-terminating runaway and pruned at startup.
+/// A real game to any sane `max_points` ends in well under 200 tricks; 1000
+/// (~77 full hands) is reachable only by a stuck bot-vs-bot loop. Matches the
+/// manual `DELETE … hands_played > 1000` remediation this automates.
+const MAX_PERSISTED_HANDS: i64 = 1000;
+
 impl GameManager {
     /// Create a new game manager (in-memory only).
     pub fn new() -> Self {
@@ -231,6 +245,17 @@ impl GameManager {
     /// re-spawning a dead actor for it only re-creates the runaway-game OOM,
     /// so we delete the row instead of loading it.
     fn from_store(store: Arc<SqliteStore>) -> Result<Self, String> {
+        // Delete terminal + runaway rows in SQL *before* loading: this keeps
+        // peak startup memory and actor-spawn work proportional to live,
+        // in-bounds games rather than to every dead/runaway row that
+        // accumulated since the last sweep (the documented OOM). A failure
+        // here is logged, not fatal — the per-game terminal check below is
+        // the fallback.
+        match store.prune_stale_games(MAX_PERSISTED_HANDS) {
+            Ok(0) => {}
+            Ok(n) => info!(pruned_at_startup = n, "deleted terminal/runaway games"),
+            Err(e) => error!(error = %e, "startup prune of stale games failed"),
+        }
         let existing_games = store.load_all_games()?;
         let mut games_map = HashMap::new();
         let mut pruned = 0usize;
@@ -391,6 +416,13 @@ impl GameManager {
         player_id: Uuid,
     ) -> Result<HandResponse, GameManagerError> {
         self.handle(game_id).await?.get_hand(player_id).await
+    }
+
+    /// The id of the player whose turn it is, or `None` when the game is
+    /// not in a turn-bearing state. `Err(GameNotFound)` when the game is
+    /// unknown — the transition authz path relies on this for its 404.
+    pub async fn current_player(&self, game_id: Uuid) -> Result<Option<Uuid>, GameManagerError> {
+        self.handle(game_id).await?.get_current_player().await
     }
 
     pub async fn make_transition(
@@ -559,6 +591,37 @@ mod tests {
         assert_eq!(out, TransitionSuccess::Start);
         let state = m.get_game_state(r.game_id).await.unwrap();
         assert_eq!(state.state, State::Betting(0));
+    }
+
+    #[tokio::test]
+    async fn current_player_is_none_before_start_and_some_during_play() {
+        // The transition authz path only needs the current player id, not a
+        // full state snapshot. `current_player` answers that with a cheap
+        // actor reply.
+        let m = GameManager::new();
+        let r = m.create_game(500, None).unwrap();
+        assert_eq!(
+            m.current_player(r.game_id).await.unwrap(),
+            None,
+            "no current player before Start"
+        );
+        m.make_transition(r.game_id, GameTransition::Start)
+            .await
+            .unwrap();
+        assert_eq!(
+            m.current_player(r.game_id).await.unwrap(),
+            Some(r.player_ids[0]),
+            "first seat is to act once betting opens"
+        );
+    }
+
+    #[tokio::test]
+    async fn current_player_errors_for_missing_game() {
+        let m = GameManager::new();
+        assert!(matches!(
+            m.current_player(Uuid::new_v4()).await,
+            Err(GameManagerError::GameNotFound)
+        ));
     }
 
     #[tokio::test]
@@ -849,20 +912,15 @@ mod tests {
             .await
             .unwrap();
         let event = sub.rx.try_recv().expect("chat event reached subscriber");
-        match event {
-            GameEvent::ChatMessage {
-                game_id,
-                player_id,
-                content,
-                seq,
-            } => {
-                assert_eq!(game_id, r.game_id);
-                assert_eq!(player_id, r.player_ids[0]);
-                assert_eq!(content, "hello");
-                assert_eq!(seq, 0, "first event on a fresh game is seq 0");
-            }
-            other => panic!("expected ChatMessage, got {other:?}"),
-        }
+        // Events are delivered pre-serialized; assert against the wire JSON,
+        // which also pins the GameEvent → ServerEvent wire equivalence.
+        assert_eq!(event.seq, 0, "first event on a fresh game is seq 0");
+        let v: serde_json::Value = serde_json::from_str(&event.json).unwrap();
+        assert_eq!(v["event"], "chat_message");
+        assert_eq!(v["game_id"], r.game_id.to_string());
+        assert_eq!(v["player_id"], r.player_ids[0].to_string());
+        assert_eq!(v["content"], "hello");
+        assert_eq!(v["seq"], 0);
     }
 
     #[tokio::test]

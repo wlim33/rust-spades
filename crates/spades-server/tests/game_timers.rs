@@ -12,7 +12,7 @@
 
 use spades::ai::RandomStrategy;
 use spades::{GameTransition, State, TimerConfig};
-use spades_server::game_manager::{GameEvent, GameManager};
+use spades_server::game_manager::{CachedEvent, GameEvent, GameManager};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
@@ -23,13 +23,17 @@ use uuid::Uuid;
 /// the channel closes or a generous budget is exhausted first. Under paused
 /// time `recv().await` only resolves once an already-scheduled actor task
 /// produces the event, so a hang here means the expected event never fired.
-async fn recv_until<F>(rx: &mut broadcast::Receiver<GameEvent>, pred: F) -> GameEvent
+async fn recv_until<F>(rx: &mut broadcast::Receiver<Arc<CachedEvent>>, pred: F) -> GameEvent
 where
     F: Fn(&GameEvent) -> bool,
 {
     for _ in 0..64 {
         match rx.recv().await {
-            Ok(ev) => {
+            Ok(cached) => {
+                // Events are delivered pre-serialized; round-trip back into a
+                // GameEvent so the structured assertions below still apply.
+                let ev: GameEvent = serde_json::from_str(&cached.json)
+                    .expect("broadcast json deserializes back into GameEvent");
                 if pred(&ev) {
                     return ev;
                 }
@@ -197,7 +201,8 @@ async fn timely_move_bills_elapsed_and_credits_increment() {
         .await
         .unwrap();
 
-    let ev = sub.rx.recv().await.unwrap();
+    let cached = sub.rx.recv().await.unwrap();
+    let ev: GameEvent = serde_json::from_str(&cached.json).unwrap();
     let GameEvent::StateChanged { state, .. } = ev else {
         panic!("expected StateChanged after bet, got {ev:?}");
     };

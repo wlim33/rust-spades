@@ -1920,7 +1920,7 @@ mod tests {
         // frame; the WS plumbing itself is too involved to unit-test here, so
         // we cover the broadcast layer plus the wire-format Resync separately.
         use spades::GameTransition;
-        use spades_server::game_manager::{GameEvent, GameManager};
+        use spades_server::game_manager::GameManager;
         use tokio::sync::broadcast;
 
         let manager = GameManager::new();
@@ -1945,9 +1945,10 @@ mod tests {
         let mut saw_lagged = false;
         for _ in 0..200 {
             match sub.rx.try_recv() {
-                Ok(GameEvent::StateChanged { .. })
-                | Ok(GameEvent::GameAborted { .. })
-                | Ok(GameEvent::ChatMessage { .. }) => continue,
+                // Events are now delivered as pre-serialized `Arc<CachedEvent>`;
+                // the variant no longer matters here, only that the buffer
+                // overflows into Lagged.
+                Ok(_) => continue,
                 Err(broadcast::error::TryRecvError::Lagged(_)) => {
                     saw_lagged = true;
                     break;

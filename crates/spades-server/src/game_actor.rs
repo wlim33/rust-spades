@@ -27,8 +27,8 @@ use tracing::error;
 use uuid::Uuid;
 
 use crate::game_manager::{
-    AiPlayerConfig, GameEvent, GameManagerError, GameStateResponse, HandResponse, PlayerNameEntry,
-    Subscription, epoch_ms_now, event_seq,
+    AiPlayerConfig, CachedEvent, GameEvent, GameManagerError, GameStateResponse, HandResponse,
+    PlayerNameEntry, Subscription, epoch_ms_now,
 };
 use crate::ratings::{self, DEFAULT_RATING, Rating};
 use crate::sqlite_store::SqliteStore;
@@ -51,6 +51,12 @@ pub enum GameCmd {
     },
     GetState {
         reply: oneshot::Sender<GameStateResponse>,
+    },
+    /// Just the id of the player whose turn it is (None outside Betting /
+    /// Trick). The transition authz path uses this instead of `GetState`
+    /// to avoid building and cloning a whole `GameStateResponse` per move.
+    GetCurrentPlayer {
+        reply: oneshot::Sender<Option<Uuid>>,
     },
     GetHand {
         player_id: Uuid,
@@ -116,6 +122,14 @@ impl GameHandle {
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(GameCmd::GetState { reply: tx })
+            .map_err(|_| GameManagerError::GameNotFound)?;
+        rx.await.map_err(|_| GameManagerError::GameNotFound)
+    }
+
+    pub async fn get_current_player(&self) -> Result<Option<Uuid>, GameManagerError> {
+        let (tx, rx) = oneshot::channel();
+        self.sender
+            .send(GameCmd::GetCurrentPlayer { reply: tx })
             .map_err(|_| GameManagerError::GameNotFound)?;
         rx.await.map_err(|_| GameManagerError::GameNotFound)
     }
@@ -205,8 +219,8 @@ pub struct GameActor {
     game_id: Uuid,
     game: Game,
     next_seq: u64,
-    recent: VecDeque<GameEvent>,
-    sender: broadcast::Sender<GameEvent>,
+    recent: VecDeque<Arc<CachedEvent>>,
+    sender: broadcast::Sender<Arc<CachedEvent>>,
     active_timer: Option<ActiveTimer>,
     timer_generation: u64,
     ai_config: Option<AiPlayerConfig>,
@@ -276,6 +290,9 @@ impl GameActor {
             GameCmd::GetState { reply } => {
                 let _ = reply.send(self.build_state_response());
             }
+            GameCmd::GetCurrentPlayer { reply } => {
+                let _ = reply.send(self.game.get_current_player_id().ok());
+            }
             GameCmd::GetHand { player_id, reply } => {
                 let res = self
                     .game
@@ -332,6 +349,17 @@ impl GameActor {
     /// returning the human's transition result. Cascading AI plays happen
     /// in the same mailbox tick — they're direct method calls on `&mut
     /// self`, not re-enqueued commands (which would deadlock).
+    ///
+    /// Persistence is coalesced to a single write at the end of the tick
+    /// rather than one per step: a bot game would otherwise serialize the
+    /// whole `Game` and issue a DB write up to four times for one human
+    /// move. Each per-step write also spawned an independent task, so two
+    /// could land out of order and leave stale JSON in the row; one write
+    /// per tick removes that hazard. Durability tradeoff: a crash in the
+    /// window between the human's move and this write loses the whole tick
+    /// (the move and its AI replies), versus the move surviving alone
+    /// before. The client retries the move and the AI replies are not
+    /// reproducible anyway, so the coalesced write is the right call.
     fn handle_transition_full(
         &mut self,
         transition: GameTransition,
@@ -341,6 +369,7 @@ impl GameActor {
         while let Some(ai_trans) = self.next_ai_transition() {
             let _ = self.apply_one_transition(ai_trans, false);
         }
+        self.persist_async();
         Ok(result)
     }
 
@@ -388,9 +417,9 @@ impl GameActor {
             }
         }
 
-        // Persist off the actor task — blocking SQL on a spawn_blocking
-        // worker so we don't stall the mailbox while the row updates.
-        self.persist_async();
+        // Persistence is intentionally NOT done here — the caller
+        // (`handle_transition_full` / `handle_timer_fired`) writes once after
+        // the whole AI cascade settles. See `handle_transition_full`.
 
         // Start a timer for the next player.
         if is_timed {
@@ -521,6 +550,10 @@ impl GameActor {
                 let _ = self.apply_one_transition(ai_trans, false);
             }
         }
+        // One coalesced write for the whole timeout tick — the zeroed clock
+        // plus the forced move and any AI replies. (`apply_one_transition`
+        // no longer persists per step.)
+        self.persist_async();
     }
 
     // -- helpers --------------------------------------------------------
@@ -619,11 +652,22 @@ impl GameActor {
             GameEvent::GameAborted { seq: s, .. } => *s = seq,
             GameEvent::ChatMessage { seq: s, .. } => *s = seq,
         }
-        self.recent.push_back(event.clone());
+        // Serialize once here; subscribers and the ring buffer share the
+        // resulting `Arc<str>` rather than each re-serializing or cloning a
+        // full `GameStateResponse`.
+        let json: Arc<str> = match serde_json::to_string(&event) {
+            Ok(s) => Arc::from(s),
+            Err(e) => {
+                error!(game_id = %self.game_id, error = %e, "failed to serialize game event");
+                return;
+            }
+        };
+        let cached = Arc::new(CachedEvent { seq, json });
+        self.recent.push_back(cached.clone());
         while self.recent.len() > RECENT_CAP {
             self.recent.pop_front();
         }
-        let _ = self.sender.send(event);
+        let _ = self.sender.send(cached);
     }
 
     fn next_ai_transition(&self) -> Option<GameTransition> {
@@ -715,15 +759,12 @@ impl GameActor {
             Some(n) if n == current_seq => Some(Vec::new()),
             Some(n) if n > current_seq => None,
             Some(n) => {
-                let front_seq = self.recent.front().map(event_seq);
+                let front_seq = self.recent.front().map(|c| c.seq);
                 match front_seq {
                     Some(fs) if fs <= n => Some(
                         self.recent
                             .iter()
-                            .filter(|e| {
-                                let s = event_seq(e);
-                                s >= n && s < current_seq
-                            })
+                            .filter(|c| c.seq >= n && c.seq < current_seq)
                             .cloned()
                             .collect(),
                     ),

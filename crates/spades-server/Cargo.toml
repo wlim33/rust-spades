@@ -33,6 +33,12 @@ async-stream = "0.3"
 # pulled by tower-sessions-sqlx-store. Newer rusqlite needs libsqlite3-sys
 # 0.38, and only one crate may link the native `sqlite3` library.
 rusqlite = { version = "0.32", features = ["bundled"] }
+# Connection pool for the SqliteStore (WAL read concurrency). Pinned to the
+# r2d2_sqlite release that targets rusqlite 0.32 so it shares the same
+# libsqlite3-sys 0.30.x as rusqlite + sqlx (see the rusqlite cap above);
+# newer r2d2_sqlite pulls a newer rusqlite and a conflicting native lib.
+r2d2 = "0.8"
+r2d2_sqlite = "0.25"
 rustrict = "0.7"
 tower-sessions = "0.14"
 tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }

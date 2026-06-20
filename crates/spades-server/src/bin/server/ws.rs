@@ -6,10 +6,11 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
-use spades_server::game_manager::{GameEvent, GameStateResponse};
+use spades_server::game_manager::{CachedEvent, GameStateResponse};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use super::dto::{ErrorResponse, PresenceSnapshot, ServerEvent, WsQuery};
@@ -177,8 +178,8 @@ async fn handle_game_ws(
     mut socket: WebSocket,
     initial_state: GameStateResponse,
     initial_seq: u64,
-    mut rx: broadcast::Receiver<GameEvent>,
-    catch_up: Option<Vec<GameEvent>>,
+    mut rx: broadcast::Receiver<Arc<CachedEvent>>,
+    catch_up: Option<Vec<Arc<CachedEvent>>>,
     player_id: Uuid,
     game_id: Uuid,
     presence: PresenceTracker,
@@ -190,36 +191,14 @@ async fn handle_game_ws(
     // client already has; a fresh subscriber gets the snapshot instead.
     match catch_up {
         Some(events) => {
+            // Replay the buffered events' pre-serialized JSON directly.
             for event in events {
-                let server_event = match event {
-                    GameEvent::StateChanged { seq, state } => {
-                        ServerEvent::StateChanged { seq, state }
-                    }
-                    GameEvent::GameAborted {
-                        seq,
-                        game_id,
-                        reason,
-                    } => ServerEvent::GameAborted {
-                        seq,
-                        game_id,
-                        reason,
-                    },
-                    GameEvent::ChatMessage {
-                        seq,
-                        game_id,
-                        player_id,
-                        content,
-                    } => ServerEvent::ChatMessage {
-                        seq,
-                        game_id,
-                        player_id,
-                        content,
-                    },
-                };
-                if let Ok(json) = serde_json::to_string(&server_event) {
-                    if socket.send(Message::Text(json.into())).await.is_err() {
-                        return;
-                    }
+                if socket
+                    .send(Message::Text(event.json.as_ref().into()))
+                    .await
+                    .is_err()
+                {
+                    return;
                 }
             }
         }
@@ -277,18 +256,10 @@ async fn handle_game_ws(
             }
             event = rx.recv() => {
                 match event {
-                    Ok(game_event) => {
-                        let server_event = match game_event {
-                            GameEvent::StateChanged { seq, state } => ServerEvent::StateChanged { seq, state },
-                            GameEvent::GameAborted { seq, game_id, reason } => ServerEvent::GameAborted { seq, game_id, reason },
-                            GameEvent::ChatMessage { seq, game_id, player_id, content } => {
-                                ServerEvent::ChatMessage { seq, game_id, player_id, content }
-                            }
-                        };
-                        if let Ok(json) = serde_json::to_string(&server_event) {
-                            if socket.send(Message::Text(json.into())).await.is_err() {
-                                break;
-                            }
+                    Ok(cached) => {
+                        // Already serialized by the actor — write the shared bytes.
+                        if socket.send(Message::Text(cached.json.as_ref().into())).await.is_err() {
+                            break;
                         }
                     }
                     Err(broadcast::error::RecvError::Lagged(n)) => {

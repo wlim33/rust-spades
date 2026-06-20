@@ -133,21 +133,22 @@ pub struct PresenceSnapshot {
     pub spectator_count: usize,
 }
 
+/// Envelopes the WS handler builds and serializes itself. The streamed
+/// game events (state updates, aborts, chat) are NOT built here — the actor
+/// serializes them once as `GameEvent` JSON and the handler forwards the
+/// shared bytes (see [`spades_server::game_manager::CachedEvent`]). Those
+/// share this same `#[serde(tag = "event", rename_all = "snake_case")]`
+/// wire form, so `StateChanged` here is byte-identical to the streamed
+/// `state_changed` events — it's reused for the one-shot snapshot on connect.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum ServerEvent {
-    /// Game state changed. `seq` is the per-game monotonic cursor; the
-    /// initial snapshot sent on connect carries the cursor value clients
-    /// should expect the next streamed event to match.
+    /// Initial state snapshot sent on connect. `seq` is the per-game
+    /// monotonic cursor the next streamed event should match.
     StateChanged {
         seq: u64,
         #[serde(flatten)]
         state: GameStateResponse,
-    },
-    GameAborted {
-        seq: u64,
-        game_id: Uuid,
-        reason: String,
     },
     PresenceChanged(PresenceSnapshot),
     /// Server detected that this subscription lagged past the broadcast
@@ -155,13 +156,5 @@ pub enum ServerEvent {
     /// receive a fresh snapshot.
     Resync {
         reason: String,
-    },
-    /// Public chat message. Carries the same per-game `seq` as state
-    /// events so clients can order it in the timeline.
-    ChatMessage {
-        seq: u64,
-        game_id: Uuid,
-        player_id: Uuid,
-        content: String,
     },
 }

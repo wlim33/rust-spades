@@ -1,7 +1,16 @@
+use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 use spades::Game;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use uuid::Uuid;
+
+/// Connection pool over one SQLite database. Replaces the previous single
+/// `Mutex<Connection>`: that serialized every read behind one lock, which
+/// negated WAL's reader/writer concurrency. With a pool, independent reads
+/// run on independent connections in parallel (WAL lets them proceed while a
+/// writer commits), and a blocking acquire no longer parks a tokio worker on
+/// a shared mutex for the duration of someone else's query.
+type SqlitePool = r2d2::Pool<SqliteConnectionManager>;
 
 /// A row from `api_tokens` minus the hash. Returned by `list_api_tokens`
 /// for UI display; the plaintext token is shown to the user exactly once,
@@ -16,23 +25,48 @@ pub struct ApiTokenRow {
 
 /// SQLite-backed persistence for games.
 pub struct SqliteStore {
-    conn: Mutex<Connection>,
+    pool: SqlitePool,
 }
 
 impl SqliteStore {
     /// Open (or create) a SQLite database at the given path.
     pub fn open(path: &str) -> Result<Self, String> {
-        let conn = Connection::open(path).map_err(|e| e.to_string())?;
-        conn.execute("PRAGMA foreign_keys = ON", [])
+        let manager = if path == ":memory:" {
+            // A bare `:memory:` path gives every pooled connection its OWN
+            // private database, which would make the pool incoherent. Route
+            // them to one shared-cache in-memory DB instead; a per-open
+            // sequence keeps independent stores (e.g. each test) isolated.
+            static MEM_SEQ: AtomicU64 = AtomicU64::new(0);
+            let n = MEM_SEQ.fetch_add(1, Ordering::Relaxed);
+            SqliteConnectionManager::file(format!("file:spades_mem_{n}?mode=memory&cache=shared"))
+        } else {
+            SqliteConnectionManager::file(path)
+        }
+        .with_init(|c| {
+            // Per-connection PRAGMAs — every pooled connection needs them.
+            // journal_mode=WAL is a persistent DB-level switch on a file DB
+            // (idempotent to re-run) and a no-op on the shared-cache memory
+            // DB. synchronous=NORMAL is safe under WAL and drops an fsync per
+            // commit; busy_timeout gives the writer lock a 5s budget instead
+            // of failing fast with SQLITE_BUSY.
+            c.execute_batch(
+                "PRAGMA foreign_keys = ON; \
+                 PRAGMA busy_timeout = 5000; \
+                 PRAGMA journal_mode = WAL; \
+                 PRAGMA synchronous = NORMAL;",
+            )
+        });
+
+        let pool = r2d2::Pool::builder()
+            .max_size(8)
+            // Keep a connection idle so a shared-cache `:memory:` DB isn't
+            // dropped (and recreated empty) when the pool goes fully idle.
+            .min_idle(Some(1))
+            .build(manager)
             .map_err(|e| e.to_string())?;
-        conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))
-            .map_err(|e| e.to_string())?;
-        // 5s budget for the writer lock instead of failing fast with SQLITE_BUSY.
-        // synchronous=NORMAL is safe under WAL and removes an fsync per commit.
-        conn.pragma_update(None, "busy_timeout", 5000_i64)
-            .map_err(|e| e.to_string())?;
-        conn.pragma_update(None, "synchronous", "NORMAL")
-            .map_err(|e| e.to_string())?;
+
+        // Schema creation + idempotent migration run once, on one connection.
+        let conn = pool.get().map_err(|e| e.to_string())?;
 
         // Idempotent migration: a `users` table from before the Glicko-2
         // ratings work doesn't have these columns. `CREATE TABLE IF NOT
@@ -138,15 +172,14 @@ impl SqliteStore {
             CREATE INDEX IF NOT EXISTS game_seats_anon_user_id ON game_seats(anon_user_id);",
         )
         .map_err(|e| e.to_string())?;
-        Ok(SqliteStore {
-            conn: Mutex::new(conn),
-        })
+        drop(conn);
+        Ok(SqliteStore { pool })
     }
 
     /// Load a single persisted game by id. Returns `Ok(None)` if the row
     /// is absent — distinct from a deserialization error.
     pub fn load_game_by_id(&self, id: Uuid) -> Result<Option<Game>, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         let row: Result<String, rusqlite::Error> = conn.query_row(
             "SELECT data FROM games WHERE id = ?1",
             rusqlite::params![id.to_string()],
@@ -164,7 +197,7 @@ impl SqliteStore {
 
     /// Load all persisted games.
     pub fn load_all_games(&self) -> Result<Vec<Game>, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare("SELECT data FROM games")
             .map_err(|e| e.to_string())?;
@@ -189,7 +222,7 @@ impl SqliteStore {
     pub fn insert_game(&self, game: &Game) -> Result<(), String> {
         let json = serde_json::to_string(game).map_err(|e| e.to_string())?;
         let id = game.get_id().to_string();
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.execute(
             "INSERT OR REPLACE INTO games (id, data) VALUES (?1, ?2)",
             rusqlite::params![id, json],
@@ -210,7 +243,7 @@ impl SqliteStore {
     /// and hand the `String` to `spawn_blocking`, so the blocking SQL
     /// write doesn't stall a tokio worker.
     pub fn update_game_serialized(&self, id: Uuid, json: String) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.execute(
             "UPDATE games SET data = ?2 WHERE id = ?1",
             rusqlite::params![id.to_string(), json],
@@ -222,14 +255,36 @@ impl SqliteStore {
     /// Delete a game by ID.
     pub fn delete_game(&self, game_id: Uuid) -> Result<(), String> {
         let id = game_id.to_string();
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.execute("DELETE FROM games WHERE id = ?1", rusqlite::params![id])
             .map_err(|e| e.to_string())?;
         Ok(())
     }
 
+    /// Delete games that should never be loaded into memory at startup:
+    /// terminal games (Completed / Aborted — disposable leftovers from a
+    /// crash before the TTL sweep) and runaway games whose move history has
+    /// grown past `max_hands` (the never-terminating bot games that caused
+    /// the VPS OOM). Filtering in SQL means these rows are dropped without
+    /// ever being deserialized, so peak startup memory tracks only live,
+    /// in-bounds games. Returns the number of rows deleted.
+    ///
+    /// `state` is plain serde: unit variants serialize as the strings
+    /// `"Completed"` / `"Aborted"`, so `json_extract` matches them exactly
+    /// while leaving `{"Betting":n}` / `{"Trick":n}` / `"NotStarted"` alone.
+    pub fn prune_stale_games(&self, max_hands: i64) -> Result<usize, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM games \
+             WHERE json_extract(data, '$.state') IN ('Completed', 'Aborted') \
+                OR json_array_length(data, '$.hands_played') > ?1",
+            rusqlite::params![max_hands],
+        )
+        .map_err(|e| e.to_string())
+    }
+
     pub fn insert_user(&self, new: &crate::auth::users::NewUser) -> Result<uuid::Uuid, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         insert_user_in(&conn, new)
     }
 
@@ -237,7 +292,7 @@ impl SqliteStore {
         &self,
         id: uuid::Uuid,
     ) -> Result<Option<crate::auth::users::User>, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         find_user_by_id_in(&conn, id)
     }
 
@@ -245,7 +300,7 @@ impl SqliteStore {
         &self,
         email: &str,
     ) -> Result<Option<crate::auth::users::User>, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.query_row(
             "SELECT id, username, username_canon, email, email_verified, password_hash, token_version, created_at, last_login_at \
              FROM users WHERE email = ?1",
@@ -263,7 +318,7 @@ impl SqliteStore {
     ) -> Result<Option<crate::auth::users::User>, String> {
         use crate::auth::users::canonicalize_username;
         let canon = canonicalize_username(username);
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.query_row(
             "SELECT id, username, username_canon, email, email_verified, password_hash, token_version, created_at, last_login_at \
              FROM users WHERE username_canon = ?1",
@@ -276,17 +331,17 @@ impl SqliteStore {
     }
 
     pub fn update_user_password(&self, user_id: uuid::Uuid, new_hash: &str) -> Result<i32, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         update_user_password_in(&conn, user_id, new_hash)
     }
 
     pub fn set_user_email_verified(&self, user_id: uuid::Uuid) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         set_user_email_verified_in(&conn, user_id)
     }
 
     pub fn touch_user_login(&self, user_id: uuid::Uuid) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         touch_user_login_in(&conn, user_id)
     }
 
@@ -297,7 +352,7 @@ impl SqliteStore {
         &self,
         user_id: uuid::Uuid,
     ) -> Result<Option<crate::ratings::Rating>, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         let row: Result<(f64, f64, f64), _> = conn.query_row(
             "SELECT rating, rd, volatility FROM users WHERE id = ?1",
             rusqlite::params![user_id.to_string()],
@@ -321,7 +376,7 @@ impl SqliteStore {
         user_id: uuid::Uuid,
         rating: &crate::ratings::Rating,
     ) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.execute(
             "UPDATE users SET rating = ?2, rd = ?3, volatility = ?4 WHERE id = ?1",
             rusqlite::params![
@@ -346,7 +401,7 @@ impl SqliteStore {
         name: &str,
     ) -> Result<uuid::Uuid, String> {
         let id = uuid::Uuid::new_v4();
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.execute(
             "INSERT INTO api_tokens (id, user_id, token_hash, name) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![id.to_string(), user_id.to_string(), token_hash, name],
@@ -356,7 +411,7 @@ impl SqliteStore {
     }
 
     pub fn list_api_tokens(&self, user_id: uuid::Uuid) -> Result<Vec<ApiTokenRow>, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, name, created_at, last_used_at FROM api_tokens WHERE user_id = ?1 \
@@ -385,7 +440,7 @@ impl SqliteStore {
         token_id: uuid::Uuid,
         user_id: uuid::Uuid,
     ) -> Result<bool, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         let n = conn
             .execute(
                 "DELETE FROM api_tokens WHERE id = ?1 AND user_id = ?2",
@@ -401,7 +456,7 @@ impl SqliteStore {
         &self,
         token_hash: &str,
     ) -> Result<Option<crate::auth::users::User>, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         let user_id: Option<String> = conn
             .query_row(
                 "SELECT user_id FROM api_tokens WHERE token_hash = ?1",
@@ -427,7 +482,7 @@ impl SqliteStore {
     }
 
     pub fn update_user_email(&self, user_id: uuid::Uuid, new_email: &str) -> Result<i32, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         let new_version: i32 = conn.query_row(
             "UPDATE users SET email = ?1, email_verified = 0, token_version = token_version + 1 \
              WHERE id = ?2 RETURNING token_version",
@@ -449,7 +504,7 @@ impl SqliteStore {
         provider: &str,
         provider_uid: &str,
     ) -> Result<Option<uuid::Uuid>, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.query_row(
             "SELECT user_id FROM oauth_accounts WHERE provider = ?1 AND provider_uid = ?2",
             rusqlite::params![provider, provider_uid],
@@ -472,7 +527,7 @@ impl SqliteStore {
         user_id: uuid::Uuid,
         email: &str,
     ) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         insert_oauth_account_in(&conn, provider, provider_uid, user_id, email)
     }
 
@@ -481,7 +536,7 @@ impl SqliteStore {
         anon_id: uuid::Uuid,
         user_id: uuid::Uuid,
     ) -> Result<usize, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         claim_anon_game_seats_in(&conn, anon_id, user_id)
     }
 
@@ -492,12 +547,12 @@ impl SqliteStore {
         purpose: &str,
         ttl_secs: i64,
     ) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         insert_auth_token_in(&conn, token_hash, user_id, purpose, ttl_secs)
     }
 
     pub fn get_lockout(&self, user_id: uuid::Uuid) -> Result<Option<String>, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.query_row(
             "SELECT locked_until FROM login_failures WHERE user_id = ?1",
             rusqlite::params![user_id.to_string()],
@@ -512,7 +567,7 @@ impl SqliteStore {
     /// Increment failure_count, returning the new value.
     /// Resets to 1 if a previous lockout window has already expired.
     pub fn bump_login_failure(&self, user_id: uuid::Uuid) -> Result<i32, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         // If locked_until is non-null and has passed, treat as a fresh window.
         conn.execute(
             "INSERT INTO login_failures (user_id, failure_count) VALUES (?1, 1) \
@@ -539,7 +594,7 @@ impl SqliteStore {
     }
 
     pub fn set_lockout(&self, user_id: uuid::Uuid, secs: i64) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.execute(
             "UPDATE login_failures SET locked_until = datetime('now', ?2) WHERE user_id = ?1",
             rusqlite::params![user_id.to_string(), format!("+{secs} seconds")],
@@ -549,7 +604,7 @@ impl SqliteStore {
     }
 
     pub fn clear_login_failures(&self, user_id: uuid::Uuid) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         clear_login_failures_in(&conn, user_id)
     }
 
@@ -558,12 +613,12 @@ impl SqliteStore {
         token_hash: &str,
         expected_purpose: &str,
     ) -> Result<crate::auth::tokens::ConsumedToken, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         consume_auth_token_in(&conn, token_hash, expected_purpose)
     }
 
     pub fn cleanup_expired_tokens(&self) -> Result<usize, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         let n = conn
             .execute(
                 "DELETE FROM auth_tokens WHERE expires_at < datetime('now') OR used_at IS NOT NULL",
@@ -580,7 +635,7 @@ impl SqliteStore {
         player_id: uuid::Uuid,
         owner: crate::auth::game_seats::SeatOwner,
     ) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.execute(
             "INSERT OR REPLACE INTO game_seats (game_id, seat_index, player_id, user_id, anon_user_id, is_bot) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -602,7 +657,7 @@ impl SqliteStore {
         seat_index: i32,
         owner: crate::auth::game_seats::SeatOwner,
     ) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.execute(
             "UPDATE game_seats SET user_id = ?3, anon_user_id = ?4, is_bot = ?5 \
              WHERE game_id = ?1 AND seat_index = ?2",
@@ -628,7 +683,7 @@ impl SqliteStore {
         game_id: uuid::Uuid,
         player_id: uuid::Uuid,
     ) -> Result<Option<crate::auth::game_seats::SeatRow>, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.query_row(
             "SELECT game_id, seat_index, player_id, user_id, anon_user_id, is_bot \
              FROM game_seats WHERE game_id = ?1 AND player_id = ?2",
@@ -647,7 +702,7 @@ impl SqliteStore {
         game_id: uuid::Uuid,
         seat_index: i32,
     ) -> Result<Option<crate::auth::game_seats::SeatRow>, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.query_row(
             "SELECT game_id, seat_index, player_id, user_id, anon_user_id, is_bot \
              FROM game_seats WHERE game_id = ?1 AND seat_index = ?2",
@@ -661,13 +716,36 @@ impl SqliteStore {
         })
     }
 
+    /// All seats for a game in a single query, ordered by seat index. The
+    /// transition / delete / WS authz paths need every seat to check
+    /// ownership and the turn; fetching them one-by-one cost up to five
+    /// serialized round-trips per move. A game has at most four rows, so
+    /// this is one PK-prefix scan.
+    pub fn game_seats_for_game(
+        &self,
+        game_id: uuid::Uuid,
+    ) -> Result<Vec<crate::auth::game_seats::SeatRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT game_id, seat_index, player_id, user_id, anon_user_id, is_bot \
+                 FROM game_seats WHERE game_id = ?1 ORDER BY seat_index",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![game_id.to_string()], seat_row)
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    }
+
     pub fn game_seats_for_user(
         &self,
         user_id: uuid::Uuid,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<crate::auth::game_seats::SeatRow>, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare(
                 "SELECT game_id, seat_index, player_id, user_id, anon_user_id, is_bot \
@@ -686,7 +764,7 @@ impl SqliteStore {
     }
 
     pub fn count_game_seats_for_user(&self, user_id: uuid::Uuid) -> Result<i64, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.query_row(
             "SELECT COUNT(*) FROM game_seats WHERE user_id = ?1",
             rusqlite::params![user_id.to_string()],
@@ -713,7 +791,7 @@ impl SqliteStore {
         use crate::leaderboard::{
             LeaderboardRow, LeaderboardWindow, RD_CONSERVATISM, month_bounds,
         };
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
 
         let (month_clause, bounds) = match window {
             LeaderboardWindow::AllTime => (String::new(), None),
@@ -774,7 +852,7 @@ impl SqliteStore {
         &self,
         f: impl FnOnce(&Connection) -> Result<R, String>,
     ) -> Result<R, String> {
-        let mut conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut conn = self.pool.get().map_err(|e| e.to_string())?;
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         // `&tx` derefs to `&Connection`, so `_in` helpers accept it directly.
         let r = f(&tx)?;
@@ -1042,13 +1120,49 @@ mod tests {
     }
 
     #[test]
+    fn prune_stale_games_removes_terminal_and_runaway_rows() {
+        // Startup must not deserialize finished games (disposable) or
+        // never-terminating runaway games (the OOM): both are SQL-deleted
+        // before `load_all_games` ever pulls them into memory.
+        let store = SqliteStore::open(":memory:").unwrap();
+
+        // Live, small game — must survive.
+        let live = make_game();
+        let live_id = *live.get_id();
+        store.insert_game(&live).unwrap();
+
+        // Terminal (aborted) game — disposable, must be pruned.
+        let mut dead = make_game();
+        dead.play(spades::GameTransition::Abort).unwrap();
+        store.insert_game(&dead).unwrap();
+
+        // Live but runaway: hands_played inflated past the cap. Crafting it
+        // via serde avoids playing 1000+ tricks; it deserializes as a
+        // NotStarted game whose history is implausibly long.
+        let mut v = serde_json::to_value(make_game()).unwrap();
+        let empty_trick = serde_json::json!([null, null, null, null]);
+        v["hands_played"] = serde_json::Value::Array(vec![empty_trick; 1001]);
+        let runaway: Game = serde_json::from_value(v).unwrap();
+        store.insert_game(&runaway).unwrap();
+
+        assert_eq!(store.load_all_games().unwrap().len(), 3);
+
+        let pruned = store.prune_stale_games(1000).unwrap();
+        assert_eq!(pruned, 2, "terminal + runaway rows are deleted");
+
+        let remaining = store.load_all_games().unwrap();
+        assert_eq!(remaining.len(), 1, "only the live, in-bounds game survives");
+        assert_eq!(*remaining[0].get_id(), live_id);
+    }
+
+    #[test]
     fn pragmas_applied_on_open() {
         // Note: journal_mode=WAL is set in `open`, but `:memory:` databases
         // silently fall back to `memory` mode (WAL needs file backing). We
         // verify the file-agnostic pragmas here; journal_mode WAL is exercised
         // implicitly by every real-disk run.
         let store = SqliteStore::open(":memory:").unwrap();
-        let conn = store.conn.lock().unwrap_or_else(|p| p.into_inner());
+        let conn = store.pool.get().unwrap();
         let busy: i64 = conn
             .pragma_query_value(None, "busy_timeout", |row| row.get(0))
             .unwrap();
@@ -1122,7 +1236,7 @@ mod tests {
     #[test]
     fn auth_tables_created() {
         let store = SqliteStore::open(":memory:").unwrap();
-        let conn = store.conn.lock().unwrap();
+        let conn = store.pool.get().unwrap();
         for table in [
             "users",
             "oauth_accounts",
@@ -1144,7 +1258,7 @@ mod tests {
     #[test]
     fn users_username_canon_is_unique() {
         let store = SqliteStore::open(":memory:").unwrap();
-        let conn = store.conn.lock().unwrap();
+        let conn = store.pool.get().unwrap();
         conn.execute(
             "INSERT INTO users (id, username, username_canon, email, password_hash) VALUES (?1, ?2, ?3, ?4, ?5)",
             rusqlite::params!["u1", "Alice", "alice", "a@x.com", None::<String>],
@@ -1421,6 +1535,67 @@ mod tests {
         assert_eq!(alice_seats[0].game_id, game_id);
         // Offset past the end is empty.
         assert!(store.game_seats_for_user(alice, 10, 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn game_seats_for_game_returns_all_seats_in_index_order() {
+        // The transition/delete authz paths previously issued one query per
+        // seat (0..4). `game_seats_for_game` returns the whole table in a
+        // single round-trip, ordered by seat_index so callers can index
+        // directly.
+        let store = SqliteStore::open(":memory:").unwrap();
+        let game_id = Uuid::new_v4();
+        let other_game = Uuid::new_v4();
+        let players = [
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+        ];
+
+        // Insert out of order to prove ordering is by seat_index, not insert order.
+        for &i in &[2usize, 0, 3, 1] {
+            store
+                .insert_game_seat(
+                    game_id,
+                    i as i32,
+                    players[i],
+                    crate::auth::game_seats::SeatOwner {
+                        user_id: None,
+                        anon_user_id: Some(Uuid::new_v4()),
+                        is_bot: false,
+                    },
+                )
+                .unwrap();
+        }
+        // A seat in a different game must not leak into the result.
+        store
+            .insert_game_seat(
+                other_game,
+                0,
+                Uuid::new_v4(),
+                crate::auth::game_seats::SeatOwner {
+                    user_id: None,
+                    anon_user_id: Some(Uuid::new_v4()),
+                    is_bot: false,
+                },
+            )
+            .unwrap();
+
+        let seats = store.game_seats_for_game(game_id).unwrap();
+        assert_eq!(seats.len(), 4, "only this game's seats are returned");
+        for (i, seat) in seats.iter().enumerate() {
+            assert_eq!(seat.seat_index, i as i32, "seats are ordered by index");
+            assert_eq!(seat.player_id, players[i]);
+        }
+
+        // A game with no seats yields an empty Vec, not an error.
+        assert!(
+            store
+                .game_seats_for_game(Uuid::new_v4())
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1747,7 +1922,7 @@ mod tests {
     /// Insert a row with raw SQL, bypassing FK checks — simulating on-disk
     /// corruption, which by definition didn't respect the constraints.
     fn insert_corrupt(store: &SqliteStore, sql: &str, params: &[&dyn rusqlite::ToSql]) {
-        let conn = store.conn.lock().unwrap_or_else(|p| p.into_inner());
+        let conn = store.pool.get().unwrap();
         conn.execute_batch("PRAGMA foreign_keys = OFF").unwrap();
         conn.execute(sql, params).unwrap();
         conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();

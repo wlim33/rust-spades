@@ -255,16 +255,19 @@ pub async fn delete_game(
     identity: spades_server::auth::Identity,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     // Authorize: the caller must own at least one seat in this game.
-    // Without this, any anonymous caller could delete any game by id.
-    let mut owns_seat = false;
-    for seat_idx in 0..4 {
-        if let Ok(Some(seat)) = state.auth.store.game_seat(game_id, seat_idx)
-            && seat_matches_identity(&seat, &identity)
-        {
-            owns_seat = true;
-            break;
-        }
-    }
+    // Without this, any anonymous caller could delete any game by id. A DB
+    // error is swallowed to `false` here (same as the prior per-seat loop):
+    // the existence probe below then resolves it to 404/403.
+    let owns_seat = state
+        .auth
+        .store
+        .game_seats_for_game(game_id)
+        .map(|seats| {
+            seats
+                .iter()
+                .any(|seat| seat_matches_identity(seat, &identity))
+        })
+        .unwrap_or(false);
     if !owns_seat {
         // Probe game existence to distinguish "not yours" from "doesn't exist".
         if state.game_manager.get_game_state(game_id).await.is_err() {
@@ -484,9 +487,12 @@ async fn authorize_transition(
     identity: &spades_server::auth::Identity,
     transition: &TransitionType,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    let game = state
+    // Only the current player id is needed for the turn check; this avoids
+    // building and cloning a full GameStateResponse per transition. Doubles
+    // as the existence probe — GameNotFound maps to 404.
+    let current_player_id = state
         .game_manager
-        .get_game_state(game_id)
+        .current_player(game_id)
         .await
         .map_err(|e| {
             let status = match e {
@@ -501,12 +507,17 @@ async fn authorize_transition(
             )
         })?;
 
-    let owns_any = (0..4).any(|seat_idx| {
-        matches!(
-            state.auth.store.game_seat(game_id, seat_idx),
-            Ok(Some(seat)) if seat_matches_identity(&seat, identity)
+    // One query for all ≤4 seats instead of one round-trip per seat plus a
+    // separate by-player lookup for the turn check.
+    let seats = state.auth.store.game_seats_for_game(game_id).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e }),
         )
-    });
+    })?;
+    let owns_any = seats
+        .iter()
+        .any(|seat| seat_matches_identity(seat, identity));
     if !owns_any {
         return Err((
             StatusCode::FORBIDDEN,
@@ -519,9 +530,9 @@ async fn authorize_transition(
     if matches!(
         transition,
         TransitionType::Bet { .. } | TransitionType::Card { .. }
-    ) && let Some(current_id) = game.current_player_id
-        && let Ok(Some(seat)) = state.auth.store.game_seat_by_player_id(game_id, current_id)
-        && !seat_matches_identity(&seat, identity)
+    ) && let Some(current_id) = current_player_id
+        && let Some(seat) = seats.iter().find(|s| s.player_id == current_id)
+        && !seat_matches_identity(seat, identity)
     {
         return Err((
             StatusCode::FORBIDDEN,
