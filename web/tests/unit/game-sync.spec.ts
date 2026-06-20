@@ -68,6 +68,81 @@ describe('applyStateWithHand', () => {
   });
 });
 
+describe('applyStateWithHand — hand-fetch elision', () => {
+  // p1 is south (seat 0). The south hand can only change when south plays a card
+  // or a new hand is dealt, so events that touch only the table (opponent plays,
+  // trick collection) must NOT trigger a /hand round-trip — that redundant fetch
+  // is what gated animation cadence on slow links (the choppiness bug).
+  const thirteen: HandResponse = {
+    player_id: 'p1',
+    cards: Array.from({ length: 13 }, () => ({ suit: 'Heart', rank: 'Two' as const })),
+  };
+
+  const playState = (over: Partial<GameStateResponse>): GameStateResponse => ({
+    game_id: 'g1',
+    state: { Trick: 0 },
+    team_a_score: 0,
+    team_b_score: 0,
+    team_a_bags: 0,
+    team_b_bags: 0,
+    current_player_id: 'p2',
+    player_names: names,
+    table_cards: [null, null, null, null],
+    player_tricks_won: [0, 0, 0, 0],
+    seq: 2,
+    ...over,
+  });
+
+  beforeEach(() => {
+    requestMock.mockReset();
+  });
+
+  it('skips the hand fetch when only the table changed (opponent play)', async () => {
+    const store = createGameStore('p1');
+    store.hand.value = thirteen.cards; // 13 held, none played by us yet
+
+    // West (seat 1) has a card down; our hand can't have changed.
+    await applyStateWithHand(
+      store,
+      'g1',
+      'p1',
+      playState({ table_cards: [null, { suit: 'Club', rank: 'Five' }, null, null] }),
+    );
+
+    expect(requestMock).not.toHaveBeenCalled();
+    expect(store.hand.value).toEqual(thirteen.cards);
+    expect(store.gameState.value).toEqual({ Trick: 0 });
+  });
+
+  it('fetches when our own card appears on the table (we played)', async () => {
+    const store = createGameStore('p1');
+    store.hand.value = thirteen.cards;
+    const twelve: HandResponse = { player_id: 'p1', cards: thirteen.cards.slice(1) };
+    requestMock.mockResolvedValueOnce(twelve);
+
+    // Our seat (0) now holds a card → expected size 12, we hold 13 → refetch.
+    await applyStateWithHand(
+      store,
+      'g1',
+      'p1',
+      playState({ table_cards: [{ suit: 'Heart', rank: 'Two' }, null, null, null] }),
+    );
+
+    expect(requestMock).toHaveBeenCalledTimes(1);
+    expect(store.hand.value).toEqual(twelve.cards);
+  });
+
+  it('always fetches on a snapshot, even if counts line up', async () => {
+    const store = createGameStore('p1');
+    store.hand.value = thirteen.cards;
+    requestMock.mockResolvedValueOnce(thirteen);
+
+    await applyStateWithHand(store, 'g1', 'p1', playState({}), true);
+
+    expect(requestMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('createPollLoop', () => {
   beforeEach(() => {
     vi.useFakeTimers();
