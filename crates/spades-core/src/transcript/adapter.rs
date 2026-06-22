@@ -446,9 +446,10 @@ fn parse_rounds(model: &Model) -> Result<Vec<ParsedRound>, ReplayError> {
                 let round = rounds.last_mut().ok_or(ReplayError::EventBeforeDeal)?;
                 let mut bets = Vec::with_capacity(values.len());
                 for v in values {
-                    bets.push(v.parse::<i32>().map_err(|_| ReplayError::BadBet {
-                        value: v.clone(),
-                    })?);
+                    bets.push(
+                        v.parse::<i32>()
+                            .map_err(|_| ReplayError::BadBet { value: v.clone() })?,
+                    );
                 }
                 round.bets = bets;
             }

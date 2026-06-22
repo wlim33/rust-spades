@@ -25,11 +25,26 @@ pub struct Meta {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Event {
-    Deal { hands: Vec<(Target, Vec<Card>)> },
-    Call { start: Sym, values: Vec<Sym> },
-    Play { leader: Sym, cards: Vec<Card> },
-    Exchange { from: Sym, to: Sym, cards: Vec<Card> },
-    Reveal { target: Target, cards: Vec<Card> },
+    Deal {
+        hands: Vec<(Target, Vec<Card>)>,
+    },
+    Call {
+        start: Sym,
+        values: Vec<Sym>,
+    },
+    Play {
+        leader: Sym,
+        cards: Vec<Card>,
+    },
+    Exchange {
+        from: Sym,
+        to: Sym,
+        cards: Vec<Card>,
+    },
+    Reveal {
+        target: Target,
+        cards: Vec<Card>,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -58,12 +73,21 @@ mod tests {
             },
             deck: Deck::french52(),
             events: vec![
-                Event::Call { start: "E".into(), values: vec!["3".into(), "4".into(), "nil".into(), "4".into()] },
+                Event::Call {
+                    start: "E".into(),
+                    values: vec!["3".into(), "4".into(), "nil".into(), "4".into()],
+                },
                 Event::Play {
                     leader: "E".into(),
                     cards: vec![
-                        Card::Suited { suit: "C".into(), rank: "K".into() },
-                        Card::Suited { suit: "C".into(), rank: "5".into() },
+                        Card::Suited {
+                            suit: "C".into(),
+                            rank: "K".into(),
+                        },
+                        Card::Suited {
+                            suit: "C".into(),
+                            rank: "5".into(),
+                        },
                     ],
                 },
             ],

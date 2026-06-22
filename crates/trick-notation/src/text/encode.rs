@@ -20,7 +20,11 @@ pub fn to_text(model: &Model) -> String {
         let _ = writeln!(out, r#"[Dealer "{d}"]"#);
     }
     if m.players.iter().any(|p| p.is_some()) {
-        let names: Vec<&str> = m.players.iter().map(|p| p.as_deref().unwrap_or("?")).collect();
+        let names: Vec<&str> = m
+            .players
+            .iter()
+            .map(|p| p.as_deref().unwrap_or("?"))
+            .collect();
         let _ = writeln!(out, r#"[Players "{}"]"#, names.join(" "));
     }
     if let Some(parts) = &m.partnerships {
@@ -72,7 +76,10 @@ mod tests {
     use crate::model::{Event, Meta, Model};
 
     fn card(rank: &str, suit: &str) -> Card {
-        Card::Suited { suit: suit.into(), rank: rank.into() }
+        Card::Suited {
+            suit: suit.into(),
+            rank: rank.into(),
+        }
     }
 
     #[test]
@@ -83,7 +90,12 @@ mod tests {
                 game_hint: Some("spades".into()),
                 seats: vec!["N".into(), "E".into(), "S".into(), "W".into()],
                 dealer: Some("N".into()),
-                players: vec![Some("Ann".into()), Some("Bo".into()), Some("Cy".into()), Some("Di".into())],
+                players: vec![
+                    Some("Ann".into()),
+                    Some("Bo".into()),
+                    Some("Cy".into()),
+                    Some("Di".into()),
+                ],
                 partnerships: None,
                 caps: vec![],
                 extra: vec![("MaxPoints".into(), "250".into())],
@@ -91,10 +103,19 @@ mod tests {
             deck: Deck::french52(),
             events: vec![
                 Event::Deal {
-                    hands: vec![("N".into(), vec![card("A", "S"), card("K", "S"), card("T", "H")])],
+                    hands: vec![(
+                        "N".into(),
+                        vec![card("A", "S"), card("K", "S"), card("T", "H")],
+                    )],
                 },
-                Event::Call { start: "E".into(), values: vec!["3".into(), "4".into(), "nil".into(), "4".into()] },
-                Event::Play { leader: "E".into(), cards: vec![card("K", "C"), card("5", "C")] },
+                Event::Call {
+                    start: "E".into(),
+                    values: vec!["3".into(), "4".into(), "nil".into(), "4".into()],
+                },
+                Event::Play {
+                    leader: "E".into(),
+                    cards: vec![card("K", "C"), card("5", "C")],
+                },
             ],
         };
         let text = to_text(&m);

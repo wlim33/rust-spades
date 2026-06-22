@@ -15,14 +15,18 @@ pub(crate) fn format_holdings(cards: &[Card], deck: &Deck) -> String {
         let mut ranks = String::new();
         // Emit ranks in reverse deck order (high-to-low) for stable output.
         for rank in deck.ranks.iter().rev() {
-            let present = cards.iter().any(|c| {
-                matches!(c, Card::Suited { suit: s, rank: r } if s == suit && r == rank)
-            });
+            let present = cards
+                .iter()
+                .any(|c| matches!(c, Card::Suited { suit: s, rank: r } if s == suit && r == rank));
             if present {
                 ranks.push_str(rank);
             }
         }
-        groups.push(if ranks.is_empty() { "-".to_string() } else { ranks });
+        groups.push(if ranks.is_empty() {
+            "-".to_string()
+        } else {
+            ranks
+        });
     }
     groups.join(".")
 }
@@ -40,7 +44,10 @@ pub(crate) fn parse_holdings(s: &str, deck: &Deck) -> Option<Vec<Card>> {
             continue;
         }
         for ch in group.chars() {
-            cards.push(Card::Suited { suit: suit.clone(), rank: ch.to_string() });
+            cards.push(Card::Suited {
+                suit: suit.clone(),
+                rank: ch.to_string(),
+            });
         }
     }
     Some(cards)

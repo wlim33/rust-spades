@@ -30,7 +30,6 @@ fn parse_header(line: &str) -> Option<(String, String)> {
     Some((key.to_string(), value.to_string()))
 }
 
-
 pub fn from_text(text: &str) -> Result<Model, ParseError> {
     let mut lines = text.lines().enumerate();
 
@@ -65,8 +64,10 @@ pub fn from_text(text: &str) -> Result<Model, ParseError> {
         }
 
         if line.starts_with('[') {
-            let (key, value) = parse_header(line)
-                .ok_or_else(|| ParseError::BadHeader { line: line_no, text: line.to_string() })?;
+            let (key, value) = parse_header(line).ok_or_else(|| ParseError::BadHeader {
+                line: line_no,
+                text: line.to_string(),
+            })?;
             match key.as_str() {
                 "Game" => meta.game_hint = Some(value),
                 "Deck" => {
@@ -114,13 +115,19 @@ pub fn from_text(text: &str) -> Result<Model, ParseError> {
 fn cards_from_tokens(toks: &[&str], line_no: usize) -> Result<Vec<Card>, ParseError> {
     toks.iter()
         .map(|t| {
-            parse_card(t).ok_or(ParseError::BadCard { line: line_no, token: t.to_string() })
+            parse_card(t).ok_or(ParseError::BadCard {
+                line: line_no,
+                token: t.to_string(),
+            })
         })
         .collect()
 }
 
 fn parse_event(line: &str, line_no: usize, deck: &Deck) -> Result<Event, ParseError> {
-    let bad = || ParseError::BadEvent { line: line_no, text: line.to_string() };
+    let bad = || ParseError::BadEvent {
+        line: line_no,
+        text: line.to_string(),
+    };
     let (code, rest) = line.split_once(char::is_whitespace).ok_or_else(bad)?;
     let rest = rest.trim();
     match code {
@@ -139,7 +146,10 @@ fn parse_event(line: &str, line_no: usize, deck: &Deck) -> Result<Event, ParseEr
         "C" => {
             let (start, vals) = rest.split_once(':').ok_or_else(bad)?;
             let values = vals.split_whitespace().map(String::from).collect();
-            Ok(Event::Call { start: start.trim().to_string(), values })
+            Ok(Event::Call {
+                start: start.trim().to_string(),
+                values,
+            })
         }
         "P" => {
             let (leader, cards) = rest.split_once(char::is_whitespace).ok_or_else(bad)?;
@@ -194,7 +204,10 @@ P E KC 5C
         let model = from_text(text).expect("parse");
         assert_eq!(model.meta.game_hint.as_deref(), Some("spades"));
         assert_eq!(model.meta.seats, vec!["N", "E", "S", "W"]);
-        assert_eq!(model.meta.extra, vec![("MaxPoints".to_string(), "250".to_string())]);
+        assert_eq!(
+            model.meta.extra,
+            vec![("MaxPoints".to_string(), "250".to_string())]
+        );
         assert_eq!(model.events.len(), 3);
         // Re-encoding the parsed model reproduces the input exactly.
         assert_eq!(to_text(&model), text);

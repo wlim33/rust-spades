@@ -30,7 +30,9 @@ pub fn parse_card(tok: &str) -> Option<Card> {
         if name.is_empty() {
             return None;
         }
-        return Some(Card::Special { name: name.to_string() });
+        return Some(Card::Special {
+            name: name.to_string(),
+        });
     }
     let mut chars = tok.chars();
     let rank = chars.next()?;
@@ -38,7 +40,10 @@ pub fn parse_card(tok: &str) -> Option<Card> {
     if chars.next().is_some() {
         return None; // more than two chars and not a special
     }
-    Some(Card::Suited { suit: suit.to_string(), rank: rank.to_string() })
+    Some(Card::Suited {
+        suit: suit.to_string(),
+        rank: rank.to_string(),
+    })
 }
 
 #[cfg(test)]
@@ -47,14 +52,19 @@ mod tests {
 
     #[test]
     fn suited_card_round_trips() {
-        let c = Card::Suited { suit: "C".into(), rank: "K".into() };
+        let c = Card::Suited {
+            suit: "C".into(),
+            rank: "K".into(),
+        };
         assert_eq!(format_card(&c), "KC");
         assert_eq!(parse_card("KC"), Some(c));
     }
 
     #[test]
     fn special_card_round_trips() {
-        let c = Card::Special { name: "Fool".into() };
+        let c = Card::Special {
+            name: "Fool".into(),
+        };
         assert_eq!(format_card(&c), "*Fool");
         assert_eq!(parse_card("*Fool"), Some(c));
     }

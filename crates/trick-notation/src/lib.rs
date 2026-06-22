@@ -13,7 +13,7 @@ mod deck;
 pub use deck::Deck;
 
 mod model;
-pub use model::{Meta, Event, Model, Target};
+pub use model::{Event, Meta, Model, Target};
 
 mod text;
-pub use text::{to_text, from_text, ParseError};
+pub use text::{ParseError, from_text, to_text};

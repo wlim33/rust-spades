@@ -17,11 +17,17 @@ fn chars_to_syms(s: &str) -> Vec<Sym> {
 
 impl Deck {
     pub fn french52() -> Deck {
-        Deck { suits: chars_to_syms("SHDC"), ranks: chars_to_syms("23456789TJQKA") }
+        Deck {
+            suits: chars_to_syms("SHDC"),
+            ranks: chars_to_syms("23456789TJQKA"),
+        }
     }
 
     pub fn euchre24() -> Deck {
-        Deck { suits: chars_to_syms("SHDC"), ranks: chars_to_syms("9TJQKA") }
+        Deck {
+            suits: chars_to_syms("SHDC"),
+            ranks: chars_to_syms("9TJQKA"),
+        }
     }
 
     pub fn preset(name: &str) -> Option<Deck> {
@@ -48,7 +54,10 @@ impl Deck {
                 _ => return None,
             }
         }
-        Some(Deck { suits: suits?, ranks: ranks? })
+        Some(Deck {
+            suits: suits?,
+            ranks: ranks?,
+        })
     }
 
     /// Emit the value for a `[Deck "…"]` header: a preset name if one matches,
@@ -69,7 +78,10 @@ impl Deck {
         let mut out = Vec::with_capacity(self.suits.len() * self.ranks.len());
         for suit in &self.suits {
             for rank in &self.ranks {
-                out.push(Card::Suited { suit: suit.clone(), rank: rank.clone() });
+                out.push(Card::Suited {
+                    suit: suit.clone(),
+                    rank: rank.clone(),
+                });
             }
         }
         out
@@ -85,8 +97,20 @@ mod tests {
         let d = Deck::french52();
         let cards = d.cards();
         assert_eq!(cards.len(), 52);
-        assert_eq!(cards[0], Card::Suited { suit: "S".into(), rank: "2".into() });
-        assert_eq!(cards[51], Card::Suited { suit: "C".into(), rank: "A".into() });
+        assert_eq!(
+            cards[0],
+            Card::Suited {
+                suit: "S".into(),
+                rank: "2".into()
+            }
+        );
+        assert_eq!(
+            cards[51],
+            Card::Suited {
+                suit: "C".into(),
+                rank: "A".into()
+            }
+        );
     }
 
     #[test]

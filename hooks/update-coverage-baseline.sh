@@ -15,7 +15,7 @@ export PATH="$HOME/.cargo/bin:$PATH"
 BASELINE_FILE="$REPO_ROOT/coverage-baseline.json"
 REPORT_DIR="$REPO_ROOT/target/llvm-cov"
 REPORT_FILE="$REPORT_DIR/coverage.json"
-CRATES=(spades-core spades-server)
+CRATES=(spades-core spades-server trick-notation)
 TODAY="$(date -u +%Y-%m-%d)"
 
 # shellcheck source=hooks/coverage-lib.sh

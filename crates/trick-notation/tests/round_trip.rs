@@ -1,7 +1,10 @@
 use trick_notation::{Card, Deck, Event, Meta, Model, from_text, to_text};
 
 fn card(rank: &str, suit: &str) -> Card {
-    Card::Suited { suit: suit.into(), rank: rank.into() }
+    Card::Suited {
+        suit: suit.into(),
+        rank: rank.into(),
+    }
 }
 
 fn sample_model() -> Model {
@@ -18,9 +21,18 @@ fn sample_model() -> Model {
         },
         deck: Deck::french52(),
         events: vec![
-            Event::Deal { hands: vec![("N".into(), vec![card("A", "S"), card("K", "H")])] },
-            Event::Exchange { from: "N".into(), to: "E".into(), cards: vec![card("2", "C")] },
-            Event::Play { leader: "S".into(), cards: vec![card("2", "C"), card("5", "C")] },
+            Event::Deal {
+                hands: vec![("N".into(), vec![card("A", "S"), card("K", "H")])],
+            },
+            Event::Exchange {
+                from: "N".into(),
+                to: "E".into(),
+                cards: vec![card("2", "C")],
+            },
+            Event::Play {
+                leader: "S".into(),
+                cards: vec![card("2", "C"), card("5", "C")],
+            },
         ],
     }
 }

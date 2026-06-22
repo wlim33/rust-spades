@@ -330,7 +330,8 @@ mod tests {
         assert_eq!(names[2].1, Some("Carol"));
         assert_eq!(names[3].1, None);
         assert_eq!(
-            r.get_timer_config().map(|t| (t.initial_time_secs, t.increment_secs)),
+            r.get_timer_config()
+                .map(|t| (t.initial_time_secs, t.increment_secs)),
             Some((300, 5))
         );
         assert_eq!(encode(&r), encode(&g));
@@ -447,7 +448,10 @@ mod tests {
                 break;
             }
         }
-        assert!(matches!(replay(&model), Err(ReplayError::Transition { .. })));
+        assert!(matches!(
+            replay(&model),
+            Err(ReplayError::Transition { .. })
+        ));
     }
 
     #[test]
@@ -506,7 +510,9 @@ mod tests {
         let mut model = decode(&encode(&g)).unwrap();
         for e in model.events.iter_mut() {
             if let Event::Play { cards, .. } = e {
-                cards[0] = trick_notation::Card::Special { name: "Joker".into() };
+                cards[0] = trick_notation::Card::Special {
+                    name: "Joker".into(),
+                };
                 break;
             }
         }
@@ -539,18 +545,22 @@ mod tests {
 
         // The text format produces [Players "Bo Jones Alice ? ?"] (space unescaped).
         // A parser splitting on whitespace cannot recover "Bo Jones" as a single name.
-        assert_eq!(players_line, "[Players \"Bo Jones Alice ? ?\"]",
-            "player names with spaces are not escaped in the text format");
+        assert_eq!(
+            players_line, "[Players \"Bo Jones Alice ? ?\"]",
+            "player names with spaces are not escaped in the text format"
+        );
 
         // The text format round-trip is LOSSY for names with spaces.
         // Parsing [Players "Bo Jones Alice ? ?"] splits on whitespace.
         // Names are drawn sequentially as whitespace-delimited tokens → "Bo", "Jones", "Alice".
         let r = round_trip(&g);
         let names = r.get_player_names();
-        assert_eq!(names[0].1, Some("Bo"),
-            "first name token from 'Bo Jones'");
-        assert_eq!(names[1].1, Some("Jones"),
-            "second name token (from 'Bo Jones'); Alice shifts to next seat");
+        assert_eq!(names[0].1, Some("Bo"), "first name token from 'Bo Jones'");
+        assert_eq!(
+            names[1].1,
+            Some("Jones"),
+            "second name token (from 'Bo Jones'); Alice shifts to next seat"
+        );
     }
 }
 
