@@ -39,6 +39,7 @@ void (async () => {
     // boot — kept out of the initial bundle so the landing page doesn't pay for
     // the whole game UI.
     '/play/:shortId': () => import('./routes/play').then((m) => m.play),
+    '/replay/:id': () => import('./routes/replay').then((m) => m.replay),
     '/login': login,
     '/signup': signup,
     '/auth/oauth/complete': oauthComplete,
