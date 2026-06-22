@@ -676,6 +676,8 @@ pub async fn post_chat(
 /// Return a JSON replay of a terminal game. Refused (403) for in-progress
 /// games — the model would expose hidden hands. Resolves `viewer_seat` from
 /// the auth `Identity` so clients can orient the replay to the viewer.
+/// The response also includes a typed `termination` field (`"completed"` or
+/// `"aborted"`) to distinguish normal finishes from timed-out games.
 ///
 /// `identity` is `OptionalIdentity` (a newtype over `Option<Identity>`) so
 /// that a request with a present-but-unrecognized Bearer token (e.g. a

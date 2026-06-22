@@ -60,11 +60,10 @@ pub struct AuthUser(pub User);
 ///
 /// Used by handlers that serve public resources but can optionally orient
 /// their response to a logged-in viewer (e.g. `GET /games/{id}/replay.json`).
-/// When the `Authorization: Bearer` header is present but the token is not
-/// recognized, `Identity` rejects with `InvalidCredentials` (→ 401); the
-/// `Option<Identity>` axum extractor maps that rejection to `None`, so the
-/// caller still receives the resource with `viewer_seat: null` instead of a
-/// hard 401.
+/// Resolves to `None` ONLY for an unrecognized Bearer token
+/// (`AuthError::InvalidCredentials`); genuine auth-infra errors
+/// (`AuthError::Storage`, `AuthError::Internal`, …) propagate as rejections
+/// rather than being silently swallowed.
 #[derive(Debug)]
 pub struct OptionalIdentity(pub Option<Identity>);
 
@@ -135,10 +134,13 @@ where
     S: Send + Sync,
     AuthState: axum::extract::FromRef<S>,
 {
-    type Rejection = std::convert::Infallible;
+    type Rejection = AuthError;
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let inner = Identity::from_request_parts(parts, state).await.ok();
-        Ok(OptionalIdentity(inner))
+        match Identity::from_request_parts(parts, state).await {
+            Ok(identity) => Ok(OptionalIdentity(Some(identity))),
+            Err(AuthError::InvalidCredentials) => Ok(OptionalIdentity(None)),
+            Err(other) => Err(other),
+        }
     }
 }
 
