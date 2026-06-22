@@ -21,6 +21,13 @@
 //!   game's state may not be observationally equal to the source for this
 //!   specific case. Aborted from a trick or terminal state round-trips cleanly.
 //!   (Same limitation as the retired STF format.)
+//!
+//! - **Player names with whitespace or `"` do not round-trip through the
+//!   canonical TEXT format.** The `[Players …]` header value is unquoted,
+//!   so whitespace splits tokens and quote characters corrupt the syntax.
+//!   The JSON projection of the model (names as a string array in `meta.players`)
+//!   preserves names faithfully. Escaped/quoted header values are a planned
+//!   follow-up enhancement to the trick-notation text grammar.
 
 use crate::Game;
 use crate::result::TransitionError;
@@ -515,6 +522,35 @@ mod tests {
             replay(&model),
             Err(ReplayError::MissingMeta { key: "GameId" })
         ));
+    }
+
+    #[test]
+    fn names_with_spaces_are_a_documented_text_format_limitation() {
+        let mut g = new_game(500, None);
+        g.set_player_name(u(10), Some("Bo Jones".into())).unwrap();
+        g.set_player_name(u(11), Some("Alice".into())).unwrap();
+
+        let text = encode(&g);
+        // Inspect the [Players ...] line to document current (lossy) behavior
+        let players_line = text
+            .lines()
+            .find(|line| line.starts_with("[Players"))
+            .expect("encoded text should have [Players line");
+
+        // The text format produces [Players "Bo Jones Alice ? ?"] (space unescaped).
+        // A parser splitting on whitespace cannot recover "Bo Jones" as a single name.
+        assert_eq!(players_line, "[Players \"Bo Jones Alice ? ?\"]",
+            "player names with spaces are not escaped in the text format");
+
+        // The text format round-trip is LOSSY for names with spaces.
+        // Parsing [Players "Bo Jones Alice ? ?"] splits on whitespace.
+        // Names are drawn sequentially as whitespace-delimited tokens → "Bo", "Jones", "Alice".
+        let r = round_trip(&g);
+        let names = r.get_player_names();
+        assert_eq!(names[0].1, Some("Bo"),
+            "first name token from 'Bo Jones'");
+        assert_eq!(names[1].1, Some("Jones"),
+            "second name token (from 'Bo Jones'); Alice shifts to next seat");
     }
 }
 
