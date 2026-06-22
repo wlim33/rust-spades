@@ -3,6 +3,13 @@
 **Date:** 2026-06-22
 **Status:** Approved (pending spec review)
 
+> **Reconciled 2026-06-22** with `2026-06-22-trick-notation-design.md`. The replay
+> data now comes from the game-agnostic `trick-notation` model rather than spades-only
+> STF: the `text/plain` export emits canonical trick-notation, and `replay.json` is the
+> JSON projection of that model plus server annotations. See "Section 1" (revised) and
+> "Reconciliation note" below. The notation crate must land before this viewer's server
+> endpoint.
+
 ## Summary
 
 Add a lichess-style **game replay viewer**: a step-through review of any completed
@@ -56,9 +63,18 @@ Three units, each independently understandable and testable:
 3. **`ReplayBoard`** (frontend) — rendering. Reuses animation primitives; renders
    four face-up hands; driven imperatively by the controller.
 
-The existing `text/plain` STF endpoint stays untouched — it is our "PGN"
-equivalent (interop / power users). The new endpoint is the structured format for
-the viewer. This mirrors lichess's two-format design exactly.
+The `text/plain` endpoint remains the "PGN" equivalent (interop / power users) but now
+emits **canonical trick-notation** instead of STF (see reconciliation). The new
+`replay.json` endpoint is the structured format for the viewer. This mirrors lichess's
+two-format design exactly.
+
+### Reconciliation note
+
+The `cumulative` / `tricks_won` / `viewer_seat` annotations are **not** part of the pure
+trick-notation model (which is rule-agnostic and records events only). They are computed
+server-side during `replay()` and composed into the HTTP DTO alongside the model's JSON
+projection. This keeps the notation crate pure while still sparing the client from
+reimplementing spades scoring.
 
 ## Section 1 — Server: JSON replay endpoint
 
@@ -68,41 +84,46 @@ encoding mid-game would leak hidden hands), same `GameNotFound` → 404 mapping.
 
 ### Response DTO (`GameReplayResponse`)
 
-Follows existing DTO conventions (`game_manager.rs` `GameStateResponse`). **Cards
-serialize as `{suit, rank}` objects** — matching every existing endpoint and the
-frontend `Card` type. No STF-token parsing on the client.
+**Revised per reconciliation:** the body is the **JSON projection of the general
+`trick-notation` model** (`deck` / `seats` / `deal` / `events`) plus server-only
+annotation fields. **Cards serialize as `{suit, rank}` objects** — matching every
+existing endpoint and the frontend `Card` type.
 
 ```jsonc
 {
-  "headers": {
-    "game_id": "…uuid…",
-    "short_id": "…",
-    "max_points": 250,
-    "player_ids": ["…", "…", "…", "…"],
-    "player_names": [{ "player_id": "…", "name": "Ann" }, …4],
-    "timer_config": { "initial_time_secs": 600, "increment_secs": 5 }   // optional
+  "model": {                                 // pure trick-notation model (game-agnostic)
+    "meta": { "game_hint": "spades", "seats": ["N","E","S","W"],
+              "dealer": "N", "players": ["Ann","Bo","Cy","Di"] },
+    "deck": { "preset": "french52" },
+    "deal": { "N": [{ "suit": "Spade", "rank": "Ace" }, …], … },   // all revealed
+    "events": [
+      { "type": "call", "start": "E", "values": ["3","4","nil","4"] },
+      { "type": "play", "leader": "E",
+        "cards": [{…},{…},{…},{…}] },        // rotation order from leader
+      …
+    ]
   },
-  "rounds": [
-    {
-      "hands": [ [{ "suit": "Spade", "rank": "Ace" }, …], …4 seats ],  // all revealed
-      "bets": [3, 4, 0, 4],                  // 0 = nil; partial if aborted mid-betting
-      "tricks": [ [card,card,card,card], … ],// play order; last may be partial if aborted
-      "tricks_won": [4, 3, 2, 4],            // per seat, this round  (server annotation)
-      "cumulative": [84, 56]                 // team [A,B] score AFTER this round (annotation)
-    }
-  ],
-  "termination": "Completed",                // Completed | Aborted | InProgress(never served)
-  "result": [252, 198],                      // final team scores; null if not terminal
+  "annotations": {                           // server-computed, NOT part of the pure model
+    "tricks_won_by_round": [[4,3,2,4], …],   // per seat, per round
+    "cumulative_by_round": [[84,56], …],     // team [A,B] cumulative after each round
+    "result": [252, 198],                    // final team scores; null if not terminal
+    "termination": "Completed"               // Completed | Aborted
+  },
   "viewer_seat": 2                           // seat index if authed caller played; else null
 }
 ```
 
+The client groups the flat `events` stream into rounds/tricks itself (rotation from
+each `play.leader`); the server never ships rule-derived state inside `model`. The only
+spades-specific logic in TS remains the trick-winner rule.
+
 ### Server-computed fields (the "annotations")
 
-- **`tricks_won` and `cumulative`** are captured by the server during `replay()` at
-  each round boundary (the engine exposes `get_tricks_won` / `get_team_scores`).
-  Justified by the derive-vs-annotate principle: keeps spades scoring rules
-  single-sourced in Rust.
+- **`tricks_won_by_round` and `cumulative_by_round`** are captured by the server during
+  `replay()` at each round boundary (the engine exposes `get_tricks_won` /
+  `get_team_scores`). Justified by the derive-vs-annotate principle: keeps spades scoring
+  rules single-sourced in Rust. They live in the DTO's `annotations` block, *outside* the
+  pure trick-notation `model`.
 - **`viewer_seat`** resolved server-side from the auth `Identity` → that game's
   seat, reusing `game_seats_for_game(game_id)` + `seat_matches_identity()`
   (`handlers/games.rs`). Null when the caller didn't play / isn't authenticated.
@@ -120,11 +141,13 @@ start server → `pnpm -C web openapi:fetch` → `openapi:generate`; commit both
 
 - Holds the decoded `GameReplayResponse` and a **cursor** `(round, step)`, where a
   step is one move (a bid or a card).
-- Flattens the game into a linear move list so `next() / prev() / seek(i) /
-  jumpRound(r)` are O(1) cursor math. Moves per round = 4 bids + up to 52 cards.
+- Interprets the flat `model.events` stream — grouping `play` events into tricks/rounds
+  via each event's `leader` + seat rotation — into a linear move list so `next() /
+  prev() / seek(i) / jumpRound(r)` are O(1) cursor math. Moves per round = 4 bids + up
+  to 52 cards.
 - Exposes a derived **`ViewState`** for the current cursor: seat to act, cards on
   the table this trick, each seat's remaining hand, current round's bids,
-  `tricks_won` so far, and `cumulative` score (read straight from the annotation —
+  `tricks_won` so far, and `cumulative` score (read from `annotations.*_by_round` —
   no scoring math in TS).
 - Computes the **trick winner** when a trick completes — the one derivable thing:
   highest spade, else highest card of the led suit.
