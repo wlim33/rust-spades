@@ -42,6 +42,16 @@ const BROADCAST_CAP: usize = 64;
 /// `?since=N` rather than being forced to re-snapshot.
 const RECENT_CAP: usize = 128;
 
+/// Replay data for a terminal game: the game-agnostic notation model and the
+/// cumulative `[team_a, team_b]` score after each fully-played round.
+///
+/// Returned only for `Completed` or `Aborted` games; an in-progress game
+/// replies `None` so the handler can 403 rather than leak hidden hands.
+pub struct ReplayData {
+    pub model: spades::transcript::Model,
+    pub cumulative_by_round: Vec<[i32; 2]>,
+}
+
 /// Commands the actor accepts from its inbox. Every variant that returns a
 /// value carries a `oneshot::Sender` for the reply.
 pub enum GameCmd {
@@ -79,6 +89,12 @@ pub enum GameCmd {
     /// encoded, so there's no race between "is it over" and "encode".
     GetTranscript {
         reply: oneshot::Sender<Option<String>>,
+    },
+    /// Build the full replay model + per-round score history. Reply is
+    /// `Some(ReplayData)` only for terminal games (`Completed` or `Aborted`);
+    /// in-progress games reply `None`. Same terminal guard as `GetTranscript`.
+    GetReplayData {
+        reply: oneshot::Sender<Option<ReplayData>>,
     },
     /// Broadcast a chat message to all subscribers. Auth happens at the
     /// HTTP handler — the actor trusts the caller.
@@ -175,6 +191,16 @@ impl GameHandle {
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(GameCmd::GetTranscript { reply: tx })
+            .map_err(|_| GameManagerError::GameNotFound)?;
+        rx.await.map_err(|_| GameManagerError::GameNotFound)
+    }
+
+    /// Returns `Some(ReplayData)` if the game has terminated, `None` if still
+    /// in progress.
+    pub async fn get_replay_data(&self) -> Result<Option<ReplayData>, GameManagerError> {
+        let (tx, rx) = oneshot::channel();
+        self.sender
+            .send(GameCmd::GetReplayData { reply: tx })
             .map_err(|_| GameManagerError::GameNotFound)?;
         rx.await.map_err(|_| GameManagerError::GameNotFound)
     }
@@ -319,6 +345,23 @@ impl GameActor {
                 let out = match self.game.get_state() {
                     State::Completed | State::Aborted => {
                         Some(spades::transcript::encode(&self.game))
+                    }
+                    _ => None,
+                };
+                let _ = reply.send(out);
+            }
+            GameCmd::GetReplayData { reply } => {
+                let out = match self.game.get_state() {
+                    State::Completed | State::Aborted => {
+                        let model = spades::transcript::to_model(&self.game);
+                        // round_summaries replays the model; it cannot fail for a
+                        // model produced from a valid game, but propagate defensively.
+                        let cumulative =
+                            spades::transcript::round_summaries(&model).unwrap_or_default();
+                        Some(ReplayData {
+                            model,
+                            cumulative_by_round: cumulative,
+                        })
                     }
                     _ => None,
                 };

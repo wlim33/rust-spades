@@ -464,6 +464,15 @@ impl GameManager {
         self.handle(game_id).await?.get_transcript().await
     }
 
+    /// `Ok(Some(data))` for a terminated game; `Ok(None)` for in-progress.
+    /// `Err(GameNotFound)` when the game is unknown.
+    pub async fn get_replay_data(
+        &self,
+        game_id: Uuid,
+    ) -> Result<Option<crate::game_actor::ReplayData>, GameManagerError> {
+        self.handle(game_id).await?.get_replay_data().await
+    }
+
     pub async fn send_chat(
         &self,
         game_id: Uuid,
@@ -568,6 +577,56 @@ impl Default for GameManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn get_replay_data_none_for_in_progress_some_for_terminal() {
+        // Use a full-AI game at 50 points so it completes quickly via the
+        // actor's AI cascade. All 4 seats are AI (empty human_seats set).
+        let m = GameManager::new();
+        let r = m
+            .create_ai_game(
+                HashSet::new(),
+                50,
+                None,
+                Arc::new(spades::ai::RandomStrategy),
+            )
+            .unwrap();
+
+        // Before Start the game is NotStarted — replay data should be None.
+        let pre_start = m.get_replay_data(r.game_id).await.unwrap();
+        assert!(
+            pre_start.is_none(),
+            "NotStarted game must not expose replay data"
+        );
+
+        // Start kicks off the AI cascade; with all-AI seats and low max_points
+        // the game typically completes synchronously inside handle_transition_full.
+        m.make_transition(r.game_id, GameTransition::Start)
+            .await
+            .unwrap();
+
+        // Poll until the game reaches a terminal state (AI cascade may need a
+        // moment if it ended up mid-round on the first tick).
+        let mut data = None;
+        for _ in 0..200 {
+            let state = m.get_game_state(r.game_id).await.unwrap();
+            if matches!(state.state, State::Completed | State::Aborted) {
+                data = m.get_replay_data(r.game_id).await.unwrap();
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+        }
+
+        let data = data.expect("terminal game must yield replay data");
+        assert!(
+            !data.model.events.is_empty(),
+            "replay model must have events for a played game"
+        );
+        assert!(
+            data.cumulative_by_round.len() >= 1,
+            "must have at least one round summary"
+        );
+    }
 
     #[tokio::test]
     async fn create_then_state_and_remove() {
