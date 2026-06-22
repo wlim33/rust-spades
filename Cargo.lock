@@ -3147,6 +3147,7 @@ dependencies = [
  "serde_json",
  "sqids",
  "thiserror 2.0.18",
+ "trick-notation",
  "uuid",
 ]
 
