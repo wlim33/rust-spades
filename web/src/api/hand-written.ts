@@ -23,7 +23,7 @@ export async function fetchReplay(id: string): Promise<ReplayResponse> {
     const msg = typeof error === 'object' && error !== null && 'message' in error
       ? String((error as { message: unknown }).message)
       : 'replay fetch failed';
-    throw new ApiError(response.status, msg);
+    throw new ApiError(response?.status ?? 0, msg);
   }
   return data;
 }
