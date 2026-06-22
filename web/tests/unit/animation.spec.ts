@@ -15,4 +15,11 @@ describe('easings', () => {
   it('quartIn at 0.5 is 0.0625', () => {
     expect(EASE.quartIn(0.5)).toBeCloseTo(0.0625, 5);
   });
+  it('backOut is 0 at 0 and exactly 1 at 1', () => {
+    expect(EASE.backOut(0)).toBeCloseTo(0, 10);
+    expect(EASE.backOut(1)).toBe(1);
+  });
+  it('backOut overshoots past 1 before settling', () => {
+    expect(EASE.backOut(0.6)).toBeGreaterThan(1);
+  });
 });

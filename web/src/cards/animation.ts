@@ -2,13 +2,21 @@ import { setPos, type CardEl } from './card-el';
 
 export type EaseFn = (t: number) => number;
 
-export const EASE: Record<'linear' | 'quartIn' | 'quartOut', EaseFn> = {
+export const EASE: Record<'linear' | 'quartIn' | 'quartOut' | 'backOut', EaseFn> = {
   linear: (t) => t,
   quartOut: (t) => {
     const u = t - 1;
     return 1 - u * u * u * u;
   },
   quartIn: (t) => t * t * t * t,
+  // Back ease out: overshoots past 1 and settles back.
+  // Formula: 1 + c3 * u³ + OVERSHOOT * u²  where u = t − 1, c3 = OVERSHOOT + 1.
+  backOut: (t) => {
+    const OVERSHOOT = 1.2;
+    const u = t - 1;
+    const c3 = OVERSHOOT + 1;
+    return 1 + c3 * u * u * u + OVERSHOOT * u * u;
+  },
 };
 
 export type AnimateOpts = {
