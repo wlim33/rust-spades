@@ -1,0 +1,19 @@
+[package]
+name = "trick-notation"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "Game-agnostic notation for trick-taking card games (model, canonical text, JSON)."
+categories = ["games", "game-engines", "encoding"]
+keywords = ["cards", "trick-taking", "notation", "pgn", "serialization"]
+
+[lib]
+name = "trick_notation"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = "2"
