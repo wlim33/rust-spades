@@ -26,3 +26,22 @@ pub(crate) fn format_holdings(cards: &[Card], deck: &Deck) -> String {
     }
     groups.join(".")
 }
+
+/// Inverse of [`format_holdings`]: `AK.T.-.-` → the cards, using `deck.suits`
+/// order to assign each dot-group its suit.
+pub(crate) fn parse_holdings(s: &str, deck: &Deck) -> Option<Vec<Card>> {
+    let groups: Vec<&str> = s.split('.').collect();
+    if groups.len() != deck.suits.len() {
+        return None;
+    }
+    let mut cards = Vec::new();
+    for (suit, group) in deck.suits.iter().zip(groups) {
+        if group == "-" {
+            continue;
+        }
+        for ch in group.chars() {
+            cards.push(Card::Suited { suit: suit.clone(), rank: ch.to_string() });
+        }
+    }
+    Some(cards)
+}
