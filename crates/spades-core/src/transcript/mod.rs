@@ -63,6 +63,14 @@ pub fn to_model(game: &Game) -> Model {
     adapter::game_to_model(game)
 }
 
+/// Compute the cumulative `[team_a, team_b]` score after each fully-played round
+/// by replaying the model through the engine and snapshotting at round
+/// boundaries. Returns one entry per fully-played round; an in-progress game
+/// may return fewer entries than total rounds started.
+pub fn round_summaries(model: &Model) -> Result<Vec<[i32; 2]>, ReplayError> {
+    adapter::round_summaries(model)
+}
+
 /// Failure parsing trick-notation text into a [`Model`].
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DecodeError {

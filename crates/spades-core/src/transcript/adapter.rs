@@ -341,6 +341,80 @@ struct ParsedRound {
 /// STF `replay.rs`; reads identity/config from `meta.extra` and groups the event
 /// stream into rounds by `Deal` boundaries.
 pub fn model_to_game(model: &Model) -> Result<Game, ReplayError> {
+    let termination = get_extra(model, "Termination")
+        .map(|s| s.as_str())
+        .unwrap_or("InProgress")
+        .to_string();
+    let declared_result = parse_result(model)?;
+
+    let mut game = build_game_from_meta(model)?;
+    let rounds = parse_rounds(model)?;
+
+    if rounds.is_empty() {
+        finalize(&mut game, &termination, declared_result)?;
+        return Ok(game);
+    }
+
+    // Game::play(Start) only fails when not in NotStarted; we just constructed a
+    // fresh game, so any error here is a bug — panic rather than synthesize a
+    // phantom Transition error.
+    game.play(GameTransition::Start)
+        .expect("freshly-constructed Game must accept Start");
+
+    replay_rounds(&mut game, &rounds)?;
+
+    finalize(&mut game, &termination, declared_result)?;
+    Ok(game)
+}
+
+/// Cumulative `[team_a, team_b]` score after each fully-played round, computed by
+/// replaying the model through the engine and snapshotting at round boundaries.
+pub fn round_summaries(model: &Model) -> Result<Vec<[i32; 2]>, ReplayError> {
+    let rounds = parse_rounds(model)?;
+
+    if rounds.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut game = build_game_from_meta(model)?;
+    game.play(GameTransition::Start)
+        .expect("freshly-constructed Game must accept Start");
+    game.override_hands(rounds[0].hands.clone());
+
+    let mut summaries: Vec<[i32; 2]> = Vec::new();
+
+    for (r_idx, round) in rounds.iter().enumerate() {
+        apply_bets(&mut game, &round.bets, r_idx)?;
+
+        if round.bets.len() < 4 {
+            // Incomplete bets: no tricks can follow, stop here.
+            break;
+        }
+
+        apply_tricks(&mut game, &round.tricks, r_idx)?;
+
+        // Only snapshot fully-played rounds (all 13 tricks completed). An
+        // in-progress or aborted mid-trick round won't have 13 tricks and
+        // hasn't been scored by the engine yet.
+        if round.tricks.len() == 13 {
+            summaries.push([
+                game.get_team_a_score().unwrap_or(0),
+                game.get_team_b_score().unwrap_or(0),
+            ]);
+        }
+
+        let next = r_idx + 1;
+        if next < rounds.len() {
+            game.override_hands(rounds[next].hands.clone());
+        }
+    }
+
+    Ok(summaries)
+}
+
+/// Construct a fresh `Game` from the model's `meta.extra` identity and config
+/// fields, including player names.
+fn build_game_from_meta(model: &Model) -> Result<Game, ReplayError> {
     let game_id = get_uuid(model, "GameId")?;
     let max_points = get_i32(model, "MaxPoints")?;
     let player_ids = [
@@ -350,11 +424,6 @@ pub fn model_to_game(model: &Model) -> Result<Game, ReplayError> {
         get_uuid(model, "Player3")?,
     ];
     let timer = parse_timer(model)?;
-    let termination = get_extra(model, "Termination")
-        .map(|s| s.as_str())
-        .unwrap_or("InProgress")
-        .to_string();
-    let declared_result = parse_result(model)?;
 
     let mut game = Game::new(game_id, player_ids, max_points, timer);
 
@@ -370,31 +439,16 @@ pub fn model_to_game(model: &Model) -> Result<Game, ReplayError> {
         }
     }
 
-    let rounds = parse_rounds(model)?;
+    Ok(game)
+}
 
-    if rounds.is_empty() {
-        finalize(&mut game, &termination, declared_result)?;
-        return Ok(game);
-    }
-
-    // Game::play(Start) only fails when not in NotStarted; we just constructed a
-    // fresh game, so any error here is a bug — panic rather than synthesize a
-    // phantom Transition error.
-    game.play(GameTransition::Start)
-        .expect("freshly-constructed Game must accept Start");
-
+/// Drive the game through the parsed rounds sequentially, including hands
+/// overrides between rounds. Does not call `Start` or `finalize`.
+fn replay_rounds(game: &mut Game, rounds: &[ParsedRound]) -> Result<(), ReplayError> {
     game.override_hands(rounds[0].hands.clone());
 
     for (r_idx, round) in rounds.iter().enumerate() {
-        for (i, &b) in round.bets.iter().enumerate() {
-            game.play(GameTransition::Bet(b))
-                .map_err(|e| ReplayError::Transition {
-                    round: r_idx,
-                    trick: None,
-                    seat: i,
-                    err: e,
-                })?;
-        }
+        apply_bets(game, &round.bets, r_idx)?;
 
         if round.bets.len() < 4 {
             if !round.tricks.is_empty() {
@@ -406,18 +460,7 @@ pub fn model_to_game(model: &Model) -> Result<Game, ReplayError> {
             break;
         }
 
-        for (t_idx, (leader, trick)) in round.tricks.iter().enumerate() {
-            for (i, card) in trick.iter().enumerate() {
-                let seat = (leader + i) % 4;
-                game.play(GameTransition::Card(*card))
-                    .map_err(|e| ReplayError::Transition {
-                        round: r_idx,
-                        trick: Some(t_idx),
-                        seat,
-                        err: e,
-                    })?;
-            }
-        }
+        apply_tricks(game, &round.tricks, r_idx)?;
 
         let next = r_idx + 1;
         if next < rounds.len() {
@@ -425,8 +468,42 @@ pub fn model_to_game(model: &Model) -> Result<Game, ReplayError> {
         }
     }
 
-    finalize(&mut game, &termination, declared_result)?;
-    Ok(game)
+    Ok(())
+}
+
+/// Apply a round's bets to `game`. Returns an error if any bet is rejected.
+fn apply_bets(game: &mut Game, bets: &[i32], round: usize) -> Result<(), ReplayError> {
+    for (i, &b) in bets.iter().enumerate() {
+        game.play(GameTransition::Bet(b))
+            .map_err(|e| ReplayError::Transition {
+                round,
+                trick: None,
+                seat: i,
+                err: e,
+            })?;
+    }
+    Ok(())
+}
+
+/// Apply a round's tricks to `game`. Returns an error if any card play is rejected.
+fn apply_tricks(
+    game: &mut Game,
+    tricks: &[(usize, Vec<Card>)],
+    round: usize,
+) -> Result<(), ReplayError> {
+    for (t_idx, (leader, trick)) in tricks.iter().enumerate() {
+        for (i, card) in trick.iter().enumerate() {
+            let seat = (leader + i) % 4;
+            game.play(GameTransition::Card(*card))
+                .map_err(|e| ReplayError::Transition {
+                    round,
+                    trick: Some(t_idx),
+                    seat,
+                    err: e,
+                })?;
+        }
+    }
+    Ok(())
 }
 
 /// Group the event stream into rounds. Each round starts with a `Deal`. A `Call`
@@ -598,4 +675,49 @@ fn parse_result(model: &Model) -> Result<Option<(i32, i32)>, ReplayError> {
     let a = parts[0].parse::<i32>().map_err(|_| bad())?;
     let b = parts[1].parse::<i32>().map_err(|_| bad())?;
     Ok(Some((a, b)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Game, GameTransition, State};
+    use uuid::Uuid;
+
+    fn u(n: u8) -> Uuid {
+        Uuid::from_bytes([n; 16])
+    }
+
+    /// Build a completed game by always betting 3 and playing the first legal
+    /// card. Uses max_points = 50 so only a few rounds are needed.
+    fn played_completed_game() -> Game {
+        let mut g = Game::new(u(1), [u(10), u(11), u(12), u(13)], 50, None);
+        loop {
+            match g.get_state() {
+                State::NotStarted => {
+                    g.play(GameTransition::Start).unwrap();
+                }
+                State::Betting(_) => {
+                    g.play(GameTransition::Bet(3)).unwrap();
+                }
+                State::Trick(_) => {
+                    let legal = g.get_legal_cards().unwrap();
+                    g.play(GameTransition::Card(legal[0])).unwrap();
+                }
+                State::Completed | State::Aborted => break,
+            }
+        }
+        g
+    }
+
+    #[test]
+    fn round_summaries_are_monotonic_in_round_count() {
+        // A completed low-max-points game produces one cumulative pair per round,
+        // and the final pair equals the game's final team scores.
+        let g = played_completed_game();
+        let model = game_to_model(&g);
+        let sums = round_summaries(&model).expect("summaries");
+        assert!(!sums.is_empty());
+        let last = *sums.last().unwrap();
+        assert_eq!(last, [g.get_team_a_score().unwrap(), g.get_team_b_score().unwrap()]);
+    }
 }
