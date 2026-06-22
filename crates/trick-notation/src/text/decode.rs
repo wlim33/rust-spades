@@ -30,8 +30,6 @@ fn parse_header(line: &str) -> Option<(String, String)> {
     Some((key.to_string(), value.to_string()))
 }
 
-const KNOWN_HEADERS: &[&str] =
-    &["Game", "Deck", "Seats", "Dealer", "Players", "Partnerships", "Caps"];
 
 pub fn from_text(text: &str) -> Result<Model, ParseError> {
     let mut lines = text.lines().enumerate();
@@ -94,7 +92,6 @@ pub fn from_text(text: &str) -> Result<Model, ParseError> {
                     );
                 }
                 "Caps" => meta.caps = value.split_whitespace().map(String::from).collect(),
-                _ if KNOWN_HEADERS.contains(&key.as_str()) => unreachable!(),
                 _ => meta.extra.push((key, value)),
             }
             continue;
@@ -166,7 +163,7 @@ fn parse_event(line: &str, line_no: usize, deck: &Deck) -> Result<Event, ParseEr
             let (target, cards) = rest.split_once(':').ok_or_else(bad)?;
             let toks: Vec<&str> = cards.split_whitespace().collect();
             Ok(Event::Reveal {
-                target: target.to_string(),
+                target: target.trim().to_string(),
                 cards: cards_from_tokens(&toks, line_no)?,
             })
         }
