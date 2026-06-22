@@ -52,7 +52,12 @@ export async function bootFromUrl(shortId: string): Promise<BootResult> {
       const hand = await request<HandResponse>(`/games/${saved.gid}/players/${saved.pid}/hand`, {
         method: 'GET',
       });
-      const store = createGameStore(saved.pid);
+      // Identify self by the canonical UUID the server resolved (hand.player_id),
+      // not saved.pid — a session saved before this fix holds a short id, which
+      // never equals the UUID current_player_id, so the player's turn (and thus
+      // their input) would never activate. saved.pid still works as the hand-fetch
+      // URL token because that endpoint accepts either id form.
+      const store = createGameStore(hand.player_id);
       store.applyState(state, hand);
       try {
         const presence = await request<{ players: PresencePlayer[] }>(
@@ -63,7 +68,7 @@ export async function bootFromUrl(shortId: string): Promise<BootResult> {
       } catch {
         // optional
       }
-      return { kind: 'game', store, gameId: saved.gid, playerId: saved.pid };
+      return { kind: 'game', store, gameId: saved.gid, playerId: hand.player_id };
     } catch {
       clearSession(shortId);
     }
@@ -78,7 +83,13 @@ export async function bootFromUrl(shortId: string): Promise<BootResult> {
       game: GameStateResponse;
       hand: HandResponse;
     }>(`/games/by-player-url/${shortId}`, { method: 'GET' });
-    const playerId = resp.player_short_id ?? resp.player_id;
+    // Self must be the canonical UUID: every turn comparison (isMyTurn, active
+    // seat) tests it against current_player_id / player_names[].player_id, which
+    // the server emits as UUIDs. player_short_id is a URL alias in a different
+    // namespace — using it here means self never matches the active player and
+    // the player's input is never enabled. Endpoints (ws/hand/play) accept the
+    // UUID directly, so the short id is not needed past the by-player-url lookup.
+    const playerId = resp.player_id;
     const store = createGameStore(playerId);
     store.applyState(resp.game, resp.hand);
     saveSession(shortId, resp.game_id, playerId);
