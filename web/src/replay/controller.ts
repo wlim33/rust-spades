@@ -28,7 +28,6 @@ export type ViewState = {
 // Absolute seat indices: N=0, E=1, S=2, W=3
 const SEAT_NAME_TO_ABS: Record<string, number> = { N: 0, E: 1, S: 2, W: 3 };
 const ABS_SEATS = [0, 1, 2, 3] as const;
-const ALL_SEATS: Seat[] = ['south', 'north', 'east', 'west'];
 
 // ----------------------------------------------------------------------------
 // Internal parsed structures
@@ -396,5 +395,3 @@ export class ReplayController {
   }
 }
 
-// Export RANK_ORDER for test access (re-export from helpers to keep controller self-contained)
-export { RANK_ORDER };
