@@ -56,6 +56,13 @@ pub fn replay(model: &Model) -> Result<Game, ReplayError> {
     adapter::model_to_game(model)
 }
 
+/// Build the game-agnostic notation model directly from a `Game`. Unlike
+/// `decode(&encode(game))`, this preserves player names verbatim (the canonical
+/// text format is lossy for names with whitespace/quotes — see Known limitations).
+pub fn to_model(game: &Game) -> Model {
+    adapter::game_to_model(game)
+}
+
 /// Failure parsing trick-notation text into a [`Model`].
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DecodeError {
@@ -833,6 +840,38 @@ mod tests {
             names[1].1,
             Some("Jones"),
             "second name token (from 'Bo Jones'); Alice shifts to next seat"
+        );
+    }
+
+    #[test]
+    fn to_model_matches_encode_decode_path_for_simple_game() {
+        // to_model(game) must equal decode(encode(game)) when round-tripped:
+        // encode(game) -> to_model should equal encode(decode(encode(game))).
+        // This verifies to_model produces the same serialization as the text path.
+        let mut g = new_game(500, None);
+        g.play(GameTransition::Start).unwrap();
+        g.play(GameTransition::Bet(3)).unwrap();
+        g.play(GameTransition::Bet(3)).unwrap();
+        g.play(GameTransition::Bet(3)).unwrap();
+        g.play(GameTransition::Bet(3)).unwrap();
+        // Play a few legal cards into the first trick.
+        for _ in 0..2 {
+            let legal = g.get_legal_cards().unwrap();
+            g.play(GameTransition::Card(legal[0])).unwrap();
+        }
+
+        // Verify: to_model should produce the same text encoding as the game itself.
+        // This is the key invariant: to_model(g) produces a Model that when
+        // serialized to text via trick_notation should match encode(g).
+        let direct_model = to_model(&g);
+        let direct_text = trick_notation::to_text(&direct_model);
+        let game_text = encode(&g);
+
+        // Normalize: both paths should produce identical text (the text format
+        // is not lossy for games without player names).
+        assert_eq!(
+            direct_text, game_text,
+            "to_model should produce the same serialization as encode"
         );
     }
 }
