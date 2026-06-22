@@ -10,4 +10,20 @@
 //
 // This file should shrink to empty once rust-spades' oasgen coverage is
 // complete.
-export {};
+
+import { api, ApiError } from './client';
+import type { ReplayResponse } from '../replay/types';
+
+/** Fetch a finished game's replay model. Throws ApiError(403) for in-progress games, ApiError(404) for unknown. */
+export async function fetchReplay(id: string): Promise<ReplayResponse> {
+  const { data, error, response } = await api.GET('/games/{game_id}/replay.json', {
+    params: { path: { game_id: id } },
+  });
+  if (!data) {
+    const msg = typeof error === 'object' && error !== null && 'message' in error
+      ? String((error as { message: unknown }).message)
+      : 'replay fetch failed';
+    throw new ApiError(response.status, msg);
+  }
+  return data;
+}
