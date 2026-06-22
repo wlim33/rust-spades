@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 pub type Sym = String;
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Card {
     Suited { suit: Sym, rank: Sym },

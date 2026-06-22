@@ -13,7 +13,14 @@ keywords = ["cards", "trick-taking", "notation", "pgn", "serialization"]
 name = "trick_notation"
 path = "src/lib.rs"
 
+[features]
+default = []
+# Derive `oasgen::OaSchema` on public types so downstream HTTP layers can
+# generate an OpenAPI spec without re-wrapping our types.
+openapi = ["dep:oasgen"]
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = "2"
+oasgen = { version = "0.25", features = ["uuid"], optional = true }

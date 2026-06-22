@@ -4,12 +4,25 @@ use axum::{
     response::Json,
 };
 use oasgen::oasgen;
+use serde::Serialize;
 use spades::{GameTransition, decode_player_url, short_id_to_uuid, uuid_to_short_id};
 use spades_server::game_manager::{
     CreateGameResponse, GameManagerError, GameStateResponse, HandResponse,
 };
 use spades_server::validation::validate_player_name;
 use uuid::Uuid;
+
+/// JSON replay response for a terminal game — available at
+/// `GET /games/{game_id}/replay.json`.
+#[derive(Debug, Serialize, oasgen::OaSchema)]
+pub struct GameReplayResponse {
+    pub model: spades::transcript::Model,
+    /// Cumulative `[team_a, team_b]` score after each fully-played round.
+    /// Each inner array always has exactly 2 elements.
+    pub cumulative_by_round: Vec<Vec<i32>>,
+    /// Seat index (0..4) the authenticated caller played, if any; else null.
+    pub viewer_seat: Option<usize>,
+}
 
 use super::super::dto::{
     ChatRequest, CreateGameRequest, ErrorResponse, PlayerUrlResponse, PresenceSnapshot,
@@ -655,6 +668,59 @@ pub async fn post_chat(
             )
         })?;
     Ok(StatusCode::ACCEPTED)
+}
+
+/// Return a JSON replay of a terminal game. Refused (403) for in-progress
+/// games — the model would expose hidden hands. Resolves `viewer_seat` from
+/// the auth `Identity` so clients can orient the replay to the viewer.
+#[oasgen]
+pub async fn get_replay_json(
+    AxumState(state): AxumState<AppState>,
+    Path(game_id): Path<Uuid>,
+    identity: spades_server::auth::Identity,
+) -> Result<Json<GameReplayResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let data = state
+        .game_manager
+        .get_replay_data(game_id)
+        .await
+        .map_err(|e| {
+            let status = match e {
+                GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse { error: format!("{e}") }))
+        })?;
+    let Some(data) = data else {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "replay is only available for completed or aborted games".to_string(),
+            }),
+        ));
+    };
+
+    // Resolve the caller's seat (if they played) from the seat roster.
+    let viewer_seat = state
+        .auth
+        .store
+        .game_seats_for_game(game_id)
+        .ok()
+        .and_then(|seats| {
+            seats
+                .iter()
+                .find(|s| seat_matches_identity(s, &identity))
+                .map(|s| s.seat_index as usize)
+        });
+
+    Ok(Json(GameReplayResponse {
+        model: data.model,
+        cumulative_by_round: data
+            .cumulative_by_round
+            .into_iter()
+            .map(|[a, b]| vec![a, b])
+            .collect(),
+        viewer_seat,
+    }))
 }
 
 /// Return a PGN-style text transcript of a finished game. Refused for

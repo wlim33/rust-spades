@@ -10,6 +10,7 @@ use crate::deck::Deck;
 pub type Target = String;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
 pub struct Meta {
     pub version: u8,
     pub game_hint: Option<Sym>,
@@ -19,13 +20,20 @@ pub struct Meta {
     pub partnerships: Option<Vec<Vec<Sym>>>,
     pub caps: Vec<Sym>,
     /// Open tag namespace for game-specific config (e.g. spades MaxPoints).
+    /// Serialized as `[["key", "value"], …]`; omitted from the OpenAPI schema
+    /// because oasgen 0.25 does not implement OaSchema for tuple types.
+    #[cfg_attr(feature = "openapi", oasgen(skip))]
     pub extra: Vec<(String, String)>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Event {
     Deal {
+        /// Serialized as `[["seat", [cards…]], …]`; omitted from the OpenAPI
+        /// schema because oasgen 0.25 does not implement OaSchema for tuples.
+        #[cfg_attr(feature = "openapi", oasgen(skip))]
         hands: Vec<(Target, Vec<Card>)>,
     },
     Call {
@@ -48,6 +56,7 @@ pub enum Event {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
 pub struct Model {
     pub meta: Meta,
     pub deck: Deck,

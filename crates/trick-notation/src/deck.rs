@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::card::{Card, Sym};
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
 pub struct Deck {
     pub suits: Vec<Sym>,
     pub ranks: Vec<Sym>,

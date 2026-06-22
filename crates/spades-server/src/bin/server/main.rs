@@ -17,7 +17,8 @@ use handlers::challenges::{
 };
 use handlers::games::{
     create_game, delete_game, get_game_by_player_url, get_game_by_short_id_handler, get_game_state,
-    get_hand, get_presence, get_replay, make_transition, post_chat, root, set_player_name,
+    get_hand, get_presence, get_replay, get_replay_json, make_transition, post_chat, root,
+    set_player_name,
 };
 use handlers::matchmaking::{list_seeks_handler, queue_sizes_handler, seek};
 use handlers::players::{get_player, set_display_name};
@@ -80,6 +81,7 @@ pub fn build_router(state: AppState) -> Router {
     let server = server
         // Game endpoints
         .get("/games/{game_id}", get_game_state)
+        .get("/games/{game_id}/replay.json", get_replay_json)
         .post("/games/{game_id}/transition", make_transition)
         .get("/games/{game_id}/players/{player_id}/hand", get_hand)
         .get(
@@ -1013,6 +1015,89 @@ mod tests {
         assert!(
             body.contains("\n"),
             "transcript looks structurally suspect: {body:?}"
+        );
+    }
+
+    // ---- replay.json endpoint -------------------------------------------
+
+    #[tokio::test]
+    async fn replay_json_200_for_terminal_403_for_in_progress_404_for_missing() {
+        // 404 — unknown game id.
+        let server = test_app();
+        let resp = server
+            .get(&format!("/games/{}/replay.json", Uuid::new_v4()))
+            .await;
+        assert_eq!(resp.status_code(), StatusCode::NOT_FOUND);
+
+        // 403 — game exists but is still in progress (NotStarted).
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({"max_points": 500}))
+            .await
+            .json();
+        let resp = server
+            .get(&format!("/games/{}/replay.json", create.game_id))
+            .await;
+        assert_eq!(resp.status_code(), StatusCode::FORBIDDEN);
+
+        // Start it: now in Betting — still in progress.
+        server
+            .post(&format!("/games/{}/transition", create.game_id))
+            .json(&serde_json::json!({"type": "start"}))
+            .await
+            .assert_status_ok();
+        let resp = server
+            .get(&format!("/games/{}/replay.json", create.game_id))
+            .await;
+        assert_eq!(resp.status_code(), StatusCode::FORBIDDEN);
+
+        // 200 — terminal game (aborted via zero-second clock).
+        let create2: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({
+                "max_points": 100,
+                "timer_config": { "initial_time_secs": 0, "increment_secs": 0 }
+            }))
+            .await
+            .json();
+        server
+            .post(&format!("/games/{}/transition", create2.game_id))
+            .json(&serde_json::json!({"type": "start"}))
+            .await
+            .assert_status_ok();
+
+        // Give the actor's timer task a moment to fire the abort.
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+
+        let resp = server
+            .get(&format!("/games/{}/replay.json", create2.game_id))
+            .await;
+        assert_eq!(resp.status_code(), StatusCode::OK);
+
+        let body: serde_json::Value = resp.json();
+        // model must be a well-formed object with meta, deck, and events.
+        assert!(
+            body["model"].is_object(),
+            "model must be a JSON object, got: {:?}", body["model"],
+        );
+        assert!(
+            body["model"]["meta"].is_object(),
+            "model.meta must be a JSON object, got: {:?}", body["model"]["meta"],
+        );
+        assert!(
+            body["model"]["events"].is_array(),
+            "model.events must be an array, got: {:?}", body["model"]["events"],
+        );
+        // cumulative_by_round must be present (array, possibly empty for a
+        // game that aborted before the first round completed).
+        assert!(
+            body["cumulative_by_round"].is_array(),
+            "cumulative_by_round must be an array, got: {:?}", body["cumulative_by_round"],
+        );
+        // viewer_seat: the creating session owns seat 0, so it should be Some(0).
+        assert_eq!(
+            body["viewer_seat"], 0,
+            "creating session should own seat 0, got: {:?}", body["viewer_seat"],
         );
     }
 

@@ -3979,6 +3979,7 @@ dependencies = [
 name = "trick-notation"
 version = "3.0.0"
 dependencies = [
+ "oasgen",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
