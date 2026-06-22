@@ -19,7 +19,7 @@ export type Card = { suit: Suit; rank: Rank };
 export type Phase = 'MENU' | 'CREATE' | 'WAITING' | 'LOBBY' | 'BETTING' | 'PLAYING' | 'GAME_OVER';
 
 const SUIT_ORDER: Suit[] = ['Spade', 'Heart', 'Diamond', 'Club'];
-const RANK_ORDER: Rank[] = [
+export const RANK_ORDER: Rank[] = [
   'Two',
   'Three',
   'Four',
