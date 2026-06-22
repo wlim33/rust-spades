@@ -8,3 +8,6 @@
 
 mod card;
 pub use card::{Card, Sym, format_card, parse_card};
+
+mod deck;
+pub use deck::Deck;
