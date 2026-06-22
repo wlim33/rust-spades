@@ -387,7 +387,12 @@ pub fn round_summaries(model: &Model) -> Result<Vec<[i32; 2]>, ReplayError> {
         apply_bets(&mut game, &round.bets, r_idx)?;
 
         if round.bets.len() < 4 {
-            // Incomplete bets: no tricks can follow, stop here.
+            if !round.tricks.is_empty() {
+                return Err(ReplayError::InconsistentBetCount {
+                    round: r_idx,
+                    found: round.bets.len(),
+                });
+            }
             break;
         }
 
@@ -719,5 +724,12 @@ mod tests {
         assert!(!sums.is_empty());
         let last = *sums.last().unwrap();
         assert_eq!(last, [g.get_team_a_score().unwrap(), g.get_team_b_score().unwrap()]);
+
+        let n_rounds = model
+            .events
+            .iter()
+            .filter(|e| matches!(e, Event::Deal { .. }))
+            .count();
+        assert_eq!(sums.len(), n_rounds, "one cumulative summary per dealt round");
     }
 }
