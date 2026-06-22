@@ -113,6 +113,279 @@ pub enum ReplayError {
 }
 
 #[cfg(test)]
+mod adapter_error_tests {
+    //! Tests for error paths in `model_to_game` (adapter meta accessors).
+    //! Build a valid base model via `encode`→`decode`, then mutate `meta.extra`
+    //! to exercise each error branch.
+    use super::*;
+
+    fn base_model() -> Model {
+        use crate::Game;
+        use uuid::Uuid;
+        let game_id = Uuid::from_bytes([1u8; 16]);
+        let players = [
+            Uuid::from_bytes([10u8; 16]),
+            Uuid::from_bytes([11u8; 16]),
+            Uuid::from_bytes([12u8; 16]),
+            Uuid::from_bytes([13u8; 16]),
+        ];
+        let g = Game::new(game_id, players, 500, None);
+        // NotStarted game encodes without events.
+        decode(&encode(&g)).expect("base model decode")
+    }
+
+    /// Return a model with at least one Deal event (from a started-but-not-bet game).
+    fn started_model() -> Model {
+        use crate::{Game, GameTransition};
+        use uuid::Uuid;
+        let game_id = Uuid::from_bytes([2u8; 16]);
+        let players = [
+            Uuid::from_bytes([20u8; 16]),
+            Uuid::from_bytes([21u8; 16]),
+            Uuid::from_bytes([22u8; 16]),
+            Uuid::from_bytes([23u8; 16]),
+        ];
+        let mut g = Game::new(game_id, players, 500, None);
+        g.play(GameTransition::Start).unwrap();
+        decode(&encode(&g)).expect("started model decode")
+    }
+
+    fn set_extra(model: &mut Model, key: &str, value: &str) {
+        for (k, v) in model.meta.extra.iter_mut() {
+            if k == key {
+                *v = value.to_string();
+                return;
+            }
+        }
+        model.meta.extra.push((key.to_string(), value.to_string()));
+    }
+
+    fn remove_extra(model: &mut Model, key: &str) {
+        model.meta.extra.retain(|(k, _)| k != key);
+    }
+
+    // --- Timer error paths --------------------------------------------------
+
+    #[test]
+    fn bad_timer_no_plus_separator() {
+        let mut model = base_model();
+        set_extra(&mut model, "Timer", "abc");
+        assert!(
+            matches!(
+                replay(&model),
+                Err(ReplayError::BadMeta { key: "Timer", .. })
+            ),
+            "expected BadMeta for Timer without '+'"
+        );
+    }
+
+    #[test]
+    fn bad_timer_non_numeric_initial() {
+        let mut model = base_model();
+        set_extra(&mut model, "Timer", "abc+5");
+        assert!(
+            matches!(
+                replay(&model),
+                Err(ReplayError::BadMeta { key: "Timer", .. })
+            ),
+            "expected BadMeta for Timer with non-numeric initial"
+        );
+    }
+
+    #[test]
+    fn bad_timer_non_numeric_increment() {
+        let mut model = base_model();
+        set_extra(&mut model, "Timer", "300+xyz");
+        assert!(
+            matches!(
+                replay(&model),
+                Err(ReplayError::BadMeta { key: "Timer", .. })
+            ),
+            "expected BadMeta for Timer with non-numeric increment"
+        );
+    }
+
+    // --- Result error paths -------------------------------------------------
+
+    #[test]
+    fn bad_result_wrong_token_count() {
+        let mut model = base_model();
+        set_extra(&mut model, "Result", "100");
+        assert!(
+            matches!(
+                replay(&model),
+                Err(ReplayError::BadMeta { key: "Result", .. })
+            ),
+            "expected BadMeta for Result with only one token"
+        );
+    }
+
+    #[test]
+    fn bad_result_non_numeric() {
+        let mut model = base_model();
+        set_extra(&mut model, "Result", "abc def");
+        assert!(
+            matches!(
+                replay(&model),
+                Err(ReplayError::BadMeta { key: "Result", .. })
+            ),
+            "expected BadMeta for Result with non-numeric tokens"
+        );
+    }
+
+    // --- UUID error paths ---------------------------------------------------
+
+    #[test]
+    fn bad_game_id_uuid() {
+        let mut model = base_model();
+        set_extra(&mut model, "GameId", "not-a-uuid");
+        assert!(
+            matches!(
+                replay(&model),
+                Err(ReplayError::BadMeta { key: "GameId", .. })
+            ),
+            "expected BadMeta for malformed GameId"
+        );
+    }
+
+    #[test]
+    fn missing_game_id() {
+        let mut model = base_model();
+        remove_extra(&mut model, "GameId");
+        assert!(
+            matches!(
+                replay(&model),
+                Err(ReplayError::MissingMeta { key: "GameId" })
+            ),
+            "expected MissingMeta for absent GameId"
+        );
+    }
+
+    #[test]
+    fn bad_player0_uuid() {
+        let mut model = base_model();
+        set_extra(&mut model, "Player0", "garbage");
+        assert!(
+            matches!(
+                replay(&model),
+                Err(ReplayError::BadMeta { key: "Player0", .. })
+            ),
+            "expected BadMeta for malformed Player0"
+        );
+    }
+
+    #[test]
+    fn bad_max_points_non_numeric() {
+        let mut model = base_model();
+        set_extra(&mut model, "MaxPoints", "notanumber");
+        assert!(
+            matches!(
+                replay(&model),
+                Err(ReplayError::BadMeta {
+                    key: "MaxPoints",
+                    ..
+                })
+            ),
+            "expected BadMeta for non-numeric MaxPoints"
+        );
+    }
+
+    // --- Structural error paths ---------------------------------------------
+
+    #[test]
+    fn unsupported_event_exchange_rejected() {
+        use trick_notation::{Card as TnCard, Event};
+        let mut model = base_model();
+        model.events.push(Event::Exchange {
+            from: "N".to_string(),
+            to: "E".to_string(),
+            cards: vec![TnCard::Suited {
+                suit: "S".into(),
+                rank: "A".into(),
+            }],
+        });
+        assert!(
+            matches!(replay(&model), Err(ReplayError::UnsupportedEvent)),
+            "expected UnsupportedEvent for Exchange event"
+        );
+    }
+
+    #[test]
+    fn unsupported_event_reveal_rejected() {
+        use trick_notation::{Card as TnCard, Event};
+        let mut model = base_model();
+        model.events.push(Event::Reveal {
+            target: "N".to_string(),
+            cards: vec![TnCard::Suited {
+                suit: "S".into(),
+                rank: "A".into(),
+            }],
+        });
+        assert!(
+            matches!(replay(&model), Err(ReplayError::UnsupportedEvent)),
+            "expected UnsupportedEvent for Reveal event"
+        );
+    }
+
+    #[test]
+    fn call_event_before_deal_rejected() {
+        use trick_notation::Event;
+        let mut model = base_model();
+        // Insert a Call before any Deal.
+        model.events.insert(
+            0,
+            Event::Call {
+                start: "N".to_string(),
+                values: vec!["3".to_string()],
+            },
+        );
+        assert!(
+            matches!(replay(&model), Err(ReplayError::EventBeforeDeal)),
+            "expected EventBeforeDeal for Call before any Deal"
+        );
+    }
+
+    #[test]
+    fn play_event_before_deal_rejected() {
+        use trick_notation::{Card as TnCard, Event};
+        let mut model = base_model();
+        model.events.insert(
+            0,
+            Event::Play {
+                leader: "N".to_string(),
+                cards: vec![TnCard::Suited {
+                    suit: "S".into(),
+                    rank: "A".into(),
+                }],
+            },
+        );
+        assert!(
+            matches!(replay(&model), Err(ReplayError::EventBeforeDeal)),
+            "expected EventBeforeDeal for Play before any Deal"
+        );
+    }
+
+    #[test]
+    fn bad_seat_in_play_event() {
+        use trick_notation::{Card as TnCard, Event};
+        // Use a started model (has a Deal) so the Play gets past EventBeforeDeal.
+        let mut m = started_model();
+        // Append a Play with an invalid leader seat symbol.
+        m.events.push(Event::Play {
+            leader: "BADseat".to_string(),
+            cards: vec![TnCard::Suited {
+                suit: "S".into(),
+                rank: "A".into(),
+            }],
+        });
+        assert!(
+            matches!(replay(&m), Err(ReplayError::BadSeat { .. })),
+            "expected BadSeat for invalid seat symbol in Play"
+        );
+    }
+}
+
+#[cfg(test)]
 mod display_tests {
     use super::*;
     use crate::result::TransitionError;

@@ -62,3 +62,39 @@ fn fuzz_garbage_never_panics() {
         let _ = from_text(inp);
     }
 }
+
+#[test]
+fn accepted_inputs_round_trip_stably() {
+    // For every input that parses successfully, the round-trip must be stable:
+    // from_text(to_text(model)) == Ok(model).
+    let inputs = [
+        // Minimal valid game (no events).
+        "% trick-notation v1\n[Deck \"french52\"]\n[Seats \"N E S W\"]\n",
+        // Game with a Deal and a Play event.
+        "\
+% trick-notation v1\n\
+[Game \"spades\"]\n\
+[Deck \"french52\"]\n\
+[Seats \"N E S W\"]\n\
+[Dealer \"N\"]\n\
+D N:AK.-.-.- E:-.-.-.- S:-.-.-.- W:-.-.-.-\n\
+P N AC KC\n",
+        // Canonical sample model encoded from the API.
+        {
+            let m = sample_model();
+            Box::leak(to_text(&m).into_boxed_str())
+        },
+    ];
+    for inp in inputs {
+        if let Ok(model) = from_text(inp) {
+            let encoded = to_text(&model);
+            let reparsed = from_text(&encoded).unwrap_or_else(|e| {
+                panic!("re-parse of encoded text failed: {e}\ntext:\n{encoded}")
+            });
+            assert_eq!(
+                reparsed, model,
+                "round-trip was not stable for input:\n{inp}"
+            );
+        }
+    }
+}

@@ -112,13 +112,24 @@ pub fn from_text(text: &str) -> Result<Model, ParseError> {
     Ok(Model { meta, deck, events })
 }
 
-fn cards_from_tokens(toks: &[&str], line_no: usize) -> Result<Vec<Card>, ParseError> {
+fn cards_from_tokens(toks: &[&str], line_no: usize, deck: &Deck) -> Result<Vec<Card>, ParseError> {
     toks.iter()
         .map(|t| {
-            parse_card(t).ok_or(ParseError::BadCard {
+            let card = parse_card(t).ok_or(ParseError::BadCard {
                 line: line_no,
                 token: t.to_string(),
-            })
+            })?;
+            // For suited cards, validate both suit and rank against the deck.
+            // Special cards (e.g. *Joker) are not a Phase-1 deck feature; accept as-is.
+            if let Card::Suited { suit, rank } = &card
+                && (!deck.suits.contains(suit) || !deck.ranks.contains(rank))
+            {
+                return Err(ParseError::BadCard {
+                    line: line_no,
+                    token: t.to_string(),
+                });
+            }
+            Ok(card)
         })
         .collect()
 }
@@ -156,7 +167,7 @@ fn parse_event(line: &str, line_no: usize, deck: &Deck) -> Result<Event, ParseEr
             let toks: Vec<&str> = cards.split_whitespace().collect();
             Ok(Event::Play {
                 leader: leader.to_string(),
-                cards: cards_from_tokens(&toks, line_no)?,
+                cards: cards_from_tokens(&toks, line_no, deck)?,
             })
         }
         "X" => {
@@ -166,7 +177,7 @@ fn parse_event(line: &str, line_no: usize, deck: &Deck) -> Result<Event, ParseEr
             Ok(Event::Exchange {
                 from: from.to_string(),
                 to: to.to_string(),
-                cards: cards_from_tokens(&toks, line_no)?,
+                cards: cards_from_tokens(&toks, line_no, deck)?,
             })
         }
         "U" => {
@@ -174,7 +185,7 @@ fn parse_event(line: &str, line_no: usize, deck: &Deck) -> Result<Event, ParseEr
             let toks: Vec<&str> = cards.split_whitespace().collect();
             Ok(Event::Reveal {
                 target: target.trim().to_string(),
-                cards: cards_from_tokens(&toks, line_no)?,
+                cards: cards_from_tokens(&toks, line_no, deck)?,
             })
         }
         _ => Err(bad()),
@@ -216,5 +227,72 @@ P E KC 5C
     #[test]
     fn rejects_missing_version() {
         assert_eq!(from_text("[Game \"x\"]\n"), Err(ParseError::MissingVersion));
+    }
+
+    #[test]
+    fn rejects_out_of_deck_rank_in_holdings() {
+        // 'Z' is not a rank in french52; parse_holdings should return None → BadHoldings.
+        let text = "\
+% trick-notation v1
+[Deck \"french52\"]
+[Seats \"N E S W\"]
+D N:ZZ.-.-.-
+";
+        let err = from_text(text).expect_err("should reject out-of-deck rank");
+        assert!(
+            matches!(err, ParseError::BadHoldings { line: 4, .. }),
+            "expected BadHoldings on line 4, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_out_of_deck_rank_in_play_event() {
+        // 'ZC' has a valid suit but 'Z' is not a rank in french52.
+        let text = "\
+% trick-notation v1
+[Deck \"french52\"]
+[Seats \"N E S W\"]
+D N:AK.-.-.-
+P N ZC KC
+";
+        let err = from_text(text).expect_err("should reject out-of-deck card in P event");
+        assert!(
+            matches!(err, ParseError::BadCard { line: 5, .. }),
+            "expected BadCard on line 5, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_out_of_deck_suit_in_play_event() {
+        // 'KX' has a valid rank but 'X' is not a suit in french52.
+        let text = "\
+% trick-notation v1
+[Deck \"french52\"]
+[Seats \"N E S W\"]
+D N:AK.-.-.-
+P N KX AC
+";
+        let err = from_text(text).expect_err("should reject out-of-deck suit in P event");
+        assert!(
+            matches!(err, ParseError::BadCard { line: 5, .. }),
+            "expected BadCard on line 5, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn accepts_special_card_in_play_event() {
+        // *Joker is a Special — not validated against the deck in Phase 1.
+        let text = "\
+% trick-notation v1
+[Deck \"french52\"]
+[Seats \"N E S W\"]
+D N:AK.-.-.-
+P N *Joker KC
+";
+        // Should parse without error (we accept specials as-is).
+        assert!(
+            from_text(text).is_ok(),
+            "special card tokens should be accepted without deck validation"
+        );
     }
 }
