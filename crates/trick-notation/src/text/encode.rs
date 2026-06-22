@@ -43,8 +43,8 @@ pub fn to_text(model: &Model) -> String {
         match event {
             Event::Deal { hands } => {
                 out.push('D');
-                for (target, cards) in hands {
-                    let _ = write!(out, " {target}:{}", format_holdings(cards, &model.deck));
+                for h in hands {
+                    let _ = write!(out, " {}:{}", h.target, format_holdings(&h.cards, &model.deck));
                 }
                 out.push('\n');
             }
@@ -73,7 +73,7 @@ mod tests {
     use super::*;
     use crate::card::Card;
     use crate::deck::Deck;
-    use crate::model::{Event, Meta, Model};
+    use crate::model::{DealtHand, Event, Meta, Model};
 
     fn card(rank: &str, suit: &str) -> Card {
         Card::Suited {
@@ -103,10 +103,10 @@ mod tests {
             deck: Deck::french52(),
             events: vec![
                 Event::Deal {
-                    hands: vec![(
-                        "N".into(),
-                        vec![card("A", "S"), card("K", "S"), card("T", "H")],
-                    )],
+                    hands: vec![DealtHand {
+                        target: "N".into(),
+                        cards: vec![card("A", "S"), card("K", "S"), card("T", "H")],
+                    }],
                 },
                 Event::Call {
                     start: "E".into(),

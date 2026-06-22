@@ -9,6 +9,14 @@ use crate::deck::Deck;
 /// A deal target: a seat symbol, or a named pile written `@kitty`.
 pub type Target = String;
 
+/// One hand in a `Deal` event: the target seat/pile and the cards dealt to it.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
+pub struct DealtHand {
+    pub target: Target,
+    pub cards: Vec<Card>,
+}
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
 pub struct Meta {
@@ -31,10 +39,7 @@ pub struct Meta {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Event {
     Deal {
-        /// Serialized as `[["seat", [cards…]], …]`; omitted from the OpenAPI
-        /// schema because oasgen 0.25 does not implement OaSchema for tuples.
-        #[cfg_attr(feature = "openapi", oasgen(skip))]
-        hands: Vec<(Target, Vec<Card>)>,
+        hands: Vec<DealtHand>,
     },
     Call {
         start: Sym,

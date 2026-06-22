@@ -1,6 +1,6 @@
 use crate::card::{Card, parse_card};
 use crate::deck::Deck;
-use crate::model::{Event, Meta, Model};
+use crate::model::{DealtHand, Event, Meta, Model};
 
 use super::parse_holdings;
 
@@ -150,7 +150,7 @@ fn parse_event(line: &str, line_no: usize, deck: &Deck) -> Result<Event, ParseEr
                     line: line_no,
                     holding: holding.to_string(),
                 })?;
-                hands.push((target.to_string(), cards));
+                hands.push(DealtHand { target: target.to_string(), cards });
             }
             Ok(Event::Deal { hands })
         }

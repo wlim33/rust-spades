@@ -1,4 +1,4 @@
-use trick_notation::{Card, Deck, Event, Meta, Model, from_text, to_text};
+use trick_notation::{Card, DealtHand, Deck, Event, Meta, Model, from_text, to_text};
 
 fn card(rank: &str, suit: &str) -> Card {
     Card::Suited {
@@ -22,7 +22,10 @@ fn sample_model() -> Model {
         deck: Deck::french52(),
         events: vec![
             Event::Deal {
-                hands: vec![("N".into(), vec![card("A", "S"), card("K", "H")])],
+                hands: vec![DealtHand {
+                    target: "N".into(),
+                    cards: vec![card("A", "S"), card("K", "H")],
+                }],
             },
             Event::Exchange {
                 from: "N".into(),

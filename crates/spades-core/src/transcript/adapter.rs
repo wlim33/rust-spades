@@ -4,7 +4,7 @@
 //! text). The per-round algorithms — dealt-hand reconstruction, per-round bets,
 //! leader-tracked trick ordering, and the replay drive loop — are preserved.
 
-use trick_notation::{Card as TnCard, Deck, Event, Meta, Model};
+use trick_notation::{Card as TnCard, DealtHand, Deck, Event, Meta, Model};
 
 use crate::cards::{Card, Rank, Suit, get_trick_winner};
 use crate::{Game, GameTransition, State, TimerConfig};
@@ -175,11 +175,9 @@ fn build_events(g: &Game) -> Vec<Event> {
         let deal_hands = SEATS
             .iter()
             .zip(hands.iter())
-            .map(|(seat, hand)| {
-                (
-                    seat.to_string(),
-                    hand.iter().map(|c| card_to_tn(*c)).collect::<Vec<_>>(),
-                )
+            .map(|(seat, hand)| DealtHand {
+                target: seat.to_string(),
+                cards: hand.iter().map(|c| card_to_tn(*c)).collect(),
             })
             .collect();
         events.push(Event::Deal { hands: deal_hands });
@@ -553,12 +551,12 @@ fn parse_rounds(model: &Model) -> Result<Vec<ParsedRound>, ReplayError> {
     Ok(rounds)
 }
 
-/// Map a `Deal`'s `(target, cards)` pairs to a seat-ordered `[Vec<Card>; 4]`.
-fn parse_deal_hands(hands: &[(String, Vec<TnCard>)]) -> Result<[Vec<Card>; 4], ReplayError> {
+/// Map a `Deal`'s `DealtHand` entries to a seat-ordered `[Vec<Card>; 4]`.
+fn parse_deal_hands(hands: &[DealtHand]) -> Result<[Vec<Card>; 4], ReplayError> {
     let mut out: [Vec<Card>; 4] = Default::default();
-    for (target, cards) in hands {
-        let seat = seat_index(target)?;
-        for c in cards {
+    for h in hands {
+        let seat = seat_index(&h.target)?;
+        for c in &h.cards {
             out[seat].push(tn_to_card(c)?);
         }
     }
