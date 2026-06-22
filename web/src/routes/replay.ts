@@ -168,9 +168,8 @@ export const replay: RouteModule = {
       const bid = vs?.bids[seat] ?? null;
       const tricks = vs?.tricksWon[seat] ?? 0;
       const label = SEAT_LABELS[seat] ?? seat;
-      const betInfo = bid !== null
-        ? `Bid ${fmtBid(bid)} / Won ${tricks}`
-        : tricks > 0 ? `Won ${tricks}` : '';
+      const betInfo =
+        bid !== null ? `Bid ${fmtBid(bid)} / Won ${tricks}` : tricks > 0 ? `Won ${tricks}` : '';
       return {
         ...NOOP_SEAT,
         name: label,
@@ -203,31 +202,32 @@ export const replay: RouteModule = {
       if (errKind !== null) {
         let body;
         if (errKind === '403') {
-          body = html`
-            <div class="replay-error">
-              <p>This game is still in progress.</p>
-              <p><a href="/play/${id}" data-link>Watch it live →</a></p>
-              <p><a href="/" data-link>Back home</a></p>
-            </div>`;
+          body = html` <div class="replay-error">
+            <p>This game is still in progress.</p>
+            <p><a href="/play/${id}" data-link>Watch it live →</a></p>
+            <p><a href="/" data-link>Back home</a></p>
+          </div>`;
         } else if (errKind === '404') {
-          body = html`
-            <div class="replay-error">
-              <h1>Not found</h1>
-              <p>No replay found for this game.</p>
-              <p><a href="/" data-link>Back home</a></p>
-            </div>`;
+          body = html` <div class="replay-error">
+            <h1>Not found</h1>
+            <p>No replay found for this game.</p>
+            <p><a href="/" data-link>Back home</a></p>
+          </div>`;
         } else {
-          body = html`
-            <div class="replay-error">
-              <p>Could not load replay: ${errMsg}</p>
-              <p>
-                <button
-                  class="replay-btn"
-                  @click=${() => { location.reload(); }}
-                >Retry</button>
-              </p>
-              <p><a href="/" data-link>Back home</a></p>
-            </div>`;
+          body = html` <div class="replay-error">
+            <p>Could not load replay: ${errMsg}</p>
+            <p>
+              <button
+                class="replay-btn"
+                @click=${() => {
+                  location.reload();
+                }}
+              >
+                Retry
+              </button>
+            </p>
+            <p><a href="/" data-link>Back home</a></p>
+          </div>`;
         }
         render(appShell(body), root);
         return;
@@ -243,140 +243,159 @@ export const replay: RouteModule = {
       const totalSteps = controller.totalSteps();
 
       // Side panel content
-      const panel = html`
-        <div class="replay-panel">
-          ${vs.aborted ? html`<span class="replay-aborted">Aborted</span>` : nothing}
+      const panel = html` <div class="replay-panel">
+        ${vs.aborted ? html`<span class="replay-aborted">Aborted</span>` : nothing}
 
-          <div class="replay-panel__section">
-            <div class="replay-panel__heading">Round</div>
-            <div class="replay-panel__row">
-              <span class="replay-panel__value">${round} / ${totalRounds}</span>
-            </div>
+        <div class="replay-panel__section">
+          <div class="replay-panel__heading">Round</div>
+          <div class="replay-panel__row">
+            <span class="replay-panel__value">${round} / ${totalRounds}</span>
           </div>
+        </div>
 
-          <div class="replay-panel__section">
-            <div class="replay-panel__heading">Bids</div>
-            ${(['north', 'south', 'east', 'west'] as const).map(
-              (s) => html`
-                <div class="replay-panel__row">
-                  <span class="replay-panel__label">${SEAT_LABELS[s]}</span>
-                  <span class="replay-panel__value">${fmtBid(vs.bids[s])}</span>
-                </div>`,
-            )}
-          </div>
+        <div class="replay-panel__section">
+          <div class="replay-panel__heading">Bids</div>
+          ${(['north', 'south', 'east', 'west'] as const).map(
+            (s) =>
+              html` <div class="replay-panel__row">
+                <span class="replay-panel__label">${SEAT_LABELS[s]}</span>
+                <span class="replay-panel__value">${fmtBid(vs.bids[s])}</span>
+              </div>`,
+          )}
+        </div>
 
-          <div class="replay-panel__section">
-            <div class="replay-panel__heading">Tricks</div>
-            ${(['north', 'south', 'east', 'west'] as const).map(
-              (s) => html`
-                <div class="replay-panel__row">
-                  <span class="replay-panel__label">${SEAT_LABELS[s]}</span>
-                  <span class="replay-panel__value">${vs.tricksWon[s]}</span>
-                </div>`,
-            )}
-          </div>
+        <div class="replay-panel__section">
+          <div class="replay-panel__heading">Tricks</div>
+          ${(['north', 'south', 'east', 'west'] as const).map(
+            (s) =>
+              html` <div class="replay-panel__row">
+                <span class="replay-panel__label">${SEAT_LABELS[s]}</span>
+                <span class="replay-panel__value">${vs.tricksWon[s]}</span>
+              </div>`,
+          )}
+        </div>
 
-          <div class="replay-panel__section">
-            <div class="replay-panel__heading">Score</div>
-            <div class="replay-panel__row">
-              <span class="replay-panel__label">N/S</span>
-              <span class="replay-score">${vs.score[0]}</span>
-            </div>
-            <div class="replay-panel__row">
-              <span class="replay-panel__label">E/W</span>
-              <span class="replay-score">${vs.score[1]}</span>
-            </div>
+        <div class="replay-panel__section">
+          <div class="replay-panel__heading">Score</div>
+          <div class="replay-panel__row">
+            <span class="replay-panel__label">N/S</span>
+            <span class="replay-score">${vs.score[0]}</span>
           </div>
-        </div>`;
+          <div class="replay-panel__row">
+            <span class="replay-panel__label">E/W</span>
+            <span class="replay-score">${vs.score[1]}</span>
+          </div>
+        </div>
+      </div>`;
 
       // Controls bar
-      const controls = html`
-        <div class="replay-controls" role="toolbar" aria-label="Replay controls">
-          <button
-            class="replay-btn"
-            title="Seek to start"
-            aria-label="Seek to start"
-            ?disabled=${atStart}
-            @click=${seekStart}
-          >|&lt;</button>
-          <button
-            class="replay-btn"
-            title="Previous step"
-            aria-label="Previous step"
-            ?disabled=${atStart}
-            @click=${stepPrev}
-          >&lt;</button>
-          <button
-            class="replay-btn replay-btn--play"
-            title=${playing ? 'Pause' : 'Play'}
-            aria-label=${playing ? 'Pause' : 'Play'}
-            ?disabled=${atEnd && !playing}
-            @click=${toggleAutoplay}
-          >${playing ? '⏸' : '▶'}</button>
-          <button
-            class="replay-btn"
-            title="Next step"
-            aria-label="Next step"
-            ?disabled=${atEnd}
-            @click=${() => { pauseAutoplay(); stepNext(false); }}
-          >&gt;</button>
-          <button
-            class="replay-btn"
-            title="Seek to end"
-            aria-label="Seek to end"
-            ?disabled=${atEnd}
-            @click=${seekEnd}
-          >&gt;|</button>
+      const controls = html` <div
+        class="replay-controls"
+        role="toolbar"
+        aria-label="Replay controls"
+      >
+        <button
+          class="replay-btn"
+          title="Seek to start"
+          aria-label="Seek to start"
+          ?disabled=${atStart}
+          @click=${seekStart}
+        >
+          |&lt;
+        </button>
+        <button
+          class="replay-btn"
+          title="Previous step"
+          aria-label="Previous step"
+          ?disabled=${atStart}
+          @click=${stepPrev}
+        >
+          &lt;
+        </button>
+        <button
+          class="replay-btn replay-btn--play"
+          title=${playing ? 'Pause' : 'Play'}
+          aria-label=${playing ? 'Pause' : 'Play'}
+          ?disabled=${atEnd && !playing}
+          @click=${toggleAutoplay}
+        >
+          ${playing ? '⏸' : '▶'}
+        </button>
+        <button
+          class="replay-btn"
+          title="Next step"
+          aria-label="Next step"
+          ?disabled=${atEnd}
+          @click=${() => {
+            pauseAutoplay();
+            stepNext(false);
+          }}
+        >
+          &gt;
+        </button>
+        <button
+          class="replay-btn"
+          title="Seek to end"
+          aria-label="Seek to end"
+          ?disabled=${atEnd}
+          @click=${seekEnd}
+        >
+          &gt;|
+        </button>
 
-          <div class="replay-round-nav" aria-label="Round navigation">
-            <button
-              class="replay-btn"
-              title="Previous round"
-              aria-label="Previous round"
-              ?disabled=${round <= 1}
-              @click=${() => jumpRound(-1)}
-            >&#8249;</button>
-            <span>Round ${round}/${totalRounds}</span>
-            <button
-              class="replay-btn"
-              title="Next round"
-              aria-label="Next round"
-              ?disabled=${round >= totalRounds}
-              @click=${() => jumpRound(1)}
-            >&#8250;</button>
-          </div>
+        <div class="replay-round-nav" aria-label="Round navigation">
+          <button
+            class="replay-btn"
+            title="Previous round"
+            aria-label="Previous round"
+            ?disabled=${round <= 1}
+            @click=${() => jumpRound(-1)}
+          >
+            &#8249;
+          </button>
+          <span>Round ${round}/${totalRounds}</span>
+          <button
+            class="replay-btn"
+            title="Next round"
+            aria-label="Next round"
+            ?disabled=${round >= totalRounds}
+            @click=${() => jumpRound(1)}
+          >
+            &#8250;
+          </button>
+        </div>
 
-          <span class="replay-progress" aria-label="Step ${stepIdx + 1} of ${totalSteps}">
-            ${stepIdx + 1}/${totalSteps}
-          </span>
-        </div>`;
+        <span class="replay-progress" aria-label="Step ${stepIdx + 1} of ${totalSteps}">
+          ${stepIdx + 1}/${totalSteps}
+        </span>
+      </div>`;
 
       // Full page: table + panel + controls
       // We use appShell with fit:true to get the 100dvh treatment since the
       // game table is a fixed-layout component.
       render(
         appShell(
-          html`
-            <div class="replay-page">
-              <div class="replay-layout">
-                <div class="replay-table-wrap">
-                  ${gameTable({
-                    refs: tableRefs,
-                    north: seatProps('north'),
-                    west: seatProps('west'),
-                    east: seatProps('east'),
-                    south: seatProps('south'),
-                    centerText: vs.phase === 'bid'
+          html` <div class="replay-page">
+            <div class="replay-layout">
+              <div class="replay-table-wrap">
+                ${gameTable({
+                  refs: tableRefs,
+                  north: seatProps('north'),
+                  west: seatProps('west'),
+                  east: seatProps('east'),
+                  south: seatProps('south'),
+                  centerText:
+                    vs.phase === 'bid'
                       ? `Bidding — Round ${round}`
                       : vs.phase === 'done'
                         ? 'Round over'
                         : '',
-                  })}
-                </div>
-                ${panel}
+                })}
               </div>
-              ${controls}
-            </div>`,
+              ${panel}
+            </div>
+            ${controls}
+          </div>`,
           { fit: true },
         ),
         root,
@@ -396,21 +415,18 @@ export const replay: RouteModule = {
         // Build controller from replay data
         controller = new ReplayController(res);
 
-        // Force initial render of the shell by setting viewState (loading still true)
-        // — actually we need the DOM mounted first. Flip loading off; the effect
-        // renders the table DOM, then we resolve the containers from the refs.
+        // Set initial view state and clear loading together so the effect
+        // renders the full game table (including refs) in one pass.
+        const initialState = controller.state();
+        viewState.value = initialState;
         loading.value = false;
-        // viewState will be null here so effect early-returns. Kick a microtask
-        // so the DOM is flushed by lit-html before we read ref.value.
+
+        // One microtask: lit-html flushes synchronously inside effects, but we
+        // need the effect to run (it's triggered by the signal writes above)
+        // before we can read the ref values it populated.
         await Promise.resolve();
 
-        // At this point the effect should have rendered the game table shell
-        // (vs === null path returns early). We need the table to be rendered
-        // once with the game table so refs populate. Render the game table shell
-        // now by setting viewState to the initial state.
-        const initialState = controller.state();
-
-        // Resolve containers from refs
+        // Resolve containers from refs (now populated by the effect render above).
         containers = {
           south: tableRefs.hand.value!,
           north: tableRefs.north.value!,
@@ -420,9 +436,7 @@ export const replay: RouteModule = {
         };
         board = new ReplayBoard(containers);
 
-        // Set state to trigger effect re-render, then draw initial board snap
-        viewState.value = initialState;
-        await Promise.resolve();
+        // Draw initial board snap.
         void board.render(null, initialState, { animate: false });
       } catch (e) {
         if (e instanceof ApiError) {

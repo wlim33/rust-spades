@@ -20,9 +20,10 @@ export async function fetchReplay(id: string): Promise<ReplayResponse> {
     params: { path: { game_id: id } },
   });
   if (!data) {
-    const msg = typeof error === 'object' && error !== null && 'message' in error
-      ? String((error as { message: unknown }).message)
-      : 'replay fetch failed';
+    const msg =
+      typeof error === 'object' && error !== null && 'message' in error
+        ? String((error as { message: unknown }).message)
+        : 'replay fetch failed';
     throw new ApiError(response?.status ?? 0, msg);
   }
   return data;

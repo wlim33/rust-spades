@@ -8,8 +8,19 @@ export type TnCard = { suit: string; rank: string };
 
 const SUIT_MAP: Record<string, Suit> = { S: 'Spade', H: 'Heart', D: 'Diamond', C: 'Club' };
 const RANK_MAP: Record<string, Rank> = {
-  '2': 'Two', '3': 'Three', '4': 'Four', '5': 'Five', '6': 'Six', '7': 'Seven',
-  '8': 'Eight', '9': 'Nine', T: 'Ten', J: 'Jack', Q: 'Queen', K: 'King', A: 'Ace',
+  '2': 'Two',
+  '3': 'Three',
+  '4': 'Four',
+  '5': 'Five',
+  '6': 'Six',
+  '7': 'Seven',
+  '8': 'Eight',
+  '9': 'Nine',
+  T: 'Ten',
+  J: 'Jack',
+  Q: 'Queen',
+  K: 'King',
+  A: 'Ace',
 };
 
 /** Map a trick-notation card (single-char syms) to the app's Card type. */

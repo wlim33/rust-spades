@@ -43,8 +43,8 @@ const SIDE_MIN_STRIP = 4;
 const TRICK_SLOT_OFFSETS: Record<Seat, { x: number; y: number }> = {
   south: { x: 0, y: 40 },
   north: { x: 0, y: -40 },
-  west:  { x: -56, y: 0 },
-  east:  { x: 56, y: 0 },
+  west: { x: -56, y: 0 },
+  east: { x: 56, y: 0 },
 };
 
 // ---------------------------------------------------------------------------
@@ -69,17 +69,13 @@ function skipAnims(): boolean {
  * For west/east (vertical) fans: cards fan top→bottom along the y axis using
  * the same computeHandOverlap logic with height parameters.
  */
-function layoutHand(
-  container: HTMLElement,
-  cards: readonly Card[],
-  seat: Seat,
-): void {
+function layoutHand(container: HTMLElement, cards: readonly Card[], seat: Seat): void {
   container.innerHTML = '';
   if (cards.length === 0) return;
 
   const isVertical = seat === 'west' || seat === 'east';
 
-  const containerW = container.clientWidth  || (isVertical ? CARD_W  : CARD_W * 5);
+  const containerW = container.clientWidth || (isVertical ? CARD_W : CARD_W * 5);
   const containerH = container.clientHeight || (isVertical ? CARD_H * 5 : CARD_H);
 
   if (isVertical) {
@@ -130,7 +126,7 @@ function layoutTrick(
   container.innerHTML = '';
   if (trick.length === 0) return;
 
-  const cw = container.clientWidth  || CARD_W * 4;
+  const cw = container.clientWidth || CARD_W * 4;
   const ch = container.clientHeight || CARD_H * 3;
   const centreX = (cw - CARD_W) / 2;
   const centreY = (ch - CARD_H) / 2;
@@ -150,9 +146,7 @@ function layoutTrick(
 // ---------------------------------------------------------------------------
 // Delta detection
 
-type CardDelta =
-  | { kind: 'single-play'; seat: Seat; card: Card }
-  | { kind: 'other' };
+type CardDelta = { kind: 'single-play'; seat: Seat; card: Card } | { kind: 'other' };
 
 const SEATS: Seat[] = ['south', 'north', 'east', 'west'];
 
@@ -289,8 +283,7 @@ export class ReplayBoard {
     trickContainer.innerHTML = '';
 
     // Render next trick excluding the animated card, determine target coords
-    const newTrickEntry = next.trick[next.trick.length - 1]!;
-    const cw = trickContainer.clientWidth  || CARD_W * 4;
+    const cw = trickContainer.clientWidth || CARD_W * 4;
     const ch = trickContainer.clientHeight || CARD_H * 3;
     const centreX = (cw - CARD_W) / 2;
     const centreY = (ch - CARD_H) / 2;
@@ -311,9 +304,7 @@ export class ReplayBoard {
     // Update all four hands to next state immediately (snap)
     for (const s of SEATS_ALL) {
       layoutHand(this.containers[s], next.hands[s], s);
-      this.handEls[s] = Array.from(
-        this.containers[s].querySelectorAll<CardEl>('.card-front'),
-      );
+      this.handEls[s] = Array.from(this.containers[s].querySelectorAll<CardEl>('.card-front'));
     }
 
     // Create the flying clone and reparent it to body for viewport-relative fly
@@ -322,9 +313,9 @@ export class ReplayBoard {
     if (seat === next.trickWinner) flying.classList.add('replay-trick-winner');
     document.body.appendChild(flying);
     flying.style.position = 'fixed';
-    flying.style.left  = `${srcRect.left}px`;
-    flying.style.top   = `${srcRect.top}px`;
-    flying.style.width  = `${srcRect.width || CARD_W}px`;
+    flying.style.left = `${srcRect.left}px`;
+    flying.style.top = `${srcRect.top}px`;
+    flying.style.width = `${srcRect.width || CARD_W}px`;
     flying.style.height = `${srcRect.height || CARD_H}px`;
     flying.style.zIndex = '1000';
     flying.style.margin = '0';
@@ -334,7 +325,7 @@ export class ReplayBoard {
     // Determine viewport-relative destination
     const trickRect = trickContainer.getBoundingClientRect();
     const flyDestX = trickRect.left + destX - srcRect.left;
-    const flyDestY = trickRect.top  + destY - srcRect.top;
+    const flyDestY = trickRect.top + destY - srcRect.top;
 
     await animateTo(flying, {
       x: flyDestX,

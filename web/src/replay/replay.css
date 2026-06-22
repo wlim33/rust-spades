@@ -77,7 +77,9 @@
   font: inherit;
   font-size: var(--text-sm);
   cursor: pointer;
-  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
   min-width: 2rem;
 }
 

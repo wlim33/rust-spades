@@ -7,9 +7,7 @@ import type { ReplayResponse } from './types';
 // ----------------------------------------------------------------------------
 // Types
 
-export type Move =
-  | { kind: 'bid'; round: number }
-  | { kind: 'card'; round: number };
+export type Move = { kind: 'bid'; round: number } | { kind: 'card'; round: number };
 
 export type ViewState = {
   round: number;
@@ -104,7 +102,12 @@ function parseRounds(res: ReplayResponse): ParsedRound[] {
         tricks: [],
       };
       rounds.push(currentRound);
-      for (const dh of (evt as { type: 'deal'; hands: { target: string; cards: { suit: string; rank: string }[] }[] }).hands) {
+      for (const dh of (
+        evt as {
+          type: 'deal';
+          hands: { target: string; cards: { suit: string; rank: string }[] }[];
+        }
+      ).hands) {
         const abs = SEAT_NAME_TO_ABS[dh.target];
         if (abs !== undefined) {
           currentRound.hands[abs] = dh.cards.map(tnCardToApp);
@@ -117,7 +120,11 @@ function parseRounds(res: ReplayResponse): ParsedRound[] {
         currentRound!.bids[i] = v === 'nil' ? 0 : parseInt(v, 10);
       });
     } else if (evt.type === 'play' && currentRound) {
-      const playEvt = evt as { type: 'play'; leader: string; cards: { suit: string; rank: string }[] };
+      const playEvt = evt as {
+        type: 'play';
+        leader: string;
+        cards: { suit: string; rank: string }[];
+      };
       const leaderAbs = SEAT_NAME_TO_ABS[playEvt.leader] ?? 0;
       const plays: ParsedTrick['plays'] = playEvt.cards.map((c, i) => ({
         absIdx: (leaderAbs + i) % 4,
@@ -255,7 +262,7 @@ export class ReplayController {
     const revealedBids: Partial<Record<number, number>> = {};
     const completedTricks: ParsedTrick[] = [];
     let currentTrickPlays: Array<{ absIdx: number; card: Card }> = [];
-    let phase: 'bid' | 'play' | 'done' = 'bid';
+    let phase: 'bid' | 'play' | 'done';
 
     // Count completed tricks before current round for toAct tracking
     for (let i = 0; i <= this.cursor; i++) {
@@ -331,7 +338,8 @@ export class ReplayController {
     // At step in round R: score = cumulative_by_round[R-1] once the round is done
     // During round R: carry cumulative_by_round[R-2] (previous round), or [0,0] for round 1
     let score: [number, number] = [0, 0];
-    const isLastStepOfRound = this.cursor >= 0 &&
+    const isLastStepOfRound =
+      this.cursor >= 0 &&
       (this.cursor === this.steps.length - 1 ||
         this.steps[this.cursor + 1]!.round !== currentRoundNum);
     if (isLastStepOfRound && this.cumulativeScores[currentRoundNum - 1]) {
@@ -394,4 +402,3 @@ export class ReplayController {
     };
   }
 }
-

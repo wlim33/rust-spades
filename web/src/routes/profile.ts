@@ -57,7 +57,15 @@ export const profile: RouteModule = {
                   ${g.map(
                     (entry) =>
                       html`<li>
-                        <a href="/replay/${entry.game_id}" data-link class="profile-games__link" aria-label="View replay of game ${entry.game_id.slice(0, 8)}, seat ${entry.seat_index}">
+                        <a
+                          href="/replay/${entry.game_id}"
+                          data-link
+                          class="profile-games__link"
+                          aria-label="View replay of game ${entry.game_id.slice(
+                            0,
+                            8,
+                          )}, seat ${entry.seat_index}"
+                        >
                           <code>${entry.game_id.slice(0, 8)}</code>
                           <span class="profile-games__seat">Seat ${entry.seat_index}</span>
                         </a>
