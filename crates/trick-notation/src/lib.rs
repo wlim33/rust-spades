@@ -11,3 +11,9 @@ pub use card::{Card, Sym, format_card, parse_card};
 
 mod deck;
 pub use deck::Deck;
+
+mod model;
+pub use model::{Meta, Event, Model, Target};
+
+mod text;
+pub use text::{to_text, from_text, ParseError};
