@@ -109,14 +109,17 @@ export function renderInGame(args: {
 
     const playAgain =
       store.phase.value === 'GAME_OVER'
-        ? button({
-            label: 'Play Again',
-            onClick: () => {
-              clearSession(args.shortId);
-              navigateTo('/');
-            },
-            variant: 'primary',
-          })
+        ? html`
+            ${button({
+              label: 'Play Again',
+              onClick: () => {
+                clearSession(args.shortId);
+                navigateTo('/');
+              },
+              variant: 'primary',
+            })}
+            <a href="/replay/${args.gameId}" data-link class="btn btn--secondary">Review game</a>
+          `
         : html``;
 
     return appShell(

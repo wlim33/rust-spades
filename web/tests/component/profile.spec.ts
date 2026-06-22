@@ -53,6 +53,9 @@ describe('profile route', () => {
     expect(document.querySelector('.profile-page.panel')).not.toBeNull();
     expect(document.querySelector('.profile-games code')?.textContent).toBe('g1abcdef');
     expect(document.querySelector('.profile-games__seat')?.textContent).toContain('0');
+    const link = document.querySelector<HTMLAnchorElement>('.profile-games a[data-link]');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe('/replay/g1abcdef-0000-0000-0000-000000000000');
     cleanup();
   });
 

@@ -57,8 +57,10 @@ export const profile: RouteModule = {
                   ${g.map(
                     (entry) =>
                       html`<li>
-                        <code>${entry.game_id.slice(0, 8)}</code>
-                        <span class="profile-games__seat">Seat ${entry.seat_index}</span>
+                        <a href="/replay/${entry.game_id}" data-link class="profile-games__link">
+                          <code>${entry.game_id.slice(0, 8)}</code>
+                          <span class="profile-games__seat">Seat ${entry.seat_index}</span>
+                        </a>
                       </li>`,
                   )}
                 </ul>`
