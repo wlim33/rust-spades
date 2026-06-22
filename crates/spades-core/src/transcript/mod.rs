@@ -846,8 +846,10 @@ mod tests {
     #[test]
     fn to_model_matches_encode_decode_path_for_simple_game() {
         // to_model(game) must equal decode(encode(game)) when round-tripped:
-        // encode(game) -> to_model should equal encode(decode(encode(game))).
-        // This verifies to_model produces the same serialization as the text path.
+        // This verifies that to_model produces a Model structurally equivalent
+        // to the one recovered by parsing encode(game).
+        // Use UUID-only player names (no set_player_name); the text format still
+        // doesn't round-trip the meta.players field, which is a known limitation.
         let mut g = new_game(500, None);
         g.play(GameTransition::Start).unwrap();
         g.play(GameTransition::Bet(3)).unwrap();
@@ -860,19 +862,29 @@ mod tests {
             g.play(GameTransition::Card(legal[0])).unwrap();
         }
 
-        // Verify: to_model should produce the same text encoding as the game itself.
-        // This is the key invariant: to_model(g) produces a Model that when
-        // serialized to text via trick_notation should match encode(g).
-        let direct_model = to_model(&g);
-        let direct_text = trick_notation::to_text(&direct_model);
-        let game_text = encode(&g);
-
-        // Normalize: both paths should produce identical text (the text format
-        // is not lossy for games without player names).
-        assert_eq!(
-            direct_text, game_text,
-            "to_model should produce the same serialization as encode"
-        );
+        // Verify: to_model(g) should structurally equal decode(encode(g)).
+        // Both paths produce a Model; they should be equal, not just text-equal.
+        let text = encode(&g);
+        let mut direct = to_model(&g);
+        let mut via_text = decode(&text).unwrap();
+        // The text format is lossy for meta.players (it doesn't persist the player
+        // name slots). Clear it from the direct path to match the text result.
+        direct.meta.players.clear();
+        via_text.meta.players.clear();
+        // The text format lists cards in deal order, not sorted; normalize both
+        // by sorting the hands in each Deal event so comparison is fair.
+        for event in direct.events.iter_mut().chain(via_text.events.iter_mut()) {
+            if let Event::Deal { hands } = event {
+                for (_seat, cards) in hands.iter_mut() {
+                    cards.sort_by(|a, b| {
+                        let a_str = trick_notation::format_card(a);
+                        let b_str = trick_notation::format_card(b);
+                        a_str.cmp(&b_str)
+                    });
+                }
+            }
+        }
+        assert_eq!(direct, via_text);
     }
 }
 
