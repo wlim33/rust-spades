@@ -1,0 +1,19 @@
+/* Profile route — per-feature styles for profile game list links.
+   Surrounding list styles live in design.css (.profile-games, li, code, __seat).
+   Uses only tokens from ui/tokens.css. Accent color reserved for interactive
+   elements; these rows are navigational so use neutral fg tokens. */
+
+.profile-games__link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: var(--space-2);
+  color: inherit;
+  text-decoration: none;
+}
+
+.profile-games__link:hover {
+  text-decoration: underline;
+  color: var(--fg);
+}

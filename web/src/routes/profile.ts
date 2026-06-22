@@ -1,3 +1,5 @@
+import './profile.css';
+
 import { html, render, nothing } from 'lit-html';
 import { effect, signal } from '@preact/signals-core';
 import { appShell } from '../ui/templates';

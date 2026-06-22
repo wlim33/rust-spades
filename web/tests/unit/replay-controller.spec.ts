@@ -64,6 +64,7 @@ function fixture(): ReplayResponse {
     },
     cumulative_by_round: [[84, 56]],
     viewer_seat: 2, // S
+    termination: 'completed',
   } as unknown as ReplayResponse;
 }
 
@@ -157,6 +158,18 @@ describe('ReplayController', () => {
     }
   });
 
+  it('aborted: termination="aborted" sets state().aborted to true', () => {
+    const f = fixture();
+    const abortedFixture = { ...f, termination: 'aborted' } as unknown as ReplayResponse;
+    const c = new ReplayController(abortedFixture);
+    expect(c.state().aborted).toBe(true);
+  });
+
+  it('aborted: termination="completed" sets state().aborted to false', () => {
+    const c = new ReplayController(fixture());
+    expect(c.state().aborted).toBe(false);
+  });
+
   it('multi-round score progression', () => {
     // Two rounds: scores [10,20] after round 1, [30,50] after round 2
     const twoRound: ReplayResponse = {
@@ -228,6 +241,7 @@ describe('ReplayController', () => {
         [30, 50],
       ],
       viewer_seat: 2, // S
+      termination: 'completed',
     } as unknown as ReplayResponse;
 
     const c = new ReplayController(twoRound);

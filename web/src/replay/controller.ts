@@ -176,13 +176,7 @@ export class ReplayController {
     this.cumulativeScores = (res.cumulative_by_round ?? []).map(
       (pair) => [pair[0]!, pair[1]!] as [number, number],
     );
-    // Check meta.extra for Termination/Aborted marker
-    const extra: unknown[] = (res.model.meta as unknown as { extra?: unknown[] }).extra ?? [];
-    this.abortedFlag = extra.some((e) => {
-      if (typeof e === 'string') return e === 'Aborted';
-      if (typeof e === 'object' && e !== null) return 'Aborted' in e;
-      return false;
-    });
+    this.abortedFlag = res.termination === 'aborted';
   }
 
   // Navigation
