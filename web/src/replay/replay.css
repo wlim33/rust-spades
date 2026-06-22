@@ -238,9 +238,9 @@
   left: 0;
 }
 
-/* Winner highlight: subtle accent ring on the winning trick card */
+/* Winner highlight: subtle success ring on the winning trick card */
 .replay-trick-winner {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--success);
   outline-offset: 1px;
   z-index: 1;
 }

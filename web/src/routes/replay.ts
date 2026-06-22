@@ -70,16 +70,13 @@ export const replay: RouteModule = {
     let controller: ReplayController | null = null;
     let board: ReplayBoard | null = null;
 
-    // Track the previous ViewState for animated transitions
-    let prevState: ViewState | null = null;
-
     // -----------------------------------------------------------------------
     // Control actions
 
     function seekStart(): void {
       if (!controller || !board) return;
       pauseAutoplay();
-      prevState = null;
+      // snap path: board ignores prev, redraws from next
       controller.seekStart();
       void board.render(null, controller.state(), { animate: false });
       viewState.value = controller.state();
@@ -88,7 +85,6 @@ export const replay: RouteModule = {
     function seekEnd(): void {
       if (!controller || !board) return;
       pauseAutoplay();
-      prevState = null;
       controller.seekEnd();
       void board.render(null, controller.state(), { animate: false });
       viewState.value = controller.state();
@@ -97,12 +93,9 @@ export const replay: RouteModule = {
     function stepPrev(): void {
       if (!controller || !board) return;
       pauseAutoplay();
-      const before = controller.state();
-      prevState = null;
       controller.prev();
       void board.render(null, controller.state(), { animate: false });
       viewState.value = controller.state();
-      void before; // suppress unused warning — kept for symmetry
     }
 
     function stepNext(animate: boolean): void {
@@ -111,7 +104,6 @@ export const replay: RouteModule = {
       controller.next();
       const after = controller.state();
       void board.render(before, after, { animate });
-      prevState = after;
       viewState.value = after;
     }
 
@@ -122,7 +114,6 @@ export const replay: RouteModule = {
       const currentRound = vs?.round ?? 1;
       const totalRounds = vs?.totalRounds ?? 1;
       const target = Math.min(totalRounds, Math.max(1, currentRound + delta));
-      prevState = null;
       controller.jumpRound(target);
       void board.render(null, controller.state(), { animate: false });
       viewState.value = controller.state();
@@ -418,7 +409,6 @@ export const replay: RouteModule = {
         // once with the game table so refs populate. Render the game table shell
         // now by setting viewState to the initial state.
         const initialState = controller.state();
-        prevState = null;
 
         // Resolve containers from refs
         containers = {
