@@ -427,12 +427,25 @@ export const replay: RouteModule = {
         await Promise.resolve();
 
         // Resolve containers from refs (now populated by the effect render above).
+        // Guard against nullish refs: if any required element is missing after the
+        // render flush, bail to the generic error state rather than asserting.
+        const southEl = tableRefs.hand.value;
+        const northEl = tableRefs.north.value;
+        const westEl = tableRefs.west.value;
+        const eastEl = tableRefs.east.value;
+        const trickEl = tableRefs.trick.value;
+        if (!southEl || !northEl || !westEl || !eastEl || !trickEl) {
+          errorKind.value = 'generic';
+          errorMsg.value = 'Board elements not found after render';
+          loading.value = false;
+          return;
+        }
         containers = {
-          south: tableRefs.hand.value!,
-          north: tableRefs.north.value!,
-          west: tableRefs.west.value!,
-          east: tableRefs.east.value!,
-          trick: tableRefs.trick.value!,
+          south: southEl,
+          north: northEl,
+          west: westEl,
+          east: eastEl,
+          trick: trickEl,
         };
         board = new ReplayBoard(containers);
 

@@ -116,6 +116,47 @@ describe('ReplayController', () => {
     expect(s.bids.west).toBe(4);
   });
 
+  it('hand depletes as cards are played and played card appears in trick', () => {
+    const c = new ReplayController(fixture());
+    // Each seat has 1 card dealt. Before any step the hand is full.
+    expect(c.state().hands.south.length).toBe(1);
+
+    // Advance through 4 bid steps (steps 0–3); no cards played yet.
+    c.next(); // step 0: bid N
+    c.next(); // step 1: bid E
+    c.next(); // step 2: bid S
+    c.next(); // step 3: bid W
+    expect(c.state().hands.south.length).toBe(1);
+    expect(c.state().trick.length).toBe(0);
+
+    // fixture play event: leader=E, cards=[C5(E), C2(S), CT(W), CK(N)]
+    // Step 4: E plays C5
+    c.next();
+    {
+      const s = c.state();
+      // S (viewer=south) has not played yet — hand still full.
+      expect(s.hands.south.length).toBe(1);
+      // E (east) played C5 — hand should be empty.
+      expect(s.hands.east.length).toBe(0);
+      // C5 is in the in-progress trick.
+      expect(s.trick.length).toBe(1);
+      expect(s.trick[0]!.seat).toBe('east');
+      expect(s.trick[0]!.card).toEqual({ suit: 'Club', rank: 'Five' });
+    }
+
+    // Step 5: S plays C2
+    c.next();
+    {
+      const s = c.state();
+      // S played C2 — hand now empty.
+      expect(s.hands.south.length).toBe(0);
+      // C2 is the second card in the trick.
+      expect(s.trick.length).toBe(2);
+      expect(s.trick[1]!.seat).toBe('south');
+      expect(s.trick[1]!.card).toEqual({ suit: 'Club', rank: 'Two' });
+    }
+  });
+
   it('multi-round score progression', () => {
     // Two rounds: scores [10,20] after round 1, [30,50] after round 2
     const twoRound: ReplayResponse = {
@@ -192,14 +233,22 @@ describe('ReplayController', () => {
     const c = new ReplayController(twoRound);
     expect(c.state().totalRounds).toBe(2);
 
-    // Seek to end of round 1 (after all bids + 1 trick of round 1)
-    // Round 1: 4 bid steps + 4 card steps = 8 steps (0-indexed: 0..7)
-    // After round 1 score should be [10, 20]
+    // jumpRound(1) now lands at the START of round 1 (one step before the first
+    // bid of round 1), so cursor = -1 = atStart(). Score is [0,0] (no completed
+    // rounds yet) and the round display is 1.
     c.jumpRound(1);
-    // jumpRound(1) moves to the last step of round 1
     const s1 = c.state();
-    expect(s1.score).toEqual([10, 20]);
+    expect(s1.score).toEqual([0, 0]);
     expect(s1.round).toBe(1);
+    expect(c.atStart()).toBe(true);
+
+    // jumpRound(2) positions cursor one step before the first step of round 2,
+    // i.e. at the last step of round 1. state() reflects the end of round 1:
+    // round=1, score=[10,20] (round-1 cumulative, isLastStepOfRound=true).
+    c.jumpRound(2);
+    const s1b = c.state();
+    expect(s1b.round).toBe(1);
+    expect(s1b.score).toEqual([10, 20]);
 
     // Seek to end of round 2
     c.seekEnd();

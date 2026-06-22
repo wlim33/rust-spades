@@ -211,15 +211,21 @@ export class ReplayController {
       this.cursor = this.steps.length - 1;
       return;
     }
-    // Find the last step belonging to round `r`
-    let lastStepForRound = -1;
+    // Find the FIRST step belonging to round `r` and position just before it
+    // so the caller sees the deal/first-bid of that round (start-of-round view).
+    let firstStepForRound = -1;
     for (let i = 0; i < this.steps.length; i++) {
-      if (this.steps[i]!.round === r) lastStepForRound = i;
+      if (this.steps[i]!.round === r) {
+        firstStepForRound = i;
+        break;
+      }
     }
-    if (lastStepForRound === -1) {
+    if (firstStepForRound === -1) {
       this.cursor = -1;
     } else {
-      this.cursor = lastStepForRound;
+      // Position one step before the first step of this round so state() shows
+      // the round's dealt hands and no bids/plays yet.
+      this.cursor = firstStepForRound - 1;
     }
   }
 
@@ -348,10 +354,30 @@ export class ReplayController {
       score = this.cumulativeScores[currentRoundNum - 2]!;
     }
 
-    // Hands (from current round's deal)
+    // Hands: start from dealt hand and subtract cards already played up to cursor.
+    // Cards in the current in-progress trick (currentTrickPlays) are gone from
+    // the hand and visible in `trick`, giving detectDelta its one-card delta.
+    // Cards in completed tricks are also removed.
     const hands: Record<Seat, Card[]> = { south: [], north: [], east: [], west: [] };
     for (const abs of ABS_SEATS) {
-      hands[rel(abs)] = round.hands[abs] ?? [];
+      const dealt = round.hands[abs] ?? [];
+      // Collect cards played by this seat across completed tricks + current trick
+      const playedByThisSeat: Card[] = [];
+      for (const t of completedTricks) {
+        for (const p of t.plays) {
+          if (p.absIdx === abs) playedByThisSeat.push(p.card);
+        }
+      }
+      for (const p of currentTrickPlays) {
+        if (p.absIdx === abs) playedByThisSeat.push(p.card);
+      }
+      // Remove played cards one instance at a time (match suit+rank)
+      const remaining = [...dealt];
+      for (const played of playedByThisSeat) {
+        const idx = remaining.findIndex((c) => c.suit === played.suit && c.rank === played.rank);
+        if (idx !== -1) remaining.splice(idx, 1);
+      }
+      hands[rel(abs)] = remaining;
     }
 
     // toAct: next seat to act
