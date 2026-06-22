@@ -95,8 +95,8 @@ existing endpoint and the frontend `Card` type.
     "meta": { "game_hint": "spades", "seats": ["N","E","S","W"],
               "dealer": "N", "players": ["Ann","Bo","Cy","Di"] },
     "deck": { "preset": "french52" },
-    "deal": { "N": [{ "suit": "Spade", "rank": "Ace" }, …], … },   // all revealed
     "events": [
+      { "type": "deal", "hands": [["N", [{…}, …]], …] },   // deal is an event; all revealed
       { "type": "call", "start": "E", "values": ["3","4","nil","4"] },
       { "type": "play", "leader": "E",
         "cards": [{…},{…},{…},{…}] },        // rotation order from leader

@@ -45,12 +45,18 @@ One in-memory model, four parts:
 
 ```
 Model {
-  meta:   { version, game_hint, seats[], rotation, dealer, players[], partnerships? }
+  meta:   { version, game_hint, seats[], rotation, dealer, players[], partnerships?, caps[], extra[] }
   deck:   Deck            // self-describing: suits, ranks-per-suit, specials, multiplicity
-  deal:   Map<Target, [Card]>   // Target = a seat OR a named pile (@kitty, @talon, @chien)
-  events: [Event]         // ordered stream of what happened
+  events: [Event]         // ordered stream of what happened — including Deal events
 }
 ```
+
+A **deal is an event** (`Event::Deal`), not a top-level field: most trick-taking
+games re-deal every round/hand, so deals interleave with calls and plays in the
+stream. A `Deal` event's payload is `Map<Target, [Card]>` where `Target` is a seat
+OR a named pile (`@kitty`, `@talon`, `@chien`). `meta.extra` is the open tag
+namespace (PBN-style) carrying game-specific config (e.g. spades `MaxPoints`),
+keeping the core rule-agnostic while letting adapters round-trip.
 
 ### Capability profiles
 
