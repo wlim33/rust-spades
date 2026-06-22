@@ -1119,6 +1119,62 @@ mod tests {
             "creating session should own seat 0, got: {:?}",
             body["viewer_seat"],
         );
+        // termination: aborted via zero-second clock, so must be "aborted".
+        assert_eq!(
+            body["termination"], "aborted",
+            "zero-clock game must report termination=aborted, got: {:?}",
+            body["termination"],
+        );
+    }
+
+    #[tokio::test]
+    async fn replay_json_invalid_bearer_returns_200_with_null_viewer_seat() {
+        // A request that carries a present-but-unrecognized Bearer token must
+        // still receive a 200 with viewer_seat: null — not a 401. This is the
+        // public-share parity with the text /replay route.
+        let server = test_app();
+
+        // Create and abort a game via the zero-second timer trick.
+        let create: CreateGameResponse = server
+            .post("/games")
+            .json(&serde_json::json!({
+                "max_points": 100,
+                "timer_config": { "initial_time_secs": 0, "increment_secs": 0 }
+            }))
+            .await
+            .json();
+        server
+            .post(&format!("/games/{}/transition", create.game_id))
+            .json(&serde_json::json!({"type": "start"}))
+            .await
+            .assert_status_ok();
+
+        // Wait for the actor's timer to fire the abort.
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+
+        // Bogus Bearer token — unrecognized by the DB. Must not cause 401.
+        let resp = server
+            .get(&format!("/games/{}/replay.json", create.game_id))
+            .add_header("authorization", "Bearer this-is-garbage-and-not-in-the-db")
+            .await;
+        assert_eq!(
+            resp.status_code(),
+            StatusCode::OK,
+            "invalid Bearer token should not block a replay fetch; got {}",
+            resp.status_code(),
+        );
+        let body: serde_json::Value = resp.json();
+        assert!(
+            body["viewer_seat"].is_null(),
+            "unrecognized Bearer token must resolve to viewer_seat: null, got: {:?}",
+            body["viewer_seat"],
+        );
+        // termination field must be present.
+        assert!(
+            body["termination"].is_string(),
+            "termination field must be a string, got: {:?}",
+            body["termination"],
+        );
     }
 
     #[tokio::test]

@@ -5,6 +5,9 @@ use oasgen::{OaParameter, OaSchema, ObjectType, Schema, SchemaData, SchemaKind, 
 // cookie). A no-op `OaParameter` lets oasgen-annotated handlers accept the
 // extractor without polluting the schema.
 impl OaParameter for crate::auth::Identity {}
+// OptionalIdentity is the newtype wrapper for Option<Identity> used by
+// endpoints that tolerate an absent/invalid token (e.g. replay.json).
+impl OaParameter for crate::auth::OptionalIdentity {}
 
 /// Helper to create an array schema for a fixed-size array.
 fn array_schema<T: OaSchema>() -> Schema {

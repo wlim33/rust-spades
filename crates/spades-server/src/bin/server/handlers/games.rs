@@ -22,6 +22,9 @@ pub struct GameReplayResponse {
     pub cumulative_by_round: Vec<Vec<i32>>,
     /// Seat index (0..4) the authenticated caller played, if any; else null.
     pub viewer_seat: Option<usize>,
+    /// How the game ended: `"completed"` (normal finish) or `"aborted"`
+    /// (timed out or otherwise cut short). Use this to show an "Aborted" badge.
+    pub termination: spades_server::game_actor::ReplayTermination,
 }
 
 use super::super::dto::{
@@ -673,11 +676,18 @@ pub async fn post_chat(
 /// Return a JSON replay of a terminal game. Refused (403) for in-progress
 /// games — the model would expose hidden hands. Resolves `viewer_seat` from
 /// the auth `Identity` so clients can orient the replay to the viewer.
+///
+/// `identity` is `OptionalIdentity` (a newtype over `Option<Identity>`) so
+/// that a request with a present-but-unrecognized Bearer token (e.g. a
+/// revoked API token) still receives the replay with `viewer_seat: null`
+/// rather than a 401. No-credential and cookie-session paths still resolve
+/// to `Some(Anonymous)` or `Some(Registered)` as before; only the
+/// invalid-Bearer case changes from 401 → 200-with-null-seat.
 #[oasgen]
 pub async fn get_replay_json(
     AxumState(state): AxumState<AppState>,
     Path(game_id): Path<Uuid>,
-    identity: spades_server::auth::Identity,
+    identity: spades_server::auth::OptionalIdentity,
 ) -> Result<Json<GameReplayResponse>, (StatusCode, Json<ErrorResponse>)> {
     let data = state
         .game_manager
@@ -707,19 +717,21 @@ pub async fn get_replay_json(
     // Resolve the caller's seat (if they played) from the seat roster.
     // Deliberate degrade: when the seat store is unavailable (e.g. server
     // running without --db) or the lookup errors, viewer_seat resolves to
-    // None. The replay data is still returned — this is only an
-    // orientation hint and its absence is not a failure.
-    let viewer_seat = state
-        .auth
-        .store
-        .game_seats_for_game(game_id)
-        .ok()
-        .and_then(|seats| {
-            seats
-                .iter()
-                .find(|s| seat_matches_identity(s, &identity))
-                .map(|s| s.seat_index as usize)
-        });
+    // None. When identity.0 is None (invalid Bearer token), viewer_seat is
+    // also None — the replay data is still returned as a public resource.
+    let viewer_seat = identity.0.as_ref().and_then(|ident| {
+        state
+            .auth
+            .store
+            .game_seats_for_game(game_id)
+            .ok()
+            .and_then(|seats| {
+                seats
+                    .iter()
+                    .find(|s| seat_matches_identity(s, ident))
+                    .map(|s| s.seat_index as usize)
+            })
+    });
 
     Ok(Json(GameReplayResponse {
         model: data.model,
@@ -729,6 +741,7 @@ pub async fn get_replay_json(
             .map(|[a, b]| vec![a, b])
             .collect(),
         viewer_seat,
+        termination: data.termination,
     }))
 }
 

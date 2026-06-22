@@ -42,6 +42,15 @@ const BROADCAST_CAP: usize = 64;
 /// `?since=N` rather than being forced to re-snapshot.
 const RECENT_CAP: usize = 128;
 
+/// How a terminal game ended — carried in `ReplayData` so the web viewer can
+/// show an "Aborted" badge without re-inspecting the model events.
+#[derive(Debug, Clone, Copy, serde::Serialize, oasgen::OaSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ReplayTermination {
+    Completed,
+    Aborted,
+}
+
 /// Replay data for a terminal game: the game-agnostic notation model and the
 /// cumulative `[team_a, team_b]` score after each fully-played round.
 ///
@@ -50,6 +59,7 @@ const RECENT_CAP: usize = 128;
 pub struct ReplayData {
     pub model: spades::transcript::Model,
     pub cumulative_by_round: Vec<[i32; 2]>,
+    pub termination: ReplayTermination,
 }
 
 /// Commands the actor accepts from its inbox. Every variant that returns a
@@ -352,7 +362,11 @@ impl GameActor {
             }
             GameCmd::GetReplayData { reply } => {
                 let out = match self.game.get_state() {
-                    State::Completed | State::Aborted => {
+                    state @ (State::Completed | State::Aborted) => {
+                        let termination = match state {
+                            State::Completed => ReplayTermination::Completed,
+                            _ => ReplayTermination::Aborted,
+                        };
                         let model = spades::transcript::to_model(&self.game);
                         // round_summaries replays the model; it cannot fail for a
                         // model produced from a valid game, but propagate defensively.
@@ -361,6 +375,7 @@ impl GameActor {
                         Some(ReplayData {
                             model,
                             cumulative_by_round: cumulative,
+                            termination,
                         })
                     }
                     _ => None,

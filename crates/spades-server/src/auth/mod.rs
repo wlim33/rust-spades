@@ -54,6 +54,20 @@ impl Identity {
 
 pub struct AuthUser(pub User);
 
+/// `Option<Identity>` wrapped in a newtype so an `OaParameter` impl can be
+/// written for it without hitting the orphan rule (both `Option` and
+/// `OaParameter` are foreign; `OptionalIdentity` lives in this crate).
+///
+/// Used by handlers that serve public resources but can optionally orient
+/// their response to a logged-in viewer (e.g. `GET /games/{id}/replay.json`).
+/// When the `Authorization: Bearer` header is present but the token is not
+/// recognized, `Identity` rejects with `InvalidCredentials` (→ 401); the
+/// `Option<Identity>` axum extractor maps that rejection to `None`, so the
+/// caller still receives the resource with `viewer_seat: null` instead of a
+/// hard 401.
+#[derive(Debug)]
+pub struct OptionalIdentity(pub Option<Identity>);
+
 impl<S> FromRequestParts<S> for Identity
 where
     S: Send + Sync,
@@ -113,6 +127,18 @@ where
             Identity::Registered { user, .. } => Ok(AuthUser(user)),
             Identity::Anonymous { .. } => Err(AuthError::Unauthenticated),
         }
+    }
+}
+
+impl<S> FromRequestParts<S> for OptionalIdentity
+where
+    S: Send + Sync,
+    AuthState: axum::extract::FromRef<S>,
+{
+    type Rejection = std::convert::Infallible;
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let inner = Identity::from_request_parts(parts, state).await.ok();
+        Ok(OptionalIdentity(inner))
     }
 }
 

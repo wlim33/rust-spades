@@ -31,6 +31,13 @@ export interface paths {
      * @description Return a JSON replay of a terminal game. Refused (403) for in-progress
      *     games — the model would expose hidden hands. Resolves `viewer_seat` from
      *     the auth `Identity` so clients can orient the replay to the viewer.
+     *
+     *     `identity` is `OptionalIdentity` (a newtype over `Option<Identity>`) so
+     *     that a request with a present-but-unrecognized Bearer token (e.g. a
+     *     revoked API token) still receives the replay with `viewer_seat: null`
+     *     rather than a 401. No-credential and cookie-session paths still resolve
+     *     to `Some(Anonymous)` or `Some(Registered)` as before; only the
+     *     invalid-Bearer case changes from 401 → 200-with-null-seat.
      */
     get: operations['handlers_games_get_replay_json'];
     put?: never;
@@ -293,6 +300,7 @@ export interface components {
       model: components['schemas']['Model'];
       cumulative_by_round: number[][];
       viewer_seat?: number | null;
+      termination: components['schemas']['ReplayTermination'];
     };
     /** @description Response for getting a player's hand */
     HandResponse: {
@@ -406,6 +414,8 @@ export interface components {
       | 'Queen'
       | 'King'
       | 'Ace';
+    /** @enum {string} */
+    ReplayTermination: 'completed' | 'aborted';
     /** @enum {string} */
     Seat: 'A' | 'B' | 'C' | 'D';
     /** @description Per-seat snapshot sent in SSE events. */
