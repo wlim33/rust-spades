@@ -623,7 +623,7 @@ mod tests {
             "replay model must have events for a played game"
         );
         assert!(
-            data.cumulative_by_round.len() >= 1,
+            !data.cumulative_by_round.is_empty(),
             "must have at least one round summary"
         );
     }

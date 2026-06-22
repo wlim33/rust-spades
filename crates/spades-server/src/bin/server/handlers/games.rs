@@ -688,7 +688,12 @@ pub async fn get_replay_json(
                 GameManagerError::GameNotFound => StatusCode::NOT_FOUND,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
-            (status, Json(ErrorResponse { error: format!("{e}") }))
+            (
+                status,
+                Json(ErrorResponse {
+                    error: format!("{e}"),
+                }),
+            )
         })?;
     let Some(data) = data else {
         return Err((

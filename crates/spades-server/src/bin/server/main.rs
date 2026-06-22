@@ -1078,26 +1078,31 @@ mod tests {
         // model must be a well-formed object with meta, deck, and events.
         assert!(
             body["model"].is_object(),
-            "model must be a JSON object, got: {:?}", body["model"],
+            "model must be a JSON object, got: {:?}",
+            body["model"],
         );
         assert!(
             body["model"]["meta"].is_object(),
-            "model.meta must be a JSON object, got: {:?}", body["model"]["meta"],
+            "model.meta must be a JSON object, got: {:?}",
+            body["model"]["meta"],
         );
         assert!(
             body["model"]["events"].is_array(),
-            "model.events must be an array, got: {:?}", body["model"]["events"],
+            "model.events must be an array, got: {:?}",
+            body["model"]["events"],
         );
         // cumulative_by_round must be present (array, possibly empty for a
         // game that aborted before the first round completed).
         assert!(
             body["cumulative_by_round"].is_array(),
-            "cumulative_by_round must be an array, got: {:?}", body["cumulative_by_round"],
+            "cumulative_by_round must be an array, got: {:?}",
+            body["cumulative_by_round"],
         );
         // viewer_seat: the creating session owns seat 0, so it should be Some(0).
         assert_eq!(
             body["viewer_seat"], 0,
-            "creating session should own seat 0, got: {:?}", body["viewer_seat"],
+            "creating session should own seat 0, got: {:?}",
+            body["viewer_seat"],
         );
     }
 

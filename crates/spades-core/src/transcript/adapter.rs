@@ -721,13 +721,20 @@ mod tests {
         let sums = round_summaries(&model).expect("summaries");
         assert!(!sums.is_empty());
         let last = *sums.last().unwrap();
-        assert_eq!(last, [g.get_team_a_score().unwrap(), g.get_team_b_score().unwrap()]);
+        assert_eq!(
+            last,
+            [g.get_team_a_score().unwrap(), g.get_team_b_score().unwrap()]
+        );
 
         let n_rounds = model
             .events
             .iter()
             .filter(|e| matches!(e, Event::Deal { .. }))
             .count();
-        assert_eq!(sums.len(), n_rounds, "one cumulative summary per dealt round");
+        assert_eq!(
+            sums.len(),
+            n_rounds,
+            "one cumulative summary per dealt round"
+        );
     }
 }

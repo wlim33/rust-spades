@@ -44,7 +44,12 @@ pub fn to_text(model: &Model) -> String {
             Event::Deal { hands } => {
                 out.push('D');
                 for h in hands {
-                    let _ = write!(out, " {}:{}", h.target, format_holdings(&h.cards, &model.deck));
+                    let _ = write!(
+                        out,
+                        " {}:{}",
+                        h.target,
+                        format_holdings(&h.cards, &model.deck)
+                    );
                 }
                 out.push('\n');
             }
