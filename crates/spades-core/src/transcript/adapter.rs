@@ -713,7 +713,7 @@ mod tests {
     }
 
     #[test]
-    fn round_summaries_are_monotonic_in_round_count() {
+    fn round_summaries_one_per_round_and_final_matches() {
         // A completed low-max-points game produces one cumulative pair per round,
         // and the final pair equals the game's final team scores.
         let g = played_completed_game();

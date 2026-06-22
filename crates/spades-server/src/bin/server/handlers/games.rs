@@ -705,6 +705,10 @@ pub async fn get_replay_json(
     };
 
     // Resolve the caller's seat (if they played) from the seat roster.
+    // Deliberate degrade: when the seat store is unavailable (e.g. server
+    // running without --db) or the lookup errors, viewer_seat resolves to
+    // None. The replay data is still returned — this is only an
+    // orientation hint and its absence is not a failure.
     let viewer_seat = state
         .auth
         .store

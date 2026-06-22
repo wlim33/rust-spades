@@ -23,4 +23,4 @@ openapi = ["dep:oasgen"]
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = "2"
-oasgen = { version = "0.25", features = ["uuid"], optional = true }
+oasgen = { version = "0.25", optional = true }

@@ -1098,6 +1098,21 @@ mod tests {
             "cumulative_by_round must be an array, got: {:?}",
             body["cumulative_by_round"],
         );
+        // Each inner entry must be exactly [team_a, team_b] — length 2.
+        for (i, entry) in body["cumulative_by_round"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .enumerate()
+        {
+            assert_eq!(
+                entry.as_array().map(|a| a.len()),
+                Some(2),
+                "cumulative_by_round[{}] must have length 2, got: {:?}",
+                i,
+                entry,
+            );
+        }
         // viewer_seat: the creating session owns seat 0, so it should be Some(0).
         assert_eq!(
             body["viewer_seat"], 0,
