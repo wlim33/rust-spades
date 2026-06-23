@@ -466,7 +466,7 @@ impl GameActor {
         // restore the timer accurately.
         if is_timed {
             match self.game.get_state() {
-                State::Betting(_) | State::Trick(_) => {
+                State::Bidding(_) | State::Trick(_) => {
                     self.game.set_turn_started_at_epoch_ms(Some(epoch_ms_now()));
                 }
                 _ => {
@@ -482,7 +482,7 @@ impl GameActor {
         // Start a timer for the next player.
         if is_timed {
             match self.game.get_state() {
-                State::Betting(_) | State::Trick(_) => {
+                State::Bidding(_) | State::Trick(_) => {
                     let player_idx = self.game.get_current_player_index_num();
                     let remaining = self
                         .game
@@ -609,7 +609,7 @@ impl GameActor {
         }
 
         let transition = match current_state {
-            State::Betting(_) => Some(GameTransition::Bet(1)),
+            State::Bidding(_) => Some(GameTransition::Bet(1)),
             State::Trick(_) => {
                 let cards = self.game.get_legal_cards().ok();
                 cards.and_then(|cards| {
@@ -705,7 +705,7 @@ impl GameActor {
             return;
         }
         match self.game.get_state() {
-            State::Betting(_) | State::Trick(_) => {}
+            State::Bidding(_) | State::Trick(_) => {}
             _ => return,
         }
         let (Some(epoch_ms), Some(clocks)) = (
@@ -752,7 +752,7 @@ impl GameActor {
     fn next_ai_transition(&self) -> Option<GameTransition> {
         let cfg = self.ai_config.as_ref()?;
         match self.game.get_state() {
-            State::Betting(_) | State::Trick(_) => {}
+            State::Bidding(_) | State::Trick(_) => {}
             _ => return None,
         }
         let player_idx = self.game.get_current_player_index_num();
@@ -760,7 +760,7 @@ impl GameActor {
             return None;
         }
         match self.game.get_state() {
-            State::Betting(_) => Some(GameTransition::Bet(
+            State::Bidding(_) => Some(GameTransition::Bet(
                 cfg.strategy.choose_bet(&self.game, player_idx),
             )),
             State::Trick(_) => cfg
@@ -821,7 +821,7 @@ impl GameActor {
             timer_config,
             player_clocks_ms,
             active_player_clock_ms,
-            table_cards: self.game.get_current_trick_cards().ok().cloned(),
+            table_cards: self.game.get_current_trick_cards().ok(),
             player_bets: self.game.get_player_bets(),
             player_tricks_won: self.game.get_player_tricks_won(),
             last_trick_winner_id: self.game.get_last_trick_winner_id(),

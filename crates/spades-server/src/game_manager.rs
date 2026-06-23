@@ -649,7 +649,7 @@ mod tests {
             .unwrap();
         assert_eq!(out, TransitionSuccess::Start);
         let state = m.get_game_state(r.game_id).await.unwrap();
-        assert_eq!(state.state, State::Betting(0));
+        assert_eq!(state.state, State::Bidding(0));
     }
 
     #[tokio::test]

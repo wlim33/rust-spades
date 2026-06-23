@@ -969,7 +969,7 @@ mod tests {
         let resp = server.get(&format!("/games/{}/replay", game.game_id)).await;
         assert_eq!(resp.status_code(), StatusCode::FORBIDDEN);
 
-        // Start it: state moves to Betting. Still in progress.
+        // Start it: state moves to Bidding. Still in progress.
         server
             .post(&format!("/games/{}/transition", game.game_id))
             .json(&serde_json::json!({"type": "start"}))
@@ -1040,7 +1040,7 @@ mod tests {
             .await;
         assert_eq!(resp.status_code(), StatusCode::FORBIDDEN);
 
-        // Start it: now in Betting — still in progress.
+        // Start it: now in Bidding — still in progress.
         server
             .post(&format!("/games/{}/transition", create.game_id))
             .json(&serde_json::json!({"type": "start"}))
@@ -1300,11 +1300,11 @@ mod tests {
             .assert_status_ok();
 
         // After the snapshot, the next state_changed event must reflect
-        // the Start transition (state moves into Betting). The State enum
-        // is externally tagged by serde, so Betting(seat_idx) serializes
-        // to `{"Betting": <idx>}`.
+        // the Start transition (state moves into Bidding). The State enum
+        // is externally tagged by serde, so Bidding(seat_idx) serializes
+        // to `{"Bidding": <idx>}`. (TASK-13: wire-name changed Betting→Bidding)
         let event = ws_recv_event_of(&mut ws, "state_changed").await;
-        assert!(event["state"]["Betting"].is_number());
+        assert!(event["state"]["Bidding"].is_number());
     }
 
     #[tokio::test]
@@ -1339,9 +1339,9 @@ mod tests {
         let event = ws_recv_event_of(&mut ws, "state_changed").await;
         assert_eq!(event["seq"], 0);
         // Catch-up event carries the buffered state at that seq, which is
-        // post-Start (Betting), not the pre-Start NotStarted that a fresh
-        // snapshot would deliver.
-        assert!(event["state"]["Betting"].is_number());
+        // post-Start (Bidding), not the pre-Start NotStarted that a fresh
+        // snapshot would deliver. (TASK-13: wire-name changed Betting→Bidding)
+        assert!(event["state"]["Bidding"].is_number());
     }
 
     #[tokio::test]
@@ -1591,7 +1591,7 @@ mod tests {
             .assert_status_ok();
 
         // Reconnect asking for everything from seq 0: the ring buffer still
-        // holds it, so it replays as catch-up (Betting), not a fresh snapshot.
+        // holds it, so it replays as catch-up (Bidding), not a fresh snapshot. (TASK-13)
         let reconnect = format!(
             "/games/{}/ws?player_id={}&since=0",
             create.game_id, create.player_ids[0]
@@ -1603,7 +1603,7 @@ mod tests {
             .await;
         let replayed = ws_recv_event_of(&mut ws, "state_changed").await;
         assert_eq!(replayed["seq"], 0);
-        assert!(replayed["state"]["Betting"].is_number());
+        assert!(replayed["state"]["Bidding"].is_number());
 
         // Prove the reconnected socket is fully live: a new chat fans out to it.
         server

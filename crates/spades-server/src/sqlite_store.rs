@@ -36,8 +36,8 @@ pub struct ProfileGameRow {
     pub result: Option<String>,
     pub team_score: Option<i32>,
     pub opp_score: Option<i32>,
-    /// `json_extract(games.data, '$.state')` — `Some` only while the game row
-    /// survives. Distinguishes a live in-progress game from a pruned old one.
+    /// `json_extract(games.data, '$.inner.state')` — `Some` only while the game
+    /// row survives. Distinguishes a live in-progress game from a pruned old one.
     pub live_state: Option<String>,
 }
 
@@ -338,15 +338,15 @@ impl SqliteStore {
     /// ever being deserialized, so peak startup memory tracks only live,
     /// in-bounds games. Returns the number of rows deleted.
     ///
-    /// `state` is plain serde: unit variants serialize as the strings
-    /// `"Completed"` / `"Aborted"`, so `json_extract` matches them exactly
-    /// while leaving `{"Betting":n}` / `{"Trick":n}` / `"NotStarted"` alone.
+    /// `state` is plain serde nested under the engine inner struct: unit
+    /// variants serialize as the strings `"Completed"` / `"Aborted"` at
+    /// `$.inner.state`. The runaway cap uses `$.inner.rules.scoring.round`.
     pub fn prune_stale_games(&self, max_hands: i64) -> Result<usize, String> {
         let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.execute(
             "DELETE FROM games \
-             WHERE json_extract(data, '$.state') IN ('Completed', 'Aborted') \
-                OR json_array_length(data, '$.hands_played') > ?1",
+             WHERE json_extract(data, '$.inner.state') IN ('Completed', 'Aborted') \
+                OR json_extract(data, '$.inner.rules.scoring.round') > ?1",
             rusqlite::params![max_hands],
         )
         .map_err(|e| e.to_string())
@@ -863,7 +863,7 @@ impl SqliteStore {
 
     /// Profile games for a user: their own seat in each game plus the stamped
     /// outcome and a peek at the live game state. `live_state` is
-    /// `json_extract(games.data, '$.state')` — present only while the game row
+    /// `json_extract(games.data, '$.inner.state')` — present only while the game row
     /// survives (it's pruned once terminal), so the caller can tell an
     /// in-progress game (live row, no stamped `result`) from an old finished
     /// one (no row, no result). Pure SQL: the game blob is never deserialized.
@@ -878,7 +878,7 @@ impl SqliteStore {
             .prepare(
                 "SELECT gs.game_id, gs.seat_index, gs.player_id, \
                         gs.result, gs.team_score, gs.opp_score, \
-                        json_extract(g.data, '$.state') \
+                        json_extract(g.data, '$.inner.state') \
                  FROM game_seats gs \
                  LEFT JOIN games g ON g.id = gs.game_id \
                  WHERE gs.user_id = ?1 \
@@ -1308,12 +1308,11 @@ mod tests {
         dead.play(spades::GameTransition::Abort).unwrap();
         store.insert_game(&dead).unwrap();
 
-        // Live but runaway: hands_played inflated past the cap. Crafting it
-        // via serde avoids playing 1000+ tricks; it deserializes as a
-        // NotStarted game whose history is implausibly long.
+        // Live but runaway: round counter inflated past the cap. Crafting it
+        // via serde avoids playing 1000+ rounds; the round counter lives at
+        // $.inner.rules.scoring.round in the new engine-backed JSON layout.
         let mut v = serde_json::to_value(make_game()).unwrap();
-        let empty_trick = serde_json::json!([null, null, null, null]);
-        v["hands_played"] = serde_json::Value::Array(vec![empty_trick; 1001]);
+        v["inner"]["rules"]["scoring"]["round"] = serde_json::json!(1001);
         let runaway: Game = serde_json::from_value(v).unwrap();
         store.insert_game(&runaway).unwrap();
 
@@ -1397,7 +1396,7 @@ mod tests {
 
         let loaded = store.load_all_games().unwrap();
         assert_eq!(loaded.len(), 1);
-        assert_eq!(*loaded[0].get_state(), spades::State::Betting(0));
+        assert_eq!(*loaded[0].get_state(), spades::State::Bidding(0));
     }
 
     #[test]
