@@ -1,0 +1,28 @@
+[package]
+name = "trick-engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "Game-agnostic trick-taking card-game state machine driven by a pluggable Ruleset."
+categories = ["games", "game-engines"]
+keywords = ["cards", "trick-taking", "engine", "state", "machine"]
+
+[lib]
+name = "trick_engine"
+path = "src/lib.rs"
+
+[features]
+default = []
+openapi = ["dep:oasgen", "trick-notation/openapi"]
+
+[dependencies]
+rand = "0.10"
+uuid.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror = "2"
+typetag = "0.2"
+trick-notation = { path = "../trick-notation", version = "3.0.0" }
+oasgen = { version = "0.25", features = ["uuid"], optional = true }

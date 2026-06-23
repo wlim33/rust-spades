@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/spades-core", "crates/spades-server", "crates/trick-notation"]
+members = ["crates/spades-core", "crates/spades-server", "crates/trick-notation", "crates/trick-engine"]
 resolver = "3"
 
 [workspace.package]
