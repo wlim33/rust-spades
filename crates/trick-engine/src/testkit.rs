@@ -93,6 +93,12 @@ impl Ruleset for HighCard {
     fn scores(&self) -> Vec<i32> {
         vec![0; 4]
     }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 fn rank_of(card: &Card) -> &str {
@@ -146,6 +152,12 @@ impl Ruleset for SimpleBid {
     }
     fn scores(&self) -> Vec<i32> {
         self.inner.scores()
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }
 

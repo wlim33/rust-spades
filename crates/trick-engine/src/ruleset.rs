@@ -41,4 +41,11 @@ pub trait Ruleset {
     fn is_over(&self) -> bool;
     /// Current cumulative score per `TeamId` index, for generic readers.
     fn scores(&self) -> Vec<i32>;
+
+    /// Upcast to `&dyn Any` so callers can downcast a `Box<dyn Ruleset>` back to
+    /// a concrete ruleset (e.g. the spades facade reaching its own scoring
+    /// state). Each impl returns `self`.
+    fn as_any(&self) -> &dyn std::any::Any;
+    /// Mutable counterpart of [`Ruleset::as_any`]. Each impl returns `self`.
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }

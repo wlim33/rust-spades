@@ -128,6 +128,27 @@ impl Game {
     pub fn player_mut(&mut self, seat: Seat) -> &mut Player {
         &mut self.players[seat]
     }
+    /// Per-seat tricks won so far in the current round.
+    pub fn tricks_won(&self) -> &[i32] {
+        &self.tricks_won
+    }
+    /// Downcast the boxed ruleset to a concrete type, if it matches.
+    pub fn rules_as<T: Ruleset + 'static>(&self) -> Option<&T> {
+        self.rules().as_any().downcast_ref::<T>()
+    }
+    /// Mutable counterpart of [`Game::rules_as`].
+    pub fn rules_as_mut<T: Ruleset + 'static>(&mut self) -> Option<&mut T> {
+        self.rules.as_any_mut().downcast_mut::<T>()
+    }
+    /// A seat's display name, if set.
+    pub fn player_name(&self, seat: Seat) -> Option<&str> {
+        self.players[seat].name.as_deref()
+    }
+    /// Set the phase directly. Crate-consumer escape hatch for transcript replay
+    /// and tests (e.g. forcing `Aborted`); normal play goes through `step`.
+    pub fn set_state(&mut self, s: State) {
+        self.state = s;
+    }
 
     fn deal(&mut self) {
         let n = self.rules.seat_count();
@@ -391,7 +412,17 @@ mod tests {
         g.step(Action::Start).unwrap();
         // Build a card guaranteed not to match a real french-52 token shape after
         // the seat's hand is dealt: a Special card is never dealt.
-        let bogus = Card::Special { name: "Joker".into() };
+        let bogus = Card::Special {
+            name: "Joker".into(),
+        };
         assert_eq!(g.step(Action::Play(bogus)), Err(StepError::CardNotInHand));
+    }
+
+    #[test]
+    fn rules_as_downcasts_to_concrete_ruleset() {
+        let g = Game::new(Uuid::from_u128(7), ids(4), Box::new(HighCard::default()));
+        assert!(g.rules_as::<HighCard>().is_some());
+        // A mismatched concrete type yields None.
+        assert!(g.rules_as::<SimpleBid>().is_none());
     }
 }
