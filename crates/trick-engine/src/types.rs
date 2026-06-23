@@ -51,6 +51,41 @@ pub enum State {
     Aborted,
 }
 
+#[cfg(feature = "openapi")]
+impl oasgen::OaSchema for State {
+    fn schema() -> oasgen::Schema {
+        use oasgen::{ObjectType, Ref, Schema, SchemaData, SchemaKind, Type};
+
+        let mut bidding = ObjectType::default();
+        bidding
+            .properties
+            .insert("Bidding".to_string(), Schema::new_integer());
+        bidding.required.push("Bidding".to_string());
+
+        let mut trick = ObjectType::default();
+        trick
+            .properties
+            .insert("Trick".to_string(), Schema::new_integer());
+        trick.required.push("Trick".to_string());
+
+        Schema::new_one_of(vec![
+            Ref::Item(Schema::new_str_enum(vec![
+                "NotStarted".to_string(),
+                "Completed".to_string(),
+                "Aborted".to_string(),
+            ])),
+            Ref::Item(Schema {
+                data: SchemaData::default(),
+                kind: SchemaKind::Type(Type::Object(bidding)),
+            }),
+            Ref::Item(Schema {
+                data: SchemaData::default(),
+                kind: SchemaKind::Type(Type::Object(trick)),
+            }),
+        ])
+    }
+}
+
 /// A seated player: stable `id`, current `hand`, optional display `name`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Player {

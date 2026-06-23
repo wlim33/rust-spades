@@ -6,7 +6,7 @@
 use crate::types::{BidSpec, Card, PlayContext, RoundOutcome, Seat, TeamId};
 
 #[typetag::serde(tag = "type")]
-pub trait Ruleset {
+pub trait Ruleset: Send + Sync {
     /// Number of seats at the table.
     fn seat_count(&self) -> usize;
     /// The scoring group a seat belongs to.
