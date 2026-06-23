@@ -1,20 +1,11 @@
-#[cfg(feature = "openapi")]
-use oasgen::OaSchema;
-use serde::{Deserialize, Serialize};
+//! Spades surfaces the engine's `State`, but keeps the historical `Betting`
+//! name (the engine calls the same phase `Bidding`). Both name the same value.
 
-/// Current game stage, field of `Game`.
-///
-/// The `Betting` and `Trick` variants have a `usize` value between 0
-/// and 3, inclusive, that refers to the number of players that have placed bets or played cards in the trick,
-/// respectively.
-///
-/// **Example:** `State::Trick(2)` means the game is in the card playing stage, and two players have played their cards.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(oasgen::OaSchema))]
-pub enum State {
-    NotStarted,
-    Betting(usize),
-    Trick(usize),
-    Completed,
-    Aborted,
+pub use trick_engine::State;
+
+/// Back-compat constructor for the bidding phase, named `Betting` in spades.
+/// The engine's variant is `State::Bidding(rotation)`; match on that.
+#[allow(dead_code)]
+pub fn betting(rotation: usize) -> State {
+    State::Bidding(rotation)
 }

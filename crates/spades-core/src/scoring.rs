@@ -1,3 +1,6 @@
+// `Card`/`get_trick_winner` are used only by the test-only legacy `trick()` path
+// and the scoring unit tests; production scoring (`finalize_round`) needs neither.
+#[cfg(test)]
 use crate::cards::{Card, get_trick_winner};
 use serde::{Deserialize, Serialize};
 
@@ -121,12 +124,24 @@ impl Scoring {
         self.bets_placed[self.round] = [bids[0], bids[1], bids[2], bids[3]];
 
         self.team_a.calculate_round_totals(
-            PartnerOutcome { bet: bids[0], took_trick: won_a_trick[0] },
-            PartnerOutcome { bet: bids[2], took_trick: won_a_trick[2] },
+            PartnerOutcome {
+                bet: bids[0],
+                took_trick: won_a_trick[0],
+            },
+            PartnerOutcome {
+                bet: bids[2],
+                took_trick: won_a_trick[2],
+            },
         );
         self.team_b.calculate_round_totals(
-            PartnerOutcome { bet: bids[1], took_trick: won_a_trick[1] },
-            PartnerOutcome { bet: bids[3], took_trick: won_a_trick[3] },
+            PartnerOutcome {
+                bet: bids[1],
+                took_trick: won_a_trick[1],
+            },
+            PartnerOutcome {
+                bet: bids[3],
+                took_trick: won_a_trick[3],
+            },
         );
 
         // Termination: copy the existing max_points / MIN_POINTS / MAX_ROUNDS
@@ -142,7 +157,9 @@ impl Scoring {
                 self.is_over = true;
             }
         }
-        if self.team_a.cumulative_points <= MIN_POINTS || self.team_b.cumulative_points <= MIN_POINTS {
+        if self.team_a.cumulative_points <= MIN_POINTS
+            || self.team_b.cumulative_points <= MIN_POINTS
+        {
             self.is_over = true;
         }
         if self.round + 1 >= MAX_ROUNDS {
@@ -158,10 +175,16 @@ impl Scoring {
         self.bets_placed.push([0; 4]);
     }
 
+    // `add_bet`/`bet`/`trick` are the legacy self-counted scoring path. Production
+    // scoring now flows through `finalize_round` (driven by the engine's per-seat
+    // tallies); these remain only as the oracle the equivalence tests check
+    // `finalize_round` against, so they are test-only.
+    #[cfg(test)]
     pub fn add_bet(&mut self, current_player_index: usize, bet: i32) {
         self.bets_placed.last_mut().unwrap()[current_player_index] = bet;
     }
 
+    #[cfg(test)]
     pub fn bet(&mut self) {
         self.trick = 0;
         self.in_betting_stage = false;
@@ -169,6 +192,7 @@ impl Scoring {
         self.bets_placed.push([0; 4]);
     }
 
+    #[cfg(test)]
     pub fn trick(&mut self, starting_player_index: usize, cards: &[Card; 4]) -> usize {
         let winner = get_trick_winner(starting_player_index, cards);
         self.won_a_trick[winner] = true;
@@ -942,10 +966,7 @@ mod tests {
         // Case 1: both teams make their bids exactly.
         // bids [3,3,3,4] → team_a=6, team_b=7; each team wins exactly their bid.
         // seat 0 wins 6 (team_a), seat 1 wins 7 (team_b).
-        let (snap, _) = assert_finalize_equiv(
-            [3, 3, 3, 4],
-            &[(0, 6), (1, 7)],
-        );
+        let (snap, _) = assert_finalize_equiv([3, 3, 3, 4], &[(0, 6), (1, 7)]);
         assert_eq!(snap.a_pts, 60);
         assert_eq!(snap.b_pts, 70);
         assert_eq!(snap.a_bags, 0);
@@ -958,10 +979,7 @@ mod tests {
     fn test_finalize_round_equiv_overtricks_bags() {
         // Case 2: team_a bids low and wins many → accumulates bags.
         // bids [2,3,2,4] → team_a=4, team_b=7; team_a wins 6 (2 bags), team_b wins 7 (exact).
-        let (snap, _) = assert_finalize_equiv(
-            [2, 3, 2, 4],
-            &[(0, 6), (1, 7)],
-        );
+        let (snap, _) = assert_finalize_equiv([2, 3, 2, 4], &[(0, 6), (1, 7)]);
         assert_eq!(snap.a_pts, 42); // 4*10 + 2 bags = 42
         assert_eq!(snap.a_bags, 2);
         assert_eq!(snap.b_pts, 70);
@@ -973,10 +991,7 @@ mod tests {
     fn test_finalize_round_equiv_set_penalty() {
         // Case 3: team_a bids 5 but wins only 3 → set, loses 50 pts.
         // bids [3,3,2,4] → team_a=5, team_b=7; team_a wins 3, team_b wins 10.
-        let (snap, _) = assert_finalize_equiv(
-            [3, 3, 2, 4],
-            &[(0, 3), (1, 10)],
-        );
+        let (snap, _) = assert_finalize_equiv([3, 3, 2, 4], &[(0, 3), (1, 10)]);
         assert_eq!(snap.a_pts, -50);
         assert_eq!(snap.a_bags, 0);
         // team_b bid 7, won 10 → +70 + 3 bags = 73
@@ -992,10 +1007,7 @@ mod tests {
         // team_b: seat 1 bids 6 and wins 7, seat 3 bids 7 and wins 0 → set.
         // bids [0,6,6,7] → team_a nil+6, team_b 6+7=13.
         // seat 2 wins 6, seat 1 wins 7; seat 0 and seat 3 win nothing.
-        let (snap, _) = assert_finalize_equiv(
-            [0, 6, 6, 7],
-            &[(2, 6), (1, 7)],
-        );
+        let (snap, _) = assert_finalize_equiv([0, 6, 6, 7], &[(2, 6), (1, 7)]);
         // team_a: bid=0+6=6, won=6 exact → +60; nil success → +100; total=160
         assert_eq!(snap.a_pts, 160);
         assert_eq!(snap.a_bags, 0);
@@ -1012,8 +1024,14 @@ mod tests {
         let mut s = Scoring::new(500);
         s.finalize_round(&[6, 7, 0, 0], &[3, 3, 3, 4]);
 
-        assert_eq!(s.won_a_trick, [false; 4], "won_a_trick must be reset after finalize_round");
-        assert_eq!(s.player_tricks_won, [0; 4], "player_tricks_won must be reset after finalize_round");
+        assert_eq!(
+            s.won_a_trick, [false; 4],
+            "won_a_trick must be reset after finalize_round"
+        );
+        assert_eq!(
+            s.player_tricks_won, [0; 4],
+            "player_tricks_won must be reset after finalize_round"
+        );
     }
 
     #[test]

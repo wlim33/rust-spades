@@ -23,28 +23,40 @@ fn cannot_lead_spade_before_broken_when_non_spades_available() {
         None,
     );
     g.play(GameTransition::Start).unwrap();
-    g.players[0].hand = vec![
-        Card {
+    g.set_player_hand(
+        0,
+        vec![
+            Card {
+                suit: Suit::Club,
+                rank: Rank::Five,
+            },
+            Card {
+                suit: Suit::Spade,
+                rank: Rank::Ace,
+            },
+        ],
+    );
+    g.set_player_hand(
+        1,
+        vec![Card {
             suit: Suit::Club,
-            rank: Rank::Five,
-        },
-        Card {
-            suit: Suit::Spade,
-            rank: Rank::Ace,
-        },
-    ];
-    g.players[1].hand = vec![Card {
-        suit: Suit::Club,
-        rank: Rank::Two,
-    }];
-    g.players[2].hand = vec![Card {
-        suit: Suit::Club,
-        rank: Rank::Three,
-    }];
-    g.players[3].hand = vec![Card {
-        suit: Suit::Club,
-        rank: Rank::Four,
-    }];
+            rank: Rank::Two,
+        }],
+    );
+    g.set_player_hand(
+        2,
+        vec![Card {
+            suit: Suit::Club,
+            rank: Rank::Three,
+        }],
+    );
+    g.set_player_hand(
+        3,
+        vec![Card {
+            suit: Suit::Club,
+            rank: Rank::Four,
+        }],
+    );
     betting_done(&mut g);
     assert!(matches!(g.get_state(), State::Trick(0)));
     assert_eq!(
@@ -70,22 +82,34 @@ fn can_lead_spade_when_hand_is_only_spades() {
         None,
     );
     g.play(GameTransition::Start).unwrap();
-    g.players[0].hand = vec![Card {
-        suit: Suit::Spade,
-        rank: Rank::Ace,
-    }];
-    g.players[1].hand = vec![Card {
-        suit: Suit::Club,
-        rank: Rank::Two,
-    }];
-    g.players[2].hand = vec![Card {
-        suit: Suit::Club,
-        rank: Rank::Three,
-    }];
-    g.players[3].hand = vec![Card {
-        suit: Suit::Club,
-        rank: Rank::Four,
-    }];
+    g.set_player_hand(
+        0,
+        vec![Card {
+            suit: Suit::Spade,
+            rank: Rank::Ace,
+        }],
+    );
+    g.set_player_hand(
+        1,
+        vec![Card {
+            suit: Suit::Club,
+            rank: Rank::Two,
+        }],
+    );
+    g.set_player_hand(
+        2,
+        vec![Card {
+            suit: Suit::Club,
+            rank: Rank::Three,
+        }],
+    );
+    g.set_player_hand(
+        3,
+        vec![Card {
+            suit: Suit::Club,
+            rank: Rank::Four,
+        }],
+    );
     betting_done(&mut g);
     assert_eq!(
         g.play(GameTransition::Card(Card {
@@ -111,46 +135,58 @@ fn lead_spade_allowed_after_spades_broken() {
     );
     g.play(GameTransition::Start).unwrap();
     // Player B has no clubs and will trump with a spade, breaking spades.
-    g.players[0].hand = vec![
-        Card {
-            suit: Suit::Club,
-            rank: Rank::Five,
-        },
-        Card {
-            suit: Suit::Club,
-            rank: Rank::Six,
-        },
-    ];
-    g.players[1].hand = vec![
-        Card {
-            suit: Suit::Spade,
-            rank: Rank::Two,
-        },
-        Card {
-            suit: Suit::Spade,
-            rank: Rank::Three,
-        },
-    ];
-    g.players[2].hand = vec![
-        Card {
-            suit: Suit::Club,
-            rank: Rank::Three,
-        },
-        Card {
-            suit: Suit::Heart,
-            rank: Rank::Two,
-        },
-    ];
-    g.players[3].hand = vec![
-        Card {
-            suit: Suit::Club,
-            rank: Rank::Four,
-        },
-        Card {
-            suit: Suit::Heart,
-            rank: Rank::Three,
-        },
-    ];
+    g.set_player_hand(
+        0,
+        vec![
+            Card {
+                suit: Suit::Club,
+                rank: Rank::Five,
+            },
+            Card {
+                suit: Suit::Club,
+                rank: Rank::Six,
+            },
+        ],
+    );
+    g.set_player_hand(
+        1,
+        vec![
+            Card {
+                suit: Suit::Spade,
+                rank: Rank::Two,
+            },
+            Card {
+                suit: Suit::Spade,
+                rank: Rank::Three,
+            },
+        ],
+    );
+    g.set_player_hand(
+        2,
+        vec![
+            Card {
+                suit: Suit::Club,
+                rank: Rank::Three,
+            },
+            Card {
+                suit: Suit::Heart,
+                rank: Rank::Two,
+            },
+        ],
+    );
+    g.set_player_hand(
+        3,
+        vec![
+            Card {
+                suit: Suit::Club,
+                rank: Rank::Four,
+            },
+            Card {
+                suit: Suit::Heart,
+                rank: Rank::Three,
+            },
+        ],
+    );
     betting_done(&mut g);
     g.play(GameTransition::Card(Card {
         suit: Suit::Club,
@@ -174,7 +210,10 @@ fn lead_spade_allowed_after_spades_broken() {
     .unwrap();
     // Player B (only spade played) wins and leads the next trick.
     assert!(matches!(g.get_state(), State::Trick(0)));
-    assert_eq!(g.get_current_player_id().unwrap(), g.players[1].id);
+    assert_eq!(
+        g.get_current_player_id().unwrap(),
+        g.get_player_names()[1].0
+    );
     // Spades broken — leading with spade now allowed.
     assert_eq!(
         g.play(GameTransition::Card(Card {
@@ -199,28 +238,40 @@ fn get_legal_cards_excludes_spades_on_lead_before_broken() {
         None,
     );
     g.play(GameTransition::Start).unwrap();
-    g.players[0].hand = vec![
-        Card {
+    g.set_player_hand(
+        0,
+        vec![
+            Card {
+                suit: Suit::Club,
+                rank: Rank::Five,
+            },
+            Card {
+                suit: Suit::Spade,
+                rank: Rank::Ace,
+            },
+        ],
+    );
+    g.set_player_hand(
+        1,
+        vec![Card {
             suit: Suit::Club,
-            rank: Rank::Five,
-        },
-        Card {
-            suit: Suit::Spade,
-            rank: Rank::Ace,
-        },
-    ];
-    g.players[1].hand = vec![Card {
-        suit: Suit::Club,
-        rank: Rank::Two,
-    }];
-    g.players[2].hand = vec![Card {
-        suit: Suit::Club,
-        rank: Rank::Three,
-    }];
-    g.players[3].hand = vec![Card {
-        suit: Suit::Club,
-        rank: Rank::Four,
-    }];
+            rank: Rank::Two,
+        }],
+    );
+    g.set_player_hand(
+        2,
+        vec![Card {
+            suit: Suit::Club,
+            rank: Rank::Three,
+        }],
+    );
+    g.set_player_hand(
+        3,
+        vec![Card {
+            suit: Suit::Club,
+            rank: Rank::Four,
+        }],
+    );
     betting_done(&mut g);
     let legal = g.get_legal_cards().unwrap();
     assert_eq!(
@@ -246,7 +297,7 @@ fn get_current_trick_cards_in_betting_returns_unknown_not_completed() {
         None,
     );
     g.play(GameTransition::Start).unwrap();
-    assert!(matches!(g.get_state(), State::Betting(_)));
+    assert!(matches!(g.get_state(), State::Bidding(_)));
     assert_eq!(g.get_current_trick_cards().err(), Some(GetError::Unknown));
 }
 
@@ -500,11 +551,11 @@ pub fn api_main_unit() {
         },
     ];
 
-    g.players[0].hand = hand_a;
-    g.players[1].hand = hand_b;
-    g.players[2].hand = hand_c;
-    g.players[3].hand = hand_d;
-    assert_eq!(g.state, State::Betting(0));
+    g.set_player_hand(0, hand_a);
+    g.set_player_hand(1, hand_b);
+    g.set_player_hand(2, hand_c);
+    g.set_player_hand(3, hand_d);
+    assert_eq!(*g.get_state(), State::Bidding(0));
 
     assert_eq!(
         g.play(GameTransition::Card(Card {
@@ -549,68 +600,64 @@ pub fn api_main_unit() {
         Ok(TransitionSuccess::BetComplete)
     );
 
-    let mut trick_test_closure = |trick_number: usize,
-                                  played_cards: &[Card; 4],
-                                  team_a_won: usize| {
-        assert_eq!(
-            g.play(GameTransition::Card(played_cards[0])),
-            Ok(TransitionSuccess::PlayCard)
-        );
-        assert_eq!(
-            g.play(GameTransition::Start),
-            Err(TransitionError::AlreadyStarted)
-        );
-        assert_eq!(
-            g.play(GameTransition::Bet(3)),
-            Err(TransitionError::BetInTrickStage)
-        );
+    let mut trick_test_closure =
+        |trick_number: usize, played_cards: &[Card; 4], team_a_won: usize| {
+            assert_eq!(
+                g.play(GameTransition::Card(played_cards[0])),
+                Ok(TransitionSuccess::PlayCard)
+            );
+            assert_eq!(
+                g.play(GameTransition::Start),
+                Err(TransitionError::AlreadyStarted)
+            );
+            assert_eq!(
+                g.play(GameTransition::Bet(3)),
+                Err(TransitionError::BetInTrickStage)
+            );
 
-        assert_eq!(
-            g.play(GameTransition::Card(played_cards[1])),
-            Ok(TransitionSuccess::PlayCard)
-        );
-        assert_eq!(
-            g.play(GameTransition::Start),
-            Err(TransitionError::AlreadyStarted)
-        );
-        assert_eq!(
-            g.play(GameTransition::Bet(3)),
-            Err(TransitionError::BetInTrickStage)
-        );
+            assert_eq!(
+                g.play(GameTransition::Card(played_cards[1])),
+                Ok(TransitionSuccess::PlayCard)
+            );
+            assert_eq!(
+                g.play(GameTransition::Start),
+                Err(TransitionError::AlreadyStarted)
+            );
+            assert_eq!(
+                g.play(GameTransition::Bet(3)),
+                Err(TransitionError::BetInTrickStage)
+            );
 
-        assert_eq!(
-            g.play(GameTransition::Card(played_cards[2])),
-            Ok(TransitionSuccess::PlayCard)
-        );
-        assert_eq!(
-            g.play(GameTransition::Start),
-            Err(TransitionError::AlreadyStarted)
-        );
-        assert_eq!(
-            g.play(GameTransition::Bet(3)),
-            Err(TransitionError::BetInTrickStage)
-        );
+            assert_eq!(
+                g.play(GameTransition::Card(played_cards[2])),
+                Ok(TransitionSuccess::PlayCard)
+            );
+            assert_eq!(
+                g.play(GameTransition::Start),
+                Err(TransitionError::AlreadyStarted)
+            );
+            assert_eq!(
+                g.play(GameTransition::Bet(3)),
+                Err(TransitionError::BetInTrickStage)
+            );
 
-        assert_eq!(
-            g.play(GameTransition::Card(played_cards[3])),
-            Ok(TransitionSuccess::Trick)
-        );
-        assert_eq!(
-            g.play(GameTransition::Start),
-            Err(TransitionError::AlreadyStarted)
-        );
-        assert_eq!(
-            g.play(GameTransition::Bet(3)),
-            Err(TransitionError::BetInTrickStage)
-        );
+            assert_eq!(
+                g.play(GameTransition::Card(played_cards[3])),
+                Ok(TransitionSuccess::Trick)
+            );
+            assert_eq!(
+                g.play(GameTransition::Start),
+                Err(TransitionError::AlreadyStarted)
+            );
+            assert_eq!(
+                g.play(GameTransition::Bet(3)),
+                Err(TransitionError::BetInTrickStage)
+            );
 
-        let _ = trick_number; // dead-code parameter retained for the (currently commented-out) caller
-        assert!(
-            g.scoring.team_a.current_round_tricks_won + g.scoring.team_b.current_round_tricks_won
-                >= 1
-        );
-        let _ = team_a_won;
-    };
+            let _ = trick_number; // dead-code parameter retained for the (currently commented-out) caller
+            assert!(g.get_player_tricks_won().unwrap().iter().sum::<i32>() >= 1);
+            let _ = team_a_won;
+        };
 
     let pots = [
         [
@@ -750,18 +797,19 @@ fn history_preserved_across_round_boundary() {
     }
 
     // We should now be in betting state for round 1 (game isn't over with max_points=50 after 1 round of low bets).
-    assert!(matches!(g.get_state(), State::Betting(_)));
+    assert!(matches!(g.get_state(), State::Bidding(_)));
 
     // History must already contain a slot for round 1's first trick (14 total entries),
     // so round 0's tricks 0..12 remain intact.
-    assert_eq!(g.get_history().len(), 14);
+    let history = g.get_history();
+    assert_eq!(history.len(), 14);
 
     // The slot pushed for round 1 must be empty.
-    let last = g.get_history().last().unwrap();
+    let last = history.last().unwrap();
     assert!(last.iter().all(|c| c.is_none()));
 
     // All 13 round-0 trick slots must be fully populated.
-    for (i, trick) in g.get_history()[..13].iter().enumerate() {
+    for (i, trick) in history[..13].iter().enumerate() {
         for (s, c) in trick.iter().enumerate() {
             assert!(c.is_some(), "round 0 trick {} seat {} should be Some", i, s);
         }
@@ -787,7 +835,7 @@ fn spades_broken_resets_at_round_boundary() {
         }
     }
     // Round 1 betting (max_points=200 isn't reachable in one round of 1-bids).
-    assert!(matches!(g.get_state(), State::Betting(_)));
+    assert!(matches!(g.get_state(), State::Bidding(_)));
     for _ in 0..4 {
         g.play(GameTransition::Bet(1)).unwrap();
     }
@@ -795,16 +843,19 @@ fn spades_broken_resets_at_round_boundary() {
 
     // Seat 0 leads round 1. Give them a club and a spade; leading the spade must
     // be rejected because spades start each round unbroken.
-    g.players[0].hand = vec![
-        Card {
-            suit: Suit::Club,
-            rank: Rank::Five,
-        },
-        Card {
-            suit: Suit::Spade,
-            rank: Rank::Ace,
-        },
-    ];
+    g.set_player_hand(
+        0,
+        vec![
+            Card {
+                suit: Suit::Club,
+                rank: Rank::Five,
+            },
+            Card {
+                suit: Suit::Spade,
+                rank: Rank::Ace,
+            },
+        ],
+    );
     assert_eq!(
         g.play(GameTransition::Card(Card {
             suit: Suit::Spade,

@@ -130,8 +130,8 @@ fn test_get_winner_ids_team_a_wins() {
     ];
     let mut g = Game::new(Uuid::new_v4(), pids, 500, None);
     g.set_state(State::Completed);
-    g.scoring.team_a.cumulative_points = 500;
-    g.scoring.team_b.cumulative_points = 100;
+    g.scoring_mut().team_a.cumulative_points = 500;
+    g.scoring_mut().team_b.cumulative_points = 100;
     let (w1, w2) = g.get_winner_ids().unwrap();
     assert_eq!(w1, pids[0]);
     assert_eq!(w2, pids[2]);
@@ -147,8 +147,8 @@ fn test_get_winner_ids_team_b_wins() {
     ];
     let mut g = Game::new(Uuid::new_v4(), pids, 500, None);
     g.set_state(State::Completed);
-    g.scoring.team_a.cumulative_points = 100;
-    g.scoring.team_b.cumulative_points = 500;
+    g.scoring_mut().team_a.cumulative_points = 100;
+    g.scoring_mut().team_b.cumulative_points = 500;
     let (w1, w2) = g.get_winner_ids().unwrap();
     assert_eq!(w1, pids[1]);
     assert_eq!(w2, pids[3]);
@@ -158,8 +158,8 @@ fn test_get_winner_ids_team_b_wins() {
 fn test_get_winner_ids_tie_returns_error() {
     let mut g = Game::new(Uuid::new_v4(), [Uuid::new_v4(); 4], 500, None);
     g.set_state(State::Completed);
-    g.scoring.team_a.cumulative_points = 500;
-    g.scoring.team_b.cumulative_points = 500;
+    g.scoring_mut().team_a.cumulative_points = 500;
+    g.scoring_mut().team_b.cumulative_points = 500;
     assert_eq!(g.get_winner_ids(), Err(GetError::GameNotCompleted));
 }
 
@@ -178,7 +178,7 @@ fn abort_from_not_started() {
 #[test]
 fn abort_from_betting() {
     let (mut g, _) = make_started_game();
-    assert!(matches!(*g.get_state(), State::Betting(_)));
+    assert!(matches!(*g.get_state(), State::Bidding(_)));
     assert_eq!(
         g.play(GameTransition::Abort),
         Ok(TransitionSuccess::Aborted)
@@ -334,13 +334,13 @@ fn test_set_state() {
 #[test_case(99)]
 fn bet_out_of_range_is_rejected(bet: i32) {
     let (mut g, _) = make_started_game();
-    assert!(matches!(*g.get_state(), State::Betting(0)));
+    assert!(matches!(*g.get_state(), State::Bidding(0)));
     assert_eq!(
         g.play(GameTransition::Bet(bet)),
         Err(TransitionError::InvalidBet)
     );
     // A rejected bet must not advance the rotation or mutate scoring.
-    assert!(matches!(*g.get_state(), State::Betting(0)));
+    assert!(matches!(*g.get_state(), State::Bidding(0)));
 }
 
 #[test_case(0)]
@@ -349,7 +349,7 @@ fn bet_out_of_range_is_rejected(bet: i32) {
 fn bet_at_bounds_is_accepted(bet: i32) {
     let (mut g, _) = make_started_game();
     assert_eq!(g.play(GameTransition::Bet(bet)), Ok(TransitionSuccess::Bet));
-    assert!(matches!(*g.get_state(), State::Betting(1)));
+    assert!(matches!(*g.get_state(), State::Bidding(1)));
 }
 
 // ── Play errors: CompletedGame, CardNotInHand, CardIncorrectSuit, BetInTrickStage ──

@@ -128,35 +128,13 @@ pub struct PlayerClocks {
     pub remaining_ms: [u64; 4],
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub(crate) struct Player {
-    id: Uuid,
-    hand: Vec<Card>,
-    #[serde(default)]
-    name: Option<String>,
-}
-
-impl Player {
-    pub fn new(id: Uuid) -> Player {
-        Player {
-            id,
-            hand: vec![],
-            name: None,
-        }
-    }
-}
-
-/// Primary game state. Internally manages player rotation, scoring, and cards.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+/// Primary game state. A thin facade over [`trick_engine::Game`] configured with
+/// the [`crate::rules::Spades`] ruleset; this crate owns only the timer/clock
+/// bookkeeping and the "last completed trick" convenience snapshot. The public
+/// API is unchanged from the pre-engine implementation.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Game {
-    id: Uuid,
-    state: State,
-    scoring: scoring::Scoring,
-    current_player_index: usize,
-    deck: Vec<cards::Card>,
-    hands_played: Vec<[Option<cards::Card>; 4]>,
-    leading_suit: Option<Suit>,
-    players: [Player; 4],
+    inner: trick_engine::Game,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     timer_config: Option<TimerConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -167,8 +145,22 @@ pub struct Game {
     last_trick_winner: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     last_completed_trick: Option<[cards::Card; 4]>,
-    #[serde(default)]
-    spades_broken: bool,
+}
+
+/// Map an engine `StepOutcome` onto the facade's `TransitionSuccess`. Trick and
+/// round completion both surface as `Trick` (the historical API never
+/// distinguished them).
+fn map_outcome(o: trick_engine::StepOutcome) -> TransitionSuccess {
+    use trick_engine::StepOutcome as O;
+    match o {
+        O::Started => TransitionSuccess::Start,
+        O::Bid => TransitionSuccess::Bet,
+        O::BidComplete => TransitionSuccess::BetComplete,
+        O::PlayCard => TransitionSuccess::PlayCard,
+        O::TrickComplete | O::RoundComplete => TransitionSuccess::Trick,
+        O::GameOver => TransitionSuccess::GameOver,
+        O::Aborted => TransitionSuccess::Aborted,
+    }
 }
 
 impl Game {
@@ -184,42 +176,38 @@ impl Game {
         let player_clocks = timer_config.map(|tc| PlayerClocks {
             remaining_ms: [tc.initial_time_secs * 1000; 4],
         });
+        let rules = Box::new(crate::rules::Spades::new(max_points));
         Game {
-            id,
-            state: State::NotStarted,
-            scoring: scoring::Scoring::new(max_points),
-            hands_played: vec![[None; 4]],
-            deck: cards::new_deck(),
-            current_player_index: 0,
-            leading_suit: None,
-            players: [
-                Player::new(player_ids[0]),
-                Player::new(player_ids[1]),
-                Player::new(player_ids[2]),
-                Player::new(player_ids[3]),
-            ],
+            inner: trick_engine::Game::new(id, player_ids.to_vec(), rules),
             timer_config,
             player_clocks,
             turn_started_at_epoch_ms: None,
             last_trick_winner: None,
             last_completed_trick: None,
-            spades_broken: false,
         }
+    }
+
+    /// Borrow the concrete spades ruleset out of the engine. Infallible: a
+    /// `Game` is always constructed with `Spades`.
+    fn spades(&self) -> &crate::rules::Spades {
+        self.inner
+            .rules_as::<crate::rules::Spades>()
+            .expect("spades game always carries the Spades ruleset")
     }
 
     /// The game's unique id.
     pub fn get_id(&self) -> &Uuid {
-        &self.id
+        self.inner.id()
     }
 
     /// See [`State`](enum.State.html)
     pub fn get_state(&self) -> &State {
-        &self.state
+        self.inner.state()
     }
 
     /// `Ok` once the game has started — i.e. any state other than [`State::NotStarted`].
     fn require_started(&self) -> Result<(), GetError> {
-        match self.state {
+        match self.inner.state() {
             State::NotStarted => Err(GetError::GameNotStarted),
             _ => Ok(()),
         }
@@ -228,89 +216,116 @@ impl Game {
     /// `Ok` only while a hand is in progress (Betting or Trick), distinguishing
     /// not-yet-started from already-finished.
     fn require_active(&self) -> Result<(), GetError> {
-        match self.state {
+        match self.inner.state() {
             State::NotStarted => Err(GetError::GameNotStarted),
             State::Completed | State::Aborted => Err(GetError::GameCompleted),
-            State::Betting(_) | State::Trick(_) => Ok(()),
+            State::Bidding(_) | State::Trick(_) => Ok(()),
         }
     }
 
     /// Team A's (seats 0 & 2) cumulative score. `Err` before the game has started.
     pub fn get_team_a_score(&self) -> Result<i32, GetError> {
         self.require_started()?;
-        Ok(self.scoring.team_a.cumulative_points)
+        Ok(self.spades().scoring().team_a.cumulative_points)
     }
 
     /// Team B's (seats 1 & 3) cumulative score. `Err` before the game has started.
     pub fn get_team_b_score(&self) -> Result<i32, GetError> {
         self.require_started()?;
-        Ok(self.scoring.team_b.cumulative_points)
+        Ok(self.spades().scoring().team_b.cumulative_points)
     }
 
     /// Team A's accumulated bags (overtricks). `Err` before the game has started.
     pub fn get_team_a_bags(&self) -> Result<i32, GetError> {
         self.require_started()?;
-        Ok(self.scoring.team_a.bags)
+        Ok(self.spades().scoring().team_a.bags)
     }
 
     /// Team B's accumulated bags (overtricks). `Err` before the game has started.
     pub fn get_team_b_bags(&self) -> Result<i32, GetError> {
         self.require_started()?;
-        Ok(self.scoring.team_b.bags)
+        Ok(self.spades().scoring().team_b.bags)
     }
 
     /// Returns `GetError` when the current game is not in the Betting or Trick stages.
     pub fn get_current_player_id(&self) -> Result<Uuid, GetError> {
         self.require_active()?;
-        Ok(self.players[self.current_player_index].id)
+        Ok(self.inner.player_id(self.inner.current_seat()))
+    }
+
+    /// A seat's hand as sorted spades `Card`s. The engine deals unsorted; the
+    /// legacy spades API always exposed hands in canonical order (suit, then
+    /// rank), which callers/tests rely on (e.g. taking `hand[0]` as the lowest
+    /// card). Sorting the *view* doesn't affect engine play, which matches cards
+    /// by identity, not position.
+    fn hand_of(&self, seat: usize) -> Vec<Card> {
+        let mut hand: Vec<Card> = self
+            .inner
+            .hand(seat)
+            .iter()
+            .filter_map(cards::from_tn)
+            .collect();
+        hand.sort();
+        hand
     }
 
     /// Returns a `GetError::InvalidUuid` if the game does not contain a player with the given `Uuid`.
-    pub fn get_hand_by_player_id(&self, player_id: Uuid) -> Result<&Vec<Card>, GetError> {
-        self.players
-            .iter()
-            .find(|p| p.id == player_id)
-            .map(|p| &p.hand)
-            .ok_or(GetError::InvalidUuid)
+    pub fn get_hand_by_player_id(&self, player_id: Uuid) -> Result<Vec<Card>, GetError> {
+        for seat in 0..4 {
+            if self.inner.player_id(seat) == player_id {
+                return Ok(self.hand_of(seat));
+            }
+        }
+        Err(GetError::InvalidUuid)
     }
 
     /// The hand of the player whose turn it is. `Err` unless the game is in the Betting or Trick stage.
-    pub fn get_current_hand(&self) -> Result<&Vec<Card>, GetError> {
+    pub fn get_current_hand(&self) -> Result<Vec<Card>, GetError> {
         self.require_active()?;
-        Ok(&self.players[self.current_player_index].hand)
+        Ok(self.hand_of(self.inner.current_seat()))
     }
 
     /// The suit led in the current trick, or `None` if no card has been led yet. Only valid in the Trick stage.
     pub fn get_leading_suit(&self) -> Result<Option<Suit>, GetError> {
-        match &self.state {
+        match self.inner.state() {
             State::NotStarted => Err(GetError::GameNotStarted),
             State::Completed => Err(GetError::GameCompleted),
-            State::Trick(_) => Ok(self.leading_suit),
+            State::Trick(_) => {
+                let leader = self.inner.trick_leader();
+                Ok(self.inner.current_trick()[leader]
+                    .as_ref()
+                    .and_then(cards::from_tn)
+                    .map(|c| c.suit))
+            }
             _ => Err(GetError::Unknown),
         }
     }
 
     /// Returns the cards currently on the table; each slot is `None` if that player
     /// hasn't yet played this trick. Only available in the Trick stage.
-    pub fn get_current_trick_cards(&self) -> Result<&[Option<cards::Card>; 4], GetError> {
-        match self.state {
+    pub fn get_current_trick_cards(&self) -> Result<[Option<cards::Card>; 4], GetError> {
+        match self.inner.state() {
             State::NotStarted => Err(GetError::GameNotStarted),
             State::Completed | State::Aborted => Err(GetError::GameCompleted),
-            State::Betting(_) => Err(GetError::Unknown),
-            State::Trick(_) => Ok(self.hands_played.last().unwrap()),
+            State::Bidding(_) => Err(GetError::Unknown),
+            State::Trick(_) => {
+                let trick = self.inner.current_trick();
+                Ok(std::array::from_fn(|i| {
+                    trick[i].as_ref().and_then(cards::from_tn)
+                }))
+            }
         }
     }
 
     /// The ids of the two players on the winning team. `Err` unless the game has completed.
     pub fn get_winner_ids(&self) -> Result<(Uuid, Uuid), GetError> {
-        match self.state {
+        match self.inner.state() {
             State::Completed => {
-                if self.scoring.team_a.cumulative_points > self.scoring.team_b.cumulative_points {
-                    Ok((self.players[0].id, self.players[2].id))
-                } else if self.scoring.team_b.cumulative_points
-                    > self.scoring.team_a.cumulative_points
-                {
-                    Ok((self.players[1].id, self.players[3].id))
+                let s = self.spades().scoring();
+                if s.team_a.cumulative_points > s.team_b.cumulative_points {
+                    Ok((self.inner.player_id(0), self.inner.player_id(2)))
+                } else if s.team_b.cumulative_points > s.team_a.cumulative_points {
+                    Ok((self.inner.player_id(1), self.inner.player_id(3)))
                 } else {
                     // A tie at State::Completed is reachable only when the game
                     // ends via the loss floor or round cap (max_points keeps
@@ -330,124 +345,96 @@ impl Game {
     /// Start -> Bet * 4 -> Card * 13 -> Bet * 4 -> Card * 13 -> Bet * 4 -> ...
     pub fn play(&mut self, entry: GameTransition) -> Result<TransitionSuccess, TransitionError> {
         self.last_completed_trick = None;
-        match entry {
-            GameTransition::Bet(bet) => match self.state {
-                State::NotStarted => Err(TransitionError::NotStarted),
-                State::Trick(_rotation_status) => Err(TransitionError::BetInTrickStage),
-                State::Completed | State::Aborted => Err(TransitionError::CompletedGame),
-                State::Betting(rotation_status) => {
-                    if !(0..=13).contains(&bet) {
-                        return Err(TransitionError::InvalidBet);
+        let action = match entry {
+            GameTransition::Start => trick_engine::Action::Start,
+            GameTransition::Bet(b) => trick_engine::Action::Bid(b),
+            GameTransition::Card(c) => trick_engine::Action::Play(cards::to_tn(c)),
+            GameTransition::Abort => trick_engine::Action::Abort,
+        };
+        match self.inner.step(action) {
+            Ok(outcome) => {
+                // Capture the just-completed trick / its winner for the getters.
+                // After a trick the engine clears the table and pushes the
+                // completed trick to history; its winner becomes the new leader.
+                if matches!(
+                    outcome,
+                    trick_engine::StepOutcome::TrickComplete
+                        | trick_engine::StepOutcome::RoundComplete
+                        | trick_engine::StepOutcome::GameOver
+                ) {
+                    if let Some(last) = self.inner.history().last()
+                        && last.iter().all(|c| c.is_some())
+                    {
+                        let arr: [Card; 4] = std::array::from_fn(|i| {
+                            cards::from_tn(last[i].as_ref().unwrap())
+                                .expect("history holds only spades cards")
+                        });
+                        self.last_completed_trick = Some(arr);
+                        self.last_trick_winner = Some(self.inner.trick_leader());
                     }
-                    self.scoring.add_bet(self.current_player_index, bet);
-                    if rotation_status == 3 {
-                        self.scoring.bet();
-                        self.state = State::Trick((rotation_status + 1) % 4);
-                        self.current_player_index = 0;
-                        return Ok(TransitionSuccess::BetComplete);
-                    } else {
-                        self.current_player_index = (self.current_player_index + 1) % 4;
-                        self.state = State::Betting((rotation_status + 1) % 4);
-                    }
-
-                    Ok(TransitionSuccess::Bet)
-                }
-            },
-            GameTransition::Card(card) => {
-                match self.state {
-                    State::NotStarted => Err(TransitionError::NotStarted),
-                    State::Completed | State::Aborted => Err(TransitionError::CompletedGame),
-                    State::Betting(_rotation_status) => Err(TransitionError::CardInBettingStage),
-                    State::Trick(rotation_status) => {
-                        {
-                            let player_hand = &mut self.players[self.current_player_index].hand;
-
-                            if !player_hand.contains(&card) {
-                                return Err(TransitionError::CardNotInHand);
-                            }
-                            if rotation_status == 0
-                                && card.suit == Suit::Spade
-                                && !self.spades_broken
-                                && player_hand.iter().any(|c| c.suit != Suit::Spade)
-                            {
-                                return Err(TransitionError::SpadesNotBroken);
-                            }
-                            if rotation_status == 0 {
-                                self.leading_suit = Some(card.suit);
-                            } else if let Some(ls) = self.leading_suit
-                                && ls != card.suit
-                                && player_hand.iter().any(|x| x.suit == ls)
-                            {
-                                return Err(TransitionError::CardIncorrectSuit);
-                            }
-
-                            let card_index = player_hand.iter().position(|x| x == &card).unwrap();
-                            self.deck.push(player_hand.remove(card_index));
-                        }
-
-                        if card.suit == Suit::Spade {
-                            self.spades_broken = true;
-                        }
-                        self.hands_played.last_mut().unwrap()[self.current_player_index] =
-                            Some(card);
-
-                        if rotation_status == 3 {
-                            let trick = self.hands_played.last().unwrap();
-                            let played: [Card; 4] = [
-                                trick[0].unwrap(),
-                                trick[1].unwrap(),
-                                trick[2].unwrap(),
-                                trick[3].unwrap(),
-                            ];
-                            // Trick complete: current_player_index is the LAST seat that played;
-                            // the lead seat is the next-in-rotation (winner of the trick is computed
-                            // from the lead's perspective, since the lead's card sets the trick suit).
-                            let lead = (self.current_player_index + 1) % 4;
-                            let winner = self.scoring.trick(lead, &played);
-                            self.last_trick_winner = Some(winner);
-                            self.last_completed_trick = Some(played);
-                            if self.scoring.is_over {
-                                self.state = State::Completed;
-                                return Ok(TransitionSuccess::GameOver);
-                            }
-                            if self.scoring.in_betting_stage {
-                                self.last_trick_winner = None;
-                                self.current_player_index = 0;
-                                self.state = State::Betting((rotation_status + 1) % 4);
-                                self.spades_broken = false;
-                                self.leading_suit = None;
-                                self.deal_cards();
-                                self.hands_played.push([None; 4]);
-                            } else {
-                                self.current_player_index = winner;
-                                self.state = State::Trick((rotation_status + 1) % 4);
-                                self.leading_suit = None;
-                                self.hands_played.push([None; 4]);
-                            }
-                            Ok(TransitionSuccess::Trick)
-                        } else {
-                            self.current_player_index = (self.current_player_index + 1) % 4;
-                            self.state = State::Trick((rotation_status + 1) % 4);
-                            Ok(TransitionSuccess::PlayCard)
-                        }
+                    // A round/game boundary clears the inter-round winner the way
+                    // the old engine did (winner is meaningful only within a round).
+                    if matches!(
+                        outcome,
+                        trick_engine::StepOutcome::RoundComplete
+                            | trick_engine::StepOutcome::GameOver
+                    ) {
+                        self.last_trick_winner = None;
                     }
                 }
+                Ok(map_outcome(outcome))
             }
-            GameTransition::Start => {
-                if self.state != State::NotStarted {
-                    return Err(TransitionError::AlreadyStarted);
-                }
-                self.deal_cards();
-                self.state = State::Betting(0);
-                Ok(TransitionSuccess::Start)
-            }
-            GameTransition::Abort => match self.state {
-                State::Completed | State::Aborted => Err(TransitionError::CompletedGame),
-                _ => {
-                    self.state = State::Aborted;
-                    Ok(TransitionSuccess::Aborted)
-                }
+            Err(e) => Err(self.map_step_error(e, entry)),
+        }
+    }
+
+    /// Translate the engine's coarse error into the precise spades variant the
+    /// public API has always returned. The engine says "no"; spades explains why.
+    fn map_step_error(&self, e: trick_engine::StepError, entry: GameTransition) -> TransitionError {
+        use trick_engine::StepError as E;
+        match e {
+            E::NotStarted => TransitionError::NotStarted,
+            E::AlreadyStarted => TransitionError::AlreadyStarted,
+            E::Completed => TransitionError::CompletedGame,
+            E::IllegalBid => TransitionError::InvalidBet,
+            E::CardNotInHand => TransitionError::CardNotInHand,
+            E::WrongPhase => match entry {
+                GameTransition::Bet(_) => TransitionError::BetInTrickStage,
+                GameTransition::Card(_) => TransitionError::CardInBettingStage,
+                _ => TransitionError::CompletedGame,
             },
+            E::IllegalPlay => self.explain_illegal_play(entry),
+        }
+    }
+
+    /// Re-derive `SpadesNotBroken` vs `CardIncorrectSuit` for an in-hand-but-illegal
+    /// card, matching the historical engine behavior. Reached only in the Trick
+    /// phase with a `Card` transition.
+    fn explain_illegal_play(&self, entry: GameTransition) -> TransitionError {
+        let GameTransition::Card(card) = entry else {
+            return TransitionError::CardIncorrectSuit;
+        };
+        let seat = self.inner.current_seat();
+        let hand: Vec<Card> = self
+            .inner
+            .hand(seat)
+            .iter()
+            .filter_map(cards::from_tn)
+            .collect();
+        let leader = self.inner.trick_leader();
+        let leading = self.inner.current_trick()[leader]
+            .as_ref()
+            .and_then(cards::from_tn)
+            .map(|c| c.suit);
+        match leading {
+            // Leading the trick (no card down yet): the only illegal lead is an
+            // unbroken spade while non-spades remain.
+            None => TransitionError::SpadesNotBroken,
+            // Following: illegal because a card of the led suit was held but not played.
+            Some(ls) if card.suit != ls && hand.iter().any(|c| c.suit == ls) => {
+                TransitionError::CardIncorrectSuit
+            }
+            _ => TransitionError::CardIncorrectSuit,
         }
     }
 
@@ -457,18 +444,18 @@ impl Game {
         player_id: Uuid,
         name: Option<String>,
     ) -> Result<(), GetError> {
-        let p = self
-            .players
-            .iter_mut()
-            .find(|p| p.id == player_id)
-            .ok_or(GetError::InvalidUuid)?;
-        p.name = name;
-        Ok(())
+        for seat in 0..4 {
+            if self.inner.player_id(seat) == player_id {
+                self.inner.player_mut(seat).name = name;
+                return Ok(());
+            }
+        }
+        Err(GetError::InvalidUuid)
     }
 
     /// Each seat's `(id, display name)` in seat order.
     pub fn get_player_names(&self) -> [(Uuid, Option<&str>); 4] {
-        std::array::from_fn(|i| (self.players[i].id, self.players[i].name.as_deref()))
+        std::array::from_fn(|i| (self.inner.player_id(i), self.inner.player_name(i)))
     }
 
     /// The Fischer-increment timer config, if this game was created with one.
@@ -488,12 +475,12 @@ impl Game {
 
     /// The 0-based seat index of the player whose turn it is.
     pub fn get_current_player_index_num(&self) -> usize {
-        self.current_player_index
+        self.inner.current_seat()
     }
 
     /// Returns true if the game is in the first round's betting phase (round 0, Betting state).
     pub fn is_first_round_betting(&self) -> bool {
-        self.scoring.round == 0 && matches!(self.state, State::Betting(_))
+        self.inner.round() == 0 && matches!(self.inner.state(), State::Bidding(_))
     }
 
     /// Wall-clock time (epoch ms) the current turn began, if tracked (server-set for timed games).
@@ -508,17 +495,19 @@ impl Game {
 
     /// Each seat's bet for the current round, or `None` before the game has started.
     pub fn get_player_bets(&self) -> Option<[i32; 4]> {
-        match self.state {
+        match self.inner.state() {
             State::NotStarted => None,
-            _ => Some(self.scoring.bets_placed[self.scoring.round]),
+            // The in-progress round's bids live in the engine; `bets_placed` is
+            // only written at round end (`finalize_round`).
+            _ => Some(self.inner.bids().try_into().expect("4 seats")),
         }
     }
 
     /// Each seat's tricks won so far this round, or `None` before the game has started.
     pub fn get_player_tricks_won(&self) -> Option<[i32; 4]> {
-        match self.state {
+        match self.inner.state() {
             State::NotStarted => None,
-            _ => Some(self.scoring.player_tricks_won),
+            _ => Some(self.inner.tricks_won().try_into().expect("4 seats")),
         }
     }
 
@@ -529,7 +518,7 @@ impl Game {
         // defensively guards against an out-of-range index from a corrupt
         // deserialized row (prefer a wrong-but-safe id over a panic here).
         self.last_trick_winner
-            .map(|idx| self.players[idx.min(3)].id)
+            .map(|idx| self.inner.player_id(idx.min(3)))
     }
 
     /// The four cards of the most recently completed trick, or `None` if none has completed this round.
@@ -540,80 +529,93 @@ impl Game {
     /// Set the game state directly. Crate-internal escape hatch for transcript
     /// replay and tests; external callers abort via [`GameTransition::Abort`].
     pub(crate) fn set_state(&mut self, state: State) {
-        self.state = state;
+        self.inner.set_state(state);
     }
 
     /// Returns the list of legal cards the current player can play.
     /// Only valid in the Trick state.
     pub fn get_legal_cards(&self) -> Result<Vec<Card>, GetError> {
-        match &self.state {
-            State::Trick(rotation_status) => {
-                let hand = self.get_current_hand()?;
-                if *rotation_status == 0 {
-                    if !self.spades_broken {
-                        let non_spades: Vec<Card> = hand
-                            .iter()
-                            .filter(|c| c.suit != Suit::Spade)
-                            .copied()
-                            .collect();
-                        if !non_spades.is_empty() {
-                            return Ok(non_spades);
-                        }
-                    }
-                    Ok(hand.clone())
-                } else if let Some(ls) = self.leading_suit {
-                    let has_leading_suit = hand.iter().any(|c| c.suit == ls);
-                    if has_leading_suit {
-                        Ok(hand.iter().filter(|c| c.suit == ls).copied().collect())
-                    } else {
-                        Ok(hand.clone())
-                    }
-                } else {
-                    Ok(hand.clone())
-                }
-            }
+        match self.inner.state() {
+            State::Trick(_) => Ok(self
+                .inner
+                .legal_plays()
+                .iter()
+                .filter_map(cards::from_tn)
+                .collect()),
             _ => Err(GetError::Unknown),
         }
     }
 
     /// Max points configured at game creation.
     pub fn get_max_points(&self) -> i32 {
-        self.scoring.config.max_points
+        self.spades().scoring().config.max_points
     }
 
     /// All trick slots, one per trick. For round R the slots live at indices
     /// 13*R .. 13*(R+1). The final slot may be partially filled (current trick).
     /// Empty trailing slot during betting between rounds is intentional.
-    pub fn get_history(&self) -> &[[Option<cards::Card>; 4]] {
-        &self.hands_played
+    ///
+    /// Owned (one `[Option<Card>; 4]` per trick) because the engine stores tricks
+    /// as `Vec<Option<TnCard>>` and the spades view converts on read.
+    ///
+    /// The engine's `history()` holds only *completed* tricks. The legacy spades
+    /// view additionally carried a trailing slot for the in-progress trick (and a
+    /// fresh empty slot during between-round betting), so every non-terminal state
+    /// gets that trailing slot appended here — keeping the `13*round` indexing and
+    /// length expectations the transcript adapter and tests rely on. A completed
+    /// game has no trailing slot (the round-ending trick never pushed one).
+    pub fn get_history(&self) -> Vec<[Option<cards::Card>; 4]> {
+        let convert = |trick: &[Option<trick_notation::Card>]| -> [Option<cards::Card>; 4] {
+            std::array::from_fn(|i| trick[i].as_ref().and_then(cards::from_tn))
+        };
+        let mut out: Vec<[Option<cards::Card>; 4]> =
+            self.inner.history().iter().map(|t| convert(t)).collect();
+        if !matches!(self.inner.state(), State::Completed) {
+            out.push(convert(self.inner.current_trick()));
+        }
+        out
     }
 
-    /// All bets per round in seat order. `bets_placed[R][s]` is seat `s`'s bet
-    /// for round `R`. The trailing entry is a write target for the next round's
-    /// bets and may be all zeros even when no bets have been placed.
-    pub fn get_all_bets(&self) -> &[[i32; 4]] {
-        &self.scoring.bets_placed
+    /// All bets per round in seat order. `bets[R][s]` is seat `s`'s bet for round
+    /// `R`. The engine's `finalize_round` only writes a round's bets at round end,
+    /// so the current (in-progress) round's slot is overwritten with the live
+    /// engine bids — required for transcript correctness. `Completed` games are
+    /// left untouched (every round is already finalized, and the live engine bids
+    /// would otherwise leak the final round's bids into the trailing slot);
+    /// `Aborted` games ARE patched, because the round they aborted in was never
+    /// finalized and its bids live only in the engine.
+    pub fn get_all_bets(&self) -> Vec<[i32; 4]> {
+        let mut bets = self.spades().scoring().bets_placed.clone();
+        let round = self.inner.round();
+        if matches!(
+            self.inner.state(),
+            State::Bidding(_) | State::Trick(_) | State::Aborted
+        ) {
+            let live: [i32; 4] = self.inner.bids().try_into().expect("4 seats");
+            if round < bets.len() {
+                bets[round] = live;
+            } else {
+                bets.push(live);
+            }
+        }
+        bets
     }
 
-    /// Current 0-based round index (`scoring.round`).
+    /// Current 0-based round index. Sourced from the spades scoring state (not
+    /// the engine's `round()`), because the legacy API incremented the round
+    /// counter on *every* finalized round — including the game-ending one — and
+    /// the transcript adapter's `13*round` indexing and round-count emission
+    /// depend on that. (The engine leaves its own `round` at the last value when
+    /// the game ends, so the two diverge by one only for a completed game.)
     pub fn get_round_index(&self) -> usize {
-        self.scoring.round
+        self.spades().scoring().round
     }
 
     /// True when the game is in (or just finished) a betting phase rather than
     /// a trick phase. Combined with `get_state()` this disambiguates Aborted
     /// games.
     pub fn is_in_betting_stage(&self) -> bool {
-        self.scoring.in_betting_stage
-    }
-
-    fn deal_cards(&mut self) {
-        cards::shuffle(&mut self.deck);
-        let mut hands = cards::deal_four_players(&mut self.deck);
-        for i in (0..4).rev() {
-            self.players[i].hand = hands.pop().unwrap();
-            self.players[i].hand.sort();
-        }
+        self.spades().scoring().in_betting_stage
     }
 
     /// Override each player's hand with the given cards (used by transcript replay
@@ -622,11 +624,132 @@ impl Game {
     /// not validate that the supplied cards form a legal deal.
     pub(crate) fn override_hands(&mut self, hands: [Vec<Card>; 4]) {
         for (i, hand) in hands.into_iter().enumerate() {
-            self.players[i].hand = hand;
+            self.inner.player_mut(i).hand = hand.into_iter().map(cards::to_tn).collect();
         }
+    }
+
+    /// Set a single seat's hand. Crate-internal test helper (the old tests
+    /// poked `players[i].hand` directly); replaces that field access now that
+    /// hands live in the engine.
+    #[cfg(test)]
+    pub(crate) fn set_player_hand(&mut self, seat: usize, hand: Vec<Card>) {
+        self.inner.player_mut(seat).hand = hand.into_iter().map(cards::to_tn).collect();
+    }
+
+    /// Mutable access to the spades scoring state. Crate-internal test helper
+    /// for seeding terminal scores when exercising `get_winner_ids`.
+    #[cfg(test)]
+    pub(crate) fn scoring_mut(&mut self) -> &mut crate::scoring::Scoring {
+        self.inner
+            .rules_as_mut::<crate::rules::Spades>()
+            .expect("spades game always carries the Spades ruleset")
+            .scoring_mut()
     }
 }
 
+/// The engine `Game` (and its `Box<dyn Ruleset>`) doesn't implement `Debug`, so
+/// the facade can't derive it. A summary impl keeps `Result::unwrap`/`expect`
+/// and assertion diagnostics working without exposing the full inner state.
+impl std::fmt::Debug for Game {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Game")
+            .field("id", self.inner.id())
+            .field("state", self.inner.state())
+            .field("round", &self.inner.round())
+            .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod facade_tests {
+    use super::*;
+    use crate::cards::{Card, Rank, Suit};
+    use uuid::Uuid;
+
+    fn ids() -> [Uuid; 4] {
+        [
+            Uuid::from_u128(1),
+            Uuid::from_u128(2),
+            Uuid::from_u128(3),
+            Uuid::from_u128(4),
+        ]
+    }
+
+    #[test]
+    fn full_game_drives_to_completion_through_facade() {
+        let mut g = Game::new(Uuid::from_u128(9), ids(), 50, None);
+        g.play(GameTransition::Start).unwrap();
+        while *g.get_state() != State::Completed {
+            match g.get_state() {
+                State::Bidding(_) => {
+                    g.play(GameTransition::Bet(3)).unwrap();
+                }
+                State::Trick(_) => {
+                    let legal = g.get_legal_cards().unwrap();
+                    g.play(GameTransition::Card(legal[0])).unwrap();
+                }
+                _ => unreachable!(),
+            }
+        }
+        assert_eq!(*g.get_state(), State::Completed);
+        assert!(g.get_team_a_score().is_ok());
+    }
+
+    #[test]
+    fn spades_not_broken_error_is_preserved() {
+        // Mirrors `cannot_lead_spade_before_broken_when_non_spades_available` in
+        // src/tests, but exercises the facade's IllegalPlay re-derivation: seat 0
+        // holds a club and a spade on lead with spades unbroken, so leading the
+        // spade must surface as the precise `SpadesNotBroken` variant.
+        let mut g = Game::new(Uuid::from_u128(42), ids(), 500, None);
+        g.play(GameTransition::Start).unwrap();
+        g.set_player_hand(
+            0,
+            vec![
+                Card {
+                    suit: Suit::Club,
+                    rank: Rank::Five,
+                },
+                Card {
+                    suit: Suit::Spade,
+                    rank: Rank::Ace,
+                },
+            ],
+        );
+        g.set_player_hand(
+            1,
+            vec![Card {
+                suit: Suit::Club,
+                rank: Rank::Two,
+            }],
+        );
+        g.set_player_hand(
+            2,
+            vec![Card {
+                suit: Suit::Club,
+                rank: Rank::Three,
+            }],
+        );
+        g.set_player_hand(
+            3,
+            vec![Card {
+                suit: Suit::Club,
+                rank: Rank::Four,
+            }],
+        );
+        for _ in 0..4 {
+            g.play(GameTransition::Bet(3)).unwrap();
+        }
+        assert!(matches!(g.get_state(), State::Trick(0)));
+        assert_eq!(
+            g.play(GameTransition::Card(Card {
+                suit: Suit::Spade,
+                rank: Rank::Ace
+            })),
+            Err(TransitionError::SpadesNotBroken)
+        );
+    }
+}
 #[cfg(test)]
 mod id_codec_tests {
     use super::*;

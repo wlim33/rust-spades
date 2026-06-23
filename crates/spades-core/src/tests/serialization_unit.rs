@@ -47,7 +47,7 @@ fn test_game_json_roundtrip_after_start() {
     let json = serde_json::to_string(&game).unwrap();
     let deserialized: Game = serde_json::from_str(&json).unwrap();
     assert_eq!(*deserialized.get_id(), *game.get_id());
-    assert_eq!(*deserialized.get_state(), State::Betting(0));
+    assert_eq!(*deserialized.get_state(), State::Bidding(0));
     assert_eq!(
         deserialized.get_team_a_score().unwrap(),
         game.get_team_a_score().unwrap()
@@ -170,7 +170,7 @@ fn test_game_json_roundtrip_completed_game() {
     game.play(GameTransition::Start).unwrap();
     while *game.get_state() != State::Completed {
         match *game.get_state() {
-            State::Betting(_) => {
+            State::Bidding(_) => {
                 game.play(GameTransition::Bet(3)).unwrap();
             }
             State::Trick(_) => {

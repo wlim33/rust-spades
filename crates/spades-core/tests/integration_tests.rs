@@ -25,7 +25,7 @@ fn drive_a_game_to_completion_with_random_legal_play() {
                 g.play(GameTransition::Card(card))
                     .expect("legal card should play");
             }
-            State::Betting(_) => {
+            State::Bidding(_) => {
                 g.play(GameTransition::Bet(3))
                     .expect("Bet always valid in Betting");
             }
