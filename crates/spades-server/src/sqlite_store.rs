@@ -2,6 +2,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 use spades::Game;
 use std::sync::atomic::{AtomicU64, Ordering};
+use tracing::warn;
 use uuid::Uuid;
 
 /// Connection pool over one SQLite database. Replaces the previous single
@@ -21,6 +22,23 @@ pub struct ApiTokenRow {
     pub name: String,
     pub created_at: String,
     pub last_used_at: Option<String>,
+}
+
+/// A user's seat in one game, joined with the stamped outcome and a peek at
+/// the (possibly absent) live game state. Returned by `profile_games_for_user`.
+#[derive(Debug, Clone)]
+pub struct ProfileGameRow {
+    pub game_id: Uuid,
+    pub seat_index: i32,
+    pub player_id: Uuid,
+    /// `won` / `lost` / `tied` / `aborted`, or `None` until the game finishes
+    /// (or for games that ended before result tracking existed).
+    pub result: Option<String>,
+    pub team_score: Option<i32>,
+    pub opp_score: Option<i32>,
+    /// `json_extract(games.data, '$.state')` — `Some` only while the game row
+    /// survives. Distinguishes a live in-progress game from a pruned old one.
+    pub live_state: Option<String>,
 }
 
 /// SQLite-backed persistence for games.
@@ -166,12 +184,45 @@ impl SqliteStore {
                 anon_user_id    TEXT,
                 is_bot          INTEGER NOT NULL DEFAULT 0,
                 created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+                -- Terminal-game outcome from this seat's perspective, stamped
+                -- when the game completes/aborts. NULL until then (or for games
+                -- that finished before this column existed). team/opp_score are
+                -- the seat's own team score vs the opponents'.
+                result          TEXT,
+                team_score      INTEGER,
+                opp_score       INTEGER,
                 PRIMARY KEY (game_id, seat_index)
             );
             CREATE INDEX IF NOT EXISTS game_seats_user_id ON game_seats(user_id);
             CREATE INDEX IF NOT EXISTS game_seats_anon_user_id ON game_seats(anon_user_id);",
         )
         .map_err(|e| e.to_string())?;
+
+        // Idempotent migration: a `game_seats` table from before per-game
+        // result tracking lacks these columns. CREATE TABLE IF NOT EXISTS above
+        // won't backfill an existing table, so add them explicitly.
+        for (col, ddl) in [
+            ("result", "ALTER TABLE game_seats ADD COLUMN result TEXT"),
+            (
+                "team_score",
+                "ALTER TABLE game_seats ADD COLUMN team_score INTEGER",
+            ),
+            (
+                "opp_score",
+                "ALTER TABLE game_seats ADD COLUMN opp_score INTEGER",
+            ),
+        ] {
+            let present: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM pragma_table_info('game_seats') WHERE name = ?1)",
+                    rusqlite::params![col],
+                    |r| r.get(0),
+                )
+                .unwrap_or(false);
+            if !present {
+                conn.execute(ddl, []).map_err(|e| e.to_string())?;
+            }
+        }
         drop(conn);
         Ok(SqliteStore { pool })
     }
@@ -196,24 +247,42 @@ impl SqliteStore {
     }
 
     /// Load all persisted games.
+    ///
+    /// A row whose blob no longer deserializes to a full `Game` (a partial or
+    /// legacy record) is skipped and logged rather than aborting the load — a
+    /// single corrupt blob must never take down startup. The readable games are
+    /// always returned.
     pub fn load_all_games(&self) -> Result<Vec<Game>, String> {
         let conn = self.pool.get().map_err(|e| e.to_string())?;
         let mut stmt = conn
-            .prepare("SELECT data FROM games")
+            .prepare("SELECT id, data FROM games")
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |row| {
-                let json: String = row.get(0)?;
-                Ok(json)
+                let id: String = row.get(0)?;
+                let json: String = row.get(1)?;
+                Ok((id, json))
             })
             .map_err(|e| e.to_string())?;
 
         let mut games = Vec::new();
+        let mut skipped = 0usize;
         for row in rows {
-            let json = row.map_err(|e| e.to_string())?;
-            let game: Game = serde_json::from_str(&json)
-                .map_err(|e| format!("Failed to deserialize game: {}", e))?;
-            games.push(game);
+            let (id, json) = row.map_err(|e| e.to_string())?;
+            match serde_json::from_str::<Game>(&json) {
+                Ok(game) => games.push(game),
+                Err(e) => {
+                    skipped += 1;
+                    warn!(game_id = %id, error = %e, "skipping unreadable game row at startup");
+                }
+            }
+        }
+        if skipped > 0 {
+            warn!(
+                skipped,
+                loaded = games.len(),
+                "some game rows could not be deserialized and were skipped"
+            );
         }
         Ok(games)
     }
@@ -739,6 +808,35 @@ impl SqliteStore {
             .map_err(|e| e.to_string())
     }
 
+    /// All four seats of a game with their display identity, ordered by seat.
+    /// Returns `(seat_index, username, is_bot)`; `username` is `None` for bot
+    /// and guest seats, so callers pick a fallback label.
+    pub fn game_players_for_game(
+        &self,
+        game_id: uuid::Uuid,
+    ) -> Result<Vec<(i32, Option<String>, bool)>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT gs.seat_index, u.username, gs.is_bot \
+                 FROM game_seats gs \
+                 LEFT JOIN users u ON u.id = gs.user_id \
+                 WHERE gs.game_id = ?1 ORDER BY gs.seat_index",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![game_id.to_string()], |r| {
+                Ok((
+                    r.get::<_, i32>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, bool>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    }
+
     pub fn game_seats_for_user(
         &self,
         user_id: uuid::Uuid,
@@ -761,6 +859,80 @@ impl SqliteStore {
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())
+    }
+
+    /// Profile games for a user: their own seat in each game plus the stamped
+    /// outcome and a peek at the live game state. `live_state` is
+    /// `json_extract(games.data, '$.state')` — present only while the game row
+    /// survives (it's pruned once terminal), so the caller can tell an
+    /// in-progress game (live row, no stamped `result`) from an old finished
+    /// one (no row, no result). Pure SQL: the game blob is never deserialized.
+    pub fn profile_games_for_user(
+        &self,
+        user_id: uuid::Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<ProfileGameRow>, String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT gs.game_id, gs.seat_index, gs.player_id, \
+                        gs.result, gs.team_score, gs.opp_score, \
+                        json_extract(g.data, '$.state') \
+                 FROM game_seats gs \
+                 LEFT JOIN games g ON g.id = gs.game_id \
+                 WHERE gs.user_id = ?1 \
+                 ORDER BY gs.created_at DESC LIMIT ?2 OFFSET ?3",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![user_id.to_string(), limit, offset], |r| {
+                let game_id: String = r.get(0)?;
+                let player_id: String = r.get(2)?;
+                Ok(ProfileGameRow {
+                    game_id: Uuid::parse_str(&game_id).unwrap_or_default(),
+                    seat_index: r.get(1)?,
+                    player_id: Uuid::parse_str(&player_id).unwrap_or_default(),
+                    result: r.get(3)?,
+                    team_score: r.get(4)?,
+                    opp_score: r.get(5)?,
+                    live_state: r.get(6)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    }
+
+    /// Stamp the terminal outcome onto all four seats of a game, each from its
+    /// own team's perspective (seats 0 & 2 are team A, 1 & 3 are team B).
+    /// `aborted` forces every seat's result to `"aborted"`; otherwise it's
+    /// `won` / `lost` / `tied` by comparing the seat's team score to the
+    /// opponents'. Idempotent — safe to call more than once for a game.
+    pub fn record_game_results(
+        &self,
+        game_id: uuid::Uuid,
+        team_a_score: i32,
+        team_b_score: i32,
+        aborted: bool,
+    ) -> Result<(), String> {
+        let conn = self.pool.get().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE game_seats SET \
+                team_score = CASE WHEN seat_index % 2 = 0 THEN ?2 ELSE ?3 END, \
+                opp_score  = CASE WHEN seat_index % 2 = 0 THEN ?3 ELSE ?2 END, \
+                result = CASE \
+                    WHEN ?4 THEN 'aborted' \
+                    WHEN (CASE WHEN seat_index % 2 = 0 THEN ?2 ELSE ?3 END) \
+                       > (CASE WHEN seat_index % 2 = 0 THEN ?3 ELSE ?2 END) THEN 'won' \
+                    WHEN (CASE WHEN seat_index % 2 = 0 THEN ?2 ELSE ?3 END) \
+                       < (CASE WHEN seat_index % 2 = 0 THEN ?3 ELSE ?2 END) THEN 'lost' \
+                    ELSE 'tied' END \
+             WHERE game_id = ?1",
+            rusqlite::params![game_id.to_string(), team_a_score, team_b_score, aborted],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     pub fn count_game_seats_for_user(&self, user_id: uuid::Uuid) -> Result<i64, String> {
@@ -1153,6 +1325,33 @@ mod tests {
         let remaining = store.load_all_games().unwrap();
         assert_eq!(remaining.len(), 1, "only the live, in-bounds game survives");
         assert_eq!(*remaining[0].get_id(), live_id);
+    }
+
+    #[test]
+    fn load_all_games_skips_corrupt_rows() {
+        // A single unreadable `games` blob (partial/legacy JSON that no longer
+        // deserializes to a full `Game`) must NOT take down startup. The bad
+        // row is skipped; every readable game still loads.
+        let store = SqliteStore::open(":memory:").unwrap();
+
+        let good = make_game();
+        let good_id = *good.get_id();
+        store.insert_game(&good).unwrap();
+
+        // Hand-seed a corrupt row: valid JSON, but missing required fields.
+        store
+            .pool
+            .get()
+            .unwrap()
+            .execute(
+                "INSERT INTO games (id, data) VALUES (?1, ?2)",
+                rusqlite::params!["corrupt-row", r#"{"hands_played": []}"#],
+            )
+            .unwrap();
+
+        let loaded = store.load_all_games().unwrap();
+        assert_eq!(loaded.len(), 1, "the readable game survives the bad row");
+        assert_eq!(*loaded[0].get_id(), good_id);
     }
 
     #[test]

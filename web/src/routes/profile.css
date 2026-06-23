@@ -5,10 +5,10 @@
 
 .profile-games__link {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   width: 100%;
-  gap: var(--space-2);
+  gap: var(--space-3);
   color: inherit;
   text-decoration: none;
 }
@@ -16,4 +16,119 @@
 .profile-games__link:hover {
   text-decoration: underline;
   color: var(--fg);
+}
+
+/* Header: identity + rating. Mirrors the leaderboard's rounded `rating ±RD`
+   treatment so the two pages agree. Neutral fg only — accent stays reserved
+   for the interactive "Edit profile" link. */
+.profile-head {
+  margin-bottom: var(--space-4);
+}
+.profile-head h2 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+.profile-head__you {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+.profile-head__meta {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+.profile-head__rating {
+  margin: var(--space-1) 0 0;
+  font-variant-numeric: tabular-nums;
+}
+/* Rating deviation: a muted companion to the rating it qualifies (matches
+   .leaderboard__rd). */
+.profile-head__rd {
+  margin-left: var(--space-1);
+  color: var(--fg-subtle);
+  font-size: var(--text-xs);
+}
+.profile-head__games {
+  color: var(--fg-muted);
+}
+.profile-head__edit {
+  display: inline-block;
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.profile-games__more {
+  margin-top: var(--space-3);
+  width: 100%;
+}
+
+/* Game row: the outcome on the left, the two partnerships on the right. The
+   profile owner is bolded; everyone else stays muted. Accent stays reserved
+   for interactive elements, so emphasis is weight/contrast only. */
+.profile-games__teams {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  text-align: right;
+  font-size: var(--text-sm);
+}
+.profile-games__team {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+.profile-games__player {
+  color: var(--fg-muted);
+}
+.profile-games__player.is-self {
+  color: var(--fg);
+  font-weight: 700;
+}
+.profile-games__amp {
+  color: var(--fg-subtle);
+}
+.profile-games__vs {
+  color: var(--fg-subtle);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Outcome — sits on the left where the game id used to. Color stays neutral
+   (accent is reserved for interactive elements); a win is distinguished by
+   weight + full contrast, not hue. */
+.profile-games__state {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex: none;
+  font-size: var(--text-sm);
+}
+.profile-games__result {
+  font-weight: 600;
+}
+.profile-games__result.is-won {
+  color: var(--fg);
+}
+.profile-games__result.is-lost,
+.profile-games__result.is-tied {
+  color: var(--fg-muted);
+  font-weight: 400;
+}
+.profile-games__result.is-aborted,
+.profile-games__result.is-in_progress {
+  color: var(--fg-subtle);
+  font-weight: 400;
+}
+.profile-games__score {
+  color: var(--fg-subtle);
+  font-variant-numeric: tabular-nums;
 }

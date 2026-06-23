@@ -17,10 +17,35 @@ export type PublicProfile = {
   rd: number;
 };
 
+export type SeatPlayer = {
+  seat_index: number;
+  name: string;
+  is_bot: boolean;
+};
+
+// Match outcome from the profile owner's perspective. `in_progress` = a live
+// game; `unknown` = finished before result tracking / pruned (no state to show).
+export type ProfileGameState =
+  | 'won'
+  | 'lost'
+  | 'tied'
+  | 'aborted'
+  | 'in_progress'
+  | 'unknown';
+
 export type ProfileGameEntry = {
   game_id: string;
+  // The profile owner's own seat — emphasized in the game row.
   seat_index: number;
   player_id: string;
+  // All four seats, ordered by seat index. Seats 0 & 2 are one partnership;
+  // seats 1 & 3 are the other.
+  players: SeatPlayer[];
+  // Outcome for the profile owner, plus their team's score vs the opponents'
+  // (null until the game finishes).
+  state: ProfileGameState;
+  team_score: number | null;
+  opp_score: number | null;
 };
 
 export type ProfileGames = {

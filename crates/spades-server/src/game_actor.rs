@@ -507,6 +507,7 @@ impl GameActor {
         // directly without going through apply_one_transition).
         if !was_completed && matches!(self.game.get_state(), State::Completed) {
             self.fire_rating_update();
+            self.fire_result_stamp(false);
         }
 
         Ok(success)
@@ -526,6 +527,25 @@ impl GameActor {
         tokio::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
                 apply_glicko_update(&db, game_id, team_a_won);
+            })
+            .await;
+        });
+    }
+
+    /// Stamp the per-seat outcome (won/lost/tied, or aborted) onto the seat
+    /// roster so the profile can show it after the game blob is pruned. Runs
+    /// off the actor loop like `fire_rating_update`; best-effort.
+    fn fire_result_stamp(&self, aborted: bool) {
+        let Some(db) = self.db.clone() else { return };
+        let game_id = self.game_id;
+        let team_a_score = self.game.get_team_a_score().ok().unwrap_or(0);
+        let team_b_score = self.game.get_team_b_score().ok().unwrap_or(0);
+        tokio::spawn(async move {
+            let _ = tokio::task::spawn_blocking(move || {
+                if let Err(e) = db.record_game_results(game_id, team_a_score, team_b_score, aborted)
+                {
+                    error!(game_id = %game_id, error = %e, "result stamp failed");
+                }
             })
             .await;
         });
@@ -579,6 +599,7 @@ impl GameActor {
             let _ = self.game.play(GameTransition::Abort);
             self.game.set_turn_started_at_epoch_ms(None);
             self.persist_async();
+            self.fire_result_stamp(true);
             self.broadcast(GameEvent::GameAborted {
                 seq: 0,
                 game_id: self.game_id,
