@@ -210,9 +210,13 @@ impl Game {
    exposing spades-shaped DTOs, so the OpenAPI surface should be unchanged, but
    the plan must re-run `openapi:fetch` + `openapi:generate` and diff to confirm.
 
+## Resolved during review
+
+- **`State` naming:** the engine uses `State::Bidding` internally; `spades-core`
+  re-exports it as a **facade alias `Betting`** so the web/server (`web/src/state/`)
+  keep reading the same state name. No web/server churn.
+
 ## Open items for the implementation plan
 
 - Exact `TransitionError` ↔ generic-engine-error mapping.
-- Whether `State` keeps `Betting` as a facade alias or the web/server move to
-  `Bidding` (web reads `State::Trick`/`Betting` in `web/src/state/`).
 - `typetag` vs manual tagged enum (gated on the pre-flight dep check).
