@@ -340,6 +340,22 @@ mod tests {
     }
 
     #[test]
+    fn game_json_round_trips_mid_play() {
+        let mut g = Game::new(Uuid::from_u128(8), ids(4), Box::new(SimpleBid::default()));
+        g.step(Action::Start).unwrap();
+        for _ in 0..4 {
+            g.step(Action::Bid(2)).unwrap();
+        }
+        play_one_full_trick(&mut g);
+        let json = serde_json::to_string(&g).unwrap();
+        let back: Game = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.state(), g.state());
+        assert_eq!(back.history().len(), g.history().len());
+        assert_eq!(back.bids(), g.bids());
+        assert_eq!(back.current_seat(), g.current_seat());
+    }
+
+    #[test]
     fn full_trick_records_history_and_sets_winner_leader() {
         let mut g = Game::new(Uuid::from_u128(4), ids(4), Box::new(HighCard::default()));
         g.step(Action::Start).unwrap();
