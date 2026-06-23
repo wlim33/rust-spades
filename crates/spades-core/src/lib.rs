@@ -372,13 +372,12 @@ impl Game {
                         self.last_completed_trick = Some(arr);
                         self.last_trick_winner = Some(self.inner.trick_leader());
                     }
-                    // A round/game boundary clears the inter-round winner the way
+                    // A round boundary clears the inter-round winner the way
                     // the old engine did (winner is meaningful only within a round).
-                    if matches!(
-                        outcome,
-                        trick_engine::StepOutcome::RoundComplete
-                            | trick_engine::StepOutcome::GameOver
-                    ) {
+                    // On GameOver the final trick's winner must be retained so that
+                    // get_last_trick_winner_id() and get_last_completed_trick() are
+                    // consistent in the completed-game snapshot.
+                    if matches!(outcome, trick_engine::StepOutcome::RoundComplete) {
                         self.last_trick_winner = None;
                     }
                 }
@@ -747,6 +746,38 @@ mod facade_tests {
                 rank: Rank::Ace
             })),
             Err(TransitionError::SpadesNotBroken)
+        );
+    }
+
+    #[test]
+    fn completed_game_has_consistent_final_trick_snapshot() {
+        // Regression: play() used to null last_trick_winner on both RoundComplete
+        // AND GameOver, producing an inconsistent snapshot where
+        // get_last_completed_trick() returned Some(...) but
+        // get_last_trick_winner_id() returned None on a finished game.
+        let mut g = Game::new(Uuid::from_u128(9), ids(), 50, None);
+        g.play(GameTransition::Start).unwrap();
+        while *g.get_state() != State::Completed {
+            match g.get_state() {
+                State::Bidding(_) => {
+                    g.play(GameTransition::Bet(3)).unwrap();
+                }
+                State::Trick(_) => {
+                    let legal = g.get_legal_cards().unwrap();
+                    g.play(GameTransition::Card(legal[0])).unwrap();
+                }
+                _ => unreachable!(),
+            }
+        }
+        assert_eq!(*g.get_state(), State::Completed);
+        // Both must be Some — the final trick's winner must be retained on GameOver.
+        assert!(
+            g.get_last_completed_trick().is_some(),
+            "get_last_completed_trick() should be Some after game over"
+        );
+        assert!(
+            g.get_last_trick_winner_id().is_some(),
+            "get_last_trick_winner_id() should be Some after game over"
         );
     }
 }
