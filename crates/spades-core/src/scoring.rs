@@ -149,6 +149,8 @@ impl Scoring {
             self.is_over = true;
         }
 
+        self.won_a_trick = [false; 4];
+        self.player_tricks_won = [0; 4];
         self.team_a.current_round_tricks_won = 0;
         self.team_b.current_round_tricks_won = 0;
         self.round += 1;
@@ -847,6 +849,171 @@ mod tests {
         assert!(s.team_b.cumulative_points < s.config.max_points);
         assert!(s.team_a.cumulative_points > MIN_POINTS);
         assert!(s.team_b.cumulative_points > MIN_POINTS);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Equivalence tests: finalize_round must produce identical scoring to trick()
+    // ---------------------------------------------------------------------------
+
+    /// Drive a full 13-trick round via trick() where the winner of each trick is
+    /// determined by `per_seat_wins`: a slice of (seat_index, wins_count) pairs
+    /// that must sum to 13. Tricks are played in seat order, cycling through the
+    /// pairs.
+    fn play_round_per_seat(scoring: &mut Scoring, per_seat_wins: &[(usize, usize)]) {
+        let total: usize = per_seat_wins.iter().map(|(_, w)| *w).sum();
+        assert_eq!(total, 13, "per_seat_wins must sum to 13");
+
+        // Build a flat sequence of winners in order.
+        let mut winners: Vec<usize> = Vec::with_capacity(13);
+        for &(seat, wins) in per_seat_wins {
+            for _ in 0..wins {
+                winners.push(seat);
+            }
+        }
+
+        for &winner in &winners {
+            // Construct cards so `winner` gets Ace (highest). All same suit so no
+            // spade trump needed — caller controls the winner purely via rank.
+            let mut ranks = [Rank::Two, Rank::Three, Rank::Four, Rank::Five];
+            ranks[winner] = Rank::Ace;
+            scoring.trick(0, &make_trick(Suit::Club, ranks));
+        }
+    }
+
+    /// Snapshot the scoring state fields compared by the equivalence tests.
+    #[derive(Debug, PartialEq)]
+    struct ScoringSnapshot {
+        a_pts: i32,
+        b_pts: i32,
+        a_bags: i32,
+        b_bags: i32,
+        is_over: bool,
+        round: usize,
+    }
+
+    fn snapshot(s: &Scoring) -> ScoringSnapshot {
+        ScoringSnapshot {
+            a_pts: s.team_a.cumulative_points,
+            b_pts: s.team_b.cumulative_points,
+            a_bags: s.team_a.bags,
+            b_bags: s.team_b.bags,
+            is_over: s.is_over,
+            round: s.round,
+        }
+    }
+
+    /// Build instance A (trick path) and instance B (finalize_round path) for the
+    /// given bids and per-seat tricks won. Assert they produce identical snapshots.
+    /// Returns (snap_a, snap_b) for additional caller assertions.
+    fn assert_finalize_equiv(
+        bids: [i32; 4],
+        per_seat_wins: &[(usize, usize)],
+    ) -> (ScoringSnapshot, ScoringSnapshot) {
+        // Instance A: trick() path
+        let mut a = Scoring::new(500);
+        for (i, &b) in bids.iter().enumerate() {
+            a.add_bet(i, b);
+        }
+        a.bet();
+        play_round_per_seat(&mut a, per_seat_wins);
+
+        // Instance B: finalize_round path
+        let mut b_scoring = Scoring::new(500);
+        let tricks_won: [i32; 4] = {
+            let mut tw = [0i32; 4];
+            for &(seat, wins) in per_seat_wins {
+                tw[seat] = wins as i32;
+            }
+            tw
+        };
+        b_scoring.finalize_round(&tricks_won, &bids);
+
+        let sa = snapshot(&a);
+        let sb = snapshot(&b_scoring);
+        assert_eq!(
+            sa, sb,
+            "finalize_round diverges from trick() for bids={bids:?} per_seat_wins={per_seat_wins:?}"
+        );
+        (sa, sb)
+    }
+
+    #[test]
+    fn test_finalize_round_equiv_both_teams_exact() {
+        // Case 1: both teams make their bids exactly.
+        // bids [3,3,3,4] → team_a=6, team_b=7; each team wins exactly their bid.
+        // seat 0 wins 6 (team_a), seat 1 wins 7 (team_b).
+        let (snap, _) = assert_finalize_equiv(
+            [3, 3, 3, 4],
+            &[(0, 6), (1, 7)],
+        );
+        assert_eq!(snap.a_pts, 60);
+        assert_eq!(snap.b_pts, 70);
+        assert_eq!(snap.a_bags, 0);
+        assert_eq!(snap.b_bags, 0);
+        assert!(!snap.is_over);
+        assert_eq!(snap.round, 1);
+    }
+
+    #[test]
+    fn test_finalize_round_equiv_overtricks_bags() {
+        // Case 2: team_a bids low and wins many → accumulates bags.
+        // bids [2,3,2,4] → team_a=4, team_b=7; team_a wins 6 (2 bags), team_b wins 7 (exact).
+        let (snap, _) = assert_finalize_equiv(
+            [2, 3, 2, 4],
+            &[(0, 6), (1, 7)],
+        );
+        assert_eq!(snap.a_pts, 42); // 4*10 + 2 bags = 42
+        assert_eq!(snap.a_bags, 2);
+        assert_eq!(snap.b_pts, 70);
+        assert_eq!(snap.b_bags, 0);
+        assert!(!snap.is_over);
+    }
+
+    #[test]
+    fn test_finalize_round_equiv_set_penalty() {
+        // Case 3: team_a bids 5 but wins only 3 → set, loses 50 pts.
+        // bids [3,3,2,4] → team_a=5, team_b=7; team_a wins 3, team_b wins 10.
+        let (snap, _) = assert_finalize_equiv(
+            [3, 3, 2, 4],
+            &[(0, 3), (1, 10)],
+        );
+        assert_eq!(snap.a_pts, -50);
+        assert_eq!(snap.a_bags, 0);
+        // team_b bid 7, won 10 → +70 + 3 bags = 73
+        assert_eq!(snap.b_pts, 73);
+        assert_eq!(snap.b_bags, 3);
+        assert!(!snap.is_over);
+    }
+
+    #[test]
+    fn test_finalize_round_equiv_nil_bid_success() {
+        // Case 4: seat 0 bids nil (0) and wins no tricks → nil succeeds (+100).
+        // seat 2 carries the team_a contract (bid 6), wins 6 tricks.
+        // team_b: seat 1 bids 6 and wins 7, seat 3 bids 7 and wins 0 → set.
+        // bids [0,6,6,7] → team_a nil+6, team_b 6+7=13.
+        // seat 2 wins 6, seat 1 wins 7; seat 0 and seat 3 win nothing.
+        let (snap, _) = assert_finalize_equiv(
+            [0, 6, 6, 7],
+            &[(2, 6), (1, 7)],
+        );
+        // team_a: bid=0+6=6, won=6 exact → +60; nil success → +100; total=160
+        assert_eq!(snap.a_pts, 160);
+        assert_eq!(snap.a_bags, 0);
+        // team_b: bid=6+7=13, won=7 → set → -130
+        assert_eq!(snap.b_pts, -130);
+        assert_eq!(snap.b_bags, 0);
+        assert!(!snap.is_over);
+    }
+
+    #[test]
+    fn test_finalize_round_resets_per_round_tallies() {
+        // After finalize_round, won_a_trick and player_tricks_won must be zeroed
+        // so a subsequent round starts clean.
+        let mut s = Scoring::new(500);
+        s.finalize_round(&[6, 7, 0, 0], &[3, 3, 3, 4]);
+
+        assert_eq!(s.won_a_trick, [false; 4], "won_a_trick must be reset after finalize_round");
+        assert_eq!(s.player_tricks_won, [0; 4], "player_tricks_won must be reset after finalize_round");
     }
 
     #[test]
