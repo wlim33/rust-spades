@@ -154,13 +154,20 @@ export class CardOrchestrator {
     await animateTo(flying, {
       x: targetRect.left - srcRect.left,
       y: targetRect.top - srcRect.top,
-      duration: 250,
-      ease: 'quartOut',
+      duration: 280,
+      ease: 'backOut',
       cancelled: () => gen !== this.generation,
     });
     flying.remove();
     this.flyingClones.delete(flying);
     slotEl.style.visibility = '';
+    // Landing impact: a brief scale-pop on the now-visible slot card. The class
+    // is self-removing so a card never sticks mid-pop; under reduced motion the
+    // keyframe is empty (gated in CSS), making this a harmless no-op.
+    slotEl.classList.add('card-land');
+    slotEl.addEventListener('animationend', () => slotEl.classList.remove('card-land'), {
+      once: true,
+    });
   }
 
   /**

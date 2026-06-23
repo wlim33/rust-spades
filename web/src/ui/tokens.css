@@ -30,6 +30,12 @@
      so no dark override is needed unless contrast retuning demands one. */
   --team-1-fill: color-mix(in oklab, var(--accent) 22%, var(--surface-raised));
   --team-2-fill: color-mix(in oklab, var(--accent-2) 22%, var(--surface-raised));
+  /* Active-seat "lit plane": transparent team washes for the on-felt seat zone.
+     Distinct from --team-*-fill (an opaque tint for chips on the cream surface);
+     these sit over green felt, so they are low-alpha washes of the team hue.
+     Alpha (~16%) is a tuning knob — set by eye on the felt. */
+  --team-1-glow: color-mix(in oklab, var(--team-1) 16%, transparent);
+  --team-2-glow: color-mix(in oklab, var(--team-2) 16%, transparent);
   /* Gauge motion: slower than --dur so a fill change reads as liquid rising,
      not a UI flicker. */
   --dur-cue: 400ms;
