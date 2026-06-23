@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::ruleset::Ruleset;
-use crate::types::{Card, Player, Seat, State};
+use crate::types::{Card, PlayContext, Player, Seat, State};
 
 /// A caller-supplied transition.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -140,6 +140,21 @@ impl Game {
         self.current_seat = self.trick_leader;
     }
 
+    /// The legal plays for the seat on turn. Empty unless in a trick phase.
+    pub fn legal_plays(&self) -> Vec<Card> {
+        if let State::Trick(_) = self.state {
+            let ctx = PlayContext {
+                hand: &self.players[self.current_seat].hand,
+                table: &self.trick,
+                leader: self.trick_leader,
+                round: self.round,
+            };
+            self.rules.legal_plays(&ctx)
+        } else {
+            vec![]
+        }
+    }
+
     /// Drive the machine. Spades-specific meaning is entirely in `self.rules`.
     pub fn step(&mut self, action: Action) -> Result<StepOutcome, StepError> {
         match action {
@@ -183,7 +198,53 @@ impl Game {
                 State::Completed | State::Aborted => Err(StepError::Completed),
                 State::Trick(_) => Err(StepError::WrongPhase),
             },
-            Action::Play(_) => Err(StepError::WrongPhase),
+            Action::Play(card) => match self.state {
+                State::Trick(rot) => {
+                    let hand = &self.players[self.current_seat].hand;
+                    if !hand.contains(&card) {
+                        return Err(StepError::CardNotInHand);
+                    }
+                    let legal = {
+                        let ctx = PlayContext {
+                            hand,
+                            table: &self.trick,
+                            leader: self.trick_leader,
+                            round: self.round,
+                        };
+                        self.rules.legal_plays(&ctx)
+                    };
+                    if !legal.contains(&card) {
+                        return Err(StepError::IllegalPlay);
+                    }
+                    // Remove from hand, place on table.
+                    let h = &mut self.players[self.current_seat].hand;
+                    let idx = h.iter().position(|c| c == &card).unwrap();
+                    h.remove(idx);
+                    self.trick[self.current_seat] = Some(card);
+
+                    let n = self.rules.seat_count();
+                    if rot + 1 == n {
+                        let played: Vec<Card> =
+                            self.trick.iter().map(|c| c.clone().unwrap()).collect();
+                        let winner = self.rules.trick_winner(self.trick_leader, &played);
+                        self.history.push(self.trick.clone());
+                        // Round-boundary handling lands in Task 7; for now always
+                        // start a fresh trick led by the winner.
+                        self.trick = vec![None; n];
+                        self.trick_leader = winner;
+                        self.current_seat = winner;
+                        self.state = State::Trick(0);
+                        Ok(StepOutcome::TrickComplete)
+                    } else {
+                        self.current_seat = (self.current_seat + 1) % n;
+                        self.state = State::Trick(rot + 1);
+                        Ok(StepOutcome::PlayCard)
+                    }
+                }
+                State::NotStarted => Err(StepError::NotStarted),
+                State::Completed | State::Aborted => Err(StepError::Completed),
+                State::Bidding(_) => Err(StepError::WrongPhase),
+            },
         }
     }
 }
@@ -239,5 +300,37 @@ mod tests {
         let mut g = Game::new(Uuid::from_u128(3), ids(4), Box::new(SimpleBid::default()));
         g.step(Action::Start).unwrap();
         assert_eq!(g.step(Action::Bid(99)), Err(StepError::IllegalBid));
+    }
+
+    fn play_one_full_trick(g: &mut Game) -> StepOutcome {
+        let mut last = StepOutcome::PlayCard;
+        for _ in 0..4 {
+            let legal = g.legal_plays();
+            last = g.step(Action::Play(legal[0].clone())).unwrap();
+        }
+        last
+    }
+
+    #[test]
+    fn full_trick_records_history_and_sets_winner_leader() {
+        let mut g = Game::new(Uuid::from_u128(4), ids(4), Box::new(HighCard::default()));
+        g.step(Action::Start).unwrap();
+        let out = play_one_full_trick(&mut g);
+        assert_eq!(out, StepOutcome::TrickComplete);
+        assert_eq!(g.history().len(), 1);
+        assert!(g.history()[0].iter().all(|c| c.is_some()));
+        // Winner now leads and the table is cleared.
+        assert_eq!(g.current_seat(), g.trick_leader());
+        assert!(g.current_trick().iter().all(|c| c.is_none()));
+    }
+
+    #[test]
+    fn playing_card_not_in_hand_is_rejected() {
+        let mut g = Game::new(Uuid::from_u128(5), ids(4), Box::new(HighCard::default()));
+        g.step(Action::Start).unwrap();
+        // Build a card guaranteed not to match a real french-52 token shape after
+        // the seat's hand is dealt: a Special card is never dealt.
+        let bogus = Card::Special { name: "Joker".into() };
+        assert_eq!(g.step(Action::Play(bogus)), Err(StepError::CardNotInHand));
     }
 }
