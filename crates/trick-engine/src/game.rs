@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::ruleset::Ruleset;
-use crate::types::{Card, Player, PlayContext, RoundOutcome, Seat, State};
+use crate::types::{Card, Player, Seat, State};
 
 /// A caller-supplied transition.
 #[derive(Clone, PartialEq, Eq, Debug)]
