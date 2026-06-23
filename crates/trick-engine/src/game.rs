@@ -162,8 +162,28 @@ impl Game {
                     Ok(StepOutcome::Aborted)
                 }
             },
-            // Bid/Play implemented in Tasks 5 and 6.
-            Action::Bid(_) | Action::Play(_) => Err(StepError::WrongPhase),
+            Action::Bid(bid) => match self.state {
+                State::Bidding(rot) => {
+                    if !self.rules.bid_is_legal(self.current_seat, bid) {
+                        return Err(StepError::IllegalBid);
+                    }
+                    self.bids[self.current_seat] = bid;
+                    let n = self.rules.seat_count();
+                    if rot + 1 == n {
+                        self.state = State::Trick(0);
+                        self.current_seat = self.trick_leader;
+                        Ok(StepOutcome::BidComplete)
+                    } else {
+                        self.current_seat = (self.current_seat + 1) % n;
+                        self.state = State::Bidding(rot + 1);
+                        Ok(StepOutcome::Bid)
+                    }
+                }
+                State::NotStarted => Err(StepError::NotStarted),
+                State::Completed | State::Aborted => Err(StepError::Completed),
+                State::Trick(_) => Err(StepError::WrongPhase),
+            },
+            Action::Play(_) => Err(StepError::WrongPhase),
         }
     }
 }
@@ -171,7 +191,7 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testkit::HighCard;
+    use crate::testkit::{HighCard, SimpleBid};
     use uuid::Uuid;
 
     fn ids(n: usize) -> Vec<Uuid> {
@@ -198,5 +218,26 @@ mod tests {
         let mut g = Game::new(Uuid::from_u128(1), ids(4), Box::new(HighCard::default()));
         g.step(Action::Start).unwrap();
         assert_eq!(g.step(Action::Start), Err(StepError::AlreadyStarted));
+    }
+
+    #[test]
+    fn four_bids_complete_to_trick() {
+        let mut g = Game::new(Uuid::from_u128(2), ids(4), Box::new(SimpleBid::default()));
+        g.step(Action::Start).unwrap();
+        assert_eq!(*g.state(), State::Bidding(0));
+        for i in 0..3 {
+            assert_eq!(g.step(Action::Bid(3)).unwrap(), StepOutcome::Bid);
+            assert_eq!(*g.state(), State::Bidding(i + 1));
+        }
+        assert_eq!(g.step(Action::Bid(3)).unwrap(), StepOutcome::BidComplete);
+        assert_eq!(*g.state(), State::Trick(0));
+        assert_eq!(g.bids(), &[3, 3, 3, 3]);
+    }
+
+    #[test]
+    fn illegal_bid_rejected() {
+        let mut g = Game::new(Uuid::from_u128(3), ids(4), Box::new(SimpleBid::default()));
+        g.step(Action::Start).unwrap();
+        assert_eq!(g.step(Action::Bid(99)), Err(StepError::IllegalBid));
     }
 }

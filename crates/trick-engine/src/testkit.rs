@@ -102,6 +102,53 @@ fn rank_of(card: &Card) -> &str {
     }
 }
 
+/// Like `HighCard` but with a 0..=13 bidding phase, for engine bid tests.
+#[derive(Default, Serialize, Deserialize)]
+pub struct SimpleBid {
+    #[serde(default)]
+    inner: HighCard,
+}
+
+#[typetag::serde]
+impl Ruleset for SimpleBid {
+    fn seat_count(&self) -> usize {
+        4
+    }
+    fn team_of(&self, seat: Seat) -> TeamId {
+        TeamId(seat)
+    }
+    fn build_deck(&self) -> Vec<Card> {
+        self.inner.build_deck()
+    }
+    fn hand_size(&self, round: usize) -> usize {
+        self.inner.hand_size(round)
+    }
+    fn first_leader(&self, round: usize) -> Seat {
+        self.inner.first_leader(round)
+    }
+    fn bid_phase(&self) -> Option<BidSpec> {
+        Some(BidSpec { min: 0, max: 13 })
+    }
+    fn bid_is_legal(&self, _seat: Seat, bid: i32) -> bool {
+        (0..=13).contains(&bid)
+    }
+    fn legal_plays(&self, ctx: &PlayContext) -> Vec<Card> {
+        self.inner.legal_plays(ctx)
+    }
+    fn trick_winner(&self, leader: Seat, played: &[Card]) -> Seat {
+        self.inner.trick_winner(leader, played)
+    }
+    fn score_round(&mut self, outcome: &RoundOutcome) {
+        self.inner.score_round(outcome)
+    }
+    fn is_over(&self) -> bool {
+        self.inner.is_over()
+    }
+    fn scores(&self) -> Vec<i32> {
+        self.inner.scores()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
