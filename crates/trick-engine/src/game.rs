@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::ruleset::Ruleset;
-use crate::types::{Card, PlayContext, Player, Seat, State};
+use crate::types::{Card, PlayContext, Player, RoundOutcome, Seat, State};
 
 /// A caller-supplied transition.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -64,6 +64,8 @@ pub struct Game {
     history: Vec<Vec<Option<Card>>>,
     bids: Vec<i32>,
     round: usize,
+    tricks_this_round: usize,
+    tricks_won: Vec<i32>,
 }
 
 impl Game {
@@ -82,6 +84,8 @@ impl Game {
             history: vec![],
             bids: vec![0; n],
             round: 0,
+            tricks_this_round: 0,
+            tricks_won: vec![0; n],
         }
     }
 
@@ -138,6 +142,8 @@ impl Game {
         self.trick = vec![None; n];
         self.trick_leader = self.rules.first_leader(self.round);
         self.current_seat = self.trick_leader;
+        self.tricks_this_round = 0;
+        self.tricks_won = vec![0; n];
     }
 
     /// The legal plays for the seat on turn. Empty unless in a trick phase.
@@ -228,13 +234,35 @@ impl Game {
                             self.trick.iter().map(|c| c.clone().unwrap()).collect();
                         let winner = self.rules.trick_winner(self.trick_leader, &played);
                         self.history.push(self.trick.clone());
-                        // Round-boundary handling lands in Task 7; for now always
-                        // start a fresh trick led by the winner.
+                        self.tricks_won[winner] += 1;
+                        self.tricks_this_round += 1;
                         self.trick = vec![None; n];
                         self.trick_leader = winner;
-                        self.current_seat = winner;
-                        self.state = State::Trick(0);
-                        Ok(StepOutcome::TrickComplete)
+
+                        if self.tricks_this_round == self.rules.hand_size(self.round) {
+                            let outcome = RoundOutcome {
+                                tricks_won: self.tricks_won.clone(),
+                                bids: self.bids.clone(),
+                            };
+                            self.rules.score_round(&outcome);
+                            if self.rules.is_over() {
+                                self.state = State::Completed;
+                                return Ok(StepOutcome::GameOver);
+                            }
+                            self.round += 1;
+                            self.deal();
+                            self.bids = vec![0; n];
+                            self.state = if self.rules.bid_phase().is_some() {
+                                State::Bidding(0)
+                            } else {
+                                State::Trick(0)
+                            };
+                            Ok(StepOutcome::RoundComplete)
+                        } else {
+                            self.current_seat = winner;
+                            self.state = State::Trick(0);
+                            Ok(StepOutcome::TrickComplete)
+                        }
                     } else {
                         self.current_seat = (self.current_seat + 1) % n;
                         self.state = State::Trick(rot + 1);
@@ -322,6 +350,20 @@ mod tests {
         // Winner now leads and the table is cleared.
         assert_eq!(g.current_seat(), g.trick_leader());
         assert!(g.current_trick().iter().all(|c| c.is_none()));
+    }
+
+    #[test]
+    fn one_round_completes_and_game_over_for_highcard() {
+        let mut g = Game::new(Uuid::from_u128(6), ids(4), Box::new(HighCard::default()));
+        g.step(Action::Start).unwrap();
+        // 13 tricks; HighCard is_over() after 1 round.
+        let mut last = StepOutcome::Started;
+        for _ in 0..13 {
+            last = play_one_full_trick(&mut g);
+        }
+        assert_eq!(last, StepOutcome::GameOver);
+        assert_eq!(*g.state(), State::Completed);
+        assert_eq!(g.history().len(), 13);
     }
 
     #[test]
