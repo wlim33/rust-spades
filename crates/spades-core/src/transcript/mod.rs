@@ -451,7 +451,7 @@ mod tests {
                 State::NotStarted => {
                     g.play(GameTransition::Start).unwrap();
                 }
-                State::Betting(_) => {
+                State::Bidding(_) => {
                     g.play(GameTransition::Bet(3)).unwrap();
                 }
                 State::Trick(_) => {
@@ -916,7 +916,7 @@ mod property_tests {
         loop {
             match *g.get_state() {
                 State::Completed | State::Aborted => return g,
-                State::Betting(_) => {
+                State::Bidding(_) => {
                     let b = (rng.next_u32() % 4) as i32 + 1;
                     g.play(GameTransition::Bet(b)).unwrap();
                 }

@@ -6,7 +6,7 @@
 
 use trick_notation::{Card as TnCard, DealtHand, Deck, Event, Meta, Model};
 
-use crate::cards::{Card, Rank, Suit, get_trick_winner};
+use crate::cards::{Card, from_tn, get_trick_winner, to_tn};
 use crate::{Game, GameTransition, State, TimerConfig};
 
 use super::ReplayError;
@@ -18,87 +18,13 @@ const SEATS: [&str; 4] = ["N", "E", "S", "W"];
 // Card <-> trick_notation::Card mapping
 // ---------------------------------------------------------------------------
 
-fn rank_sym(r: Rank) -> &'static str {
-    match r {
-        Rank::Two => "2",
-        Rank::Three => "3",
-        Rank::Four => "4",
-        Rank::Five => "5",
-        Rank::Six => "6",
-        Rank::Seven => "7",
-        Rank::Eight => "8",
-        Rank::Nine => "9",
-        Rank::Ten => "T",
-        Rank::Jack => "J",
-        Rank::Queen => "Q",
-        Rank::King => "K",
-        Rank::Ace => "A",
-    }
-}
-
-fn suit_sym(s: Suit) -> &'static str {
-    match s {
-        Suit::Club => "C",
-        Suit::Diamond => "D",
-        Suit::Heart => "H",
-        Suit::Spade => "S",
-    }
-}
-
-fn card_to_tn(c: Card) -> TnCard {
-    TnCard::Suited {
-        suit: suit_sym(c.suit).to_string(),
-        rank: rank_sym(c.rank).to_string(),
-    }
-}
-
-fn rank_from_sym(s: &str) -> Option<Rank> {
-    Some(match s {
-        "2" => Rank::Two,
-        "3" => Rank::Three,
-        "4" => Rank::Four,
-        "5" => Rank::Five,
-        "6" => Rank::Six,
-        "7" => Rank::Seven,
-        "8" => Rank::Eight,
-        "9" => Rank::Nine,
-        "T" => Rank::Ten,
-        "J" => Rank::Jack,
-        "Q" => Rank::Queen,
-        "K" => Rank::King,
-        "A" => Rank::Ace,
-        _ => return None,
-    })
-}
-
-fn suit_from_sym(s: &str) -> Option<Suit> {
-    Some(match s {
-        "C" => Suit::Club,
-        "D" => Suit::Diamond,
-        "H" => Suit::Heart,
-        "S" => Suit::Spade,
-        _ => return None,
-    })
-}
-
 /// Map a trick-notation card to a spades `Card`. A `Special` card or an unknown
 /// suit/rank symbol can never occur for a spades game; it surfaces as a replay
 /// error rather than being silently dropped.
 fn tn_to_card(c: &TnCard) -> Result<Card, ReplayError> {
-    match c {
-        TnCard::Suited { suit, rank } => {
-            let suit = suit_from_sym(suit).ok_or_else(|| ReplayError::BadCard {
-                token: trick_notation::format_card(c),
-            })?;
-            let rank = rank_from_sym(rank).ok_or_else(|| ReplayError::BadCard {
-                token: trick_notation::format_card(c),
-            })?;
-            Ok(Card { rank, suit })
-        }
-        TnCard::Special { .. } => Err(ReplayError::BadCard {
-            token: trick_notation::format_card(c),
-        }),
-    }
+    from_tn(c).ok_or_else(|| ReplayError::BadCard {
+        token: trick_notation::format_card(c),
+    })
 }
 
 // ===========================================================================
@@ -177,7 +103,7 @@ fn build_events(g: &Game) -> Vec<Event> {
             .zip(hands.iter())
             .map(|(seat, hand)| DealtHand {
                 target: seat.to_string(),
-                cards: hand.iter().map(|c| card_to_tn(*c)).collect(),
+                cards: hand.iter().map(|c| to_tn(*c)).collect(),
             })
             .collect();
         events.push(Event::Deal { hands: deal_hands });
@@ -195,7 +121,7 @@ fn build_events(g: &Game) -> Vec<Event> {
         for (lead_index, trick) in tricks_for_round(g, r) {
             events.push(Event::Play {
                 leader: SEATS[lead_index].to_string(),
-                cards: trick.iter().map(|c| card_to_tn(*c)).collect(),
+                cards: trick.iter().map(|c| to_tn(*c)).collect(),
             });
         }
     }
@@ -221,7 +147,7 @@ fn num_rounds_to_emit(g: &Game) -> usize {
                 g.get_round_index() + 1
             }
         }
-        State::Betting(_) | State::Trick(_) => g.get_round_index() + 1,
+        State::Bidding(_) | State::Trick(_) => g.get_round_index() + 1,
     }
 }
 
@@ -246,7 +172,7 @@ fn dealt_hands_for_round(g: &Game, round_idx: usize) -> [Vec<Card>; 4] {
     // hand. For past completed rounds the engine has already dealt the next
     // round's cards into players' hands, so we must NOT pull from current hand.
     let is_current_round = match g.get_state() {
-        State::Betting(_) | State::Trick(_) => g.get_round_index() == round_idx,
+        State::Bidding(_) | State::Trick(_) => g.get_round_index() == round_idx,
         State::Aborted => g.get_round_index() == round_idx,
         _ => false,
     };
@@ -271,7 +197,7 @@ fn bets_for_round(g: &Game, round_idx: usize) -> Vec<i32> {
     let all = g.get_all_bets();
     let row = all.get(round_idx).copied().unwrap_or([0; 4]);
     let count = match g.get_state() {
-        State::Betting(k) if g.get_round_index() == round_idx => *k,
+        State::Bidding(k) if g.get_round_index() == round_idx => *k,
         State::Aborted if g.get_round_index() == round_idx && g.is_in_betting_stage() => {
             // Cannot recover k from an Aborted-betting state precisely. Emit
             // all 4: over-reporting surfaces as a replay error later if the
@@ -699,7 +625,7 @@ mod tests {
                 State::NotStarted => {
                     g.play(GameTransition::Start).unwrap();
                 }
-                State::Betting(_) => {
+                State::Bidding(_) => {
                     g.play(GameTransition::Bet(3)).unwrap();
                 }
                 State::Trick(_) => {
