@@ -19,6 +19,11 @@ pub trait Ruleset {
     /// The seat that leads the first trick of `round`.
     fn first_leader(&self, round: usize) -> Seat;
 
+    /// Called by the engine after each card is placed, so stateful rulesets can
+    /// observe play (e.g. spades tracking whether spades have been broken).
+    /// Default: no-op.
+    fn after_play(&mut self, _seat: Seat, _card: &Card) {}
+
     /// `Some(spec)` if `round` opens with a bidding phase, else `None`.
     fn bid_phase(&self) -> Option<BidSpec>;
     /// Whether `bid` from `seat` is legal.

@@ -22,13 +22,15 @@ serde_json.workspace = true
 sqids = "0.4"
 thiserror = "2"
 oasgen = { version = "0.25", features = ["uuid"], optional = true }
+typetag = "0.2"
 trick-notation = { path = "../trick-notation", version = "3.0.0" }
+trick-engine = { path = "../trick-engine", version = "3.0.0" }
 
 [features]
 default = []
 # Derive `oasgen::OaSchema` on public types so downstream HTTP layers can
 # generate an OpenAPI spec without re-wrapping our types.
-openapi = ["dep:oasgen", "trick-notation/openapi"]
+openapi = ["dep:oasgen", "trick-notation/openapi", "trick-engine/openapi"]
 
 [dev-dependencies]
 ntest = "0.9"

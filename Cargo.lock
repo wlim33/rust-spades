@@ -3147,7 +3147,9 @@ dependencies = [
  "serde_json",
  "sqids",
  "thiserror 2.0.18",
+ "trick-engine",
  "trick-notation",
+ "typetag",
  "uuid",
 ]
 
@@ -3973,6 +3975,20 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-log",
+]
+
+[[package]]
+name = "trick-engine"
+version = "3.0.0"
+dependencies = [
+ "oasgen",
+ "rand 0.10.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "trick-notation",
+ "typetag",
+ "uuid",
 ]
 
 [[package]]

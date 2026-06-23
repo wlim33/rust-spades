@@ -30,6 +30,7 @@ pub mod ai;
 mod cards;
 mod game_state;
 mod result;
+mod rules;
 mod scoring;
 pub mod transcript;
 

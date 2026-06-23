@@ -152,3 +152,83 @@ pub fn deal_four_players(cards: &mut Vec<Card>) -> Vec<Vec<Card>> {
 
     hands
 }
+
+/// Spades suit/rank ↔ trick-notation symbol mapping. Spades uses french-52
+/// single-character tokens, identical to the notation deck.
+impl Suit {
+    pub(crate) fn sym(self) -> &'static str {
+        match self {
+            Suit::Club => "C",
+            Suit::Diamond => "D",
+            Suit::Heart => "H",
+            Suit::Spade => "S",
+        }
+    }
+    pub(crate) fn from_sym(s: &str) -> Option<Suit> {
+        Some(match s {
+            "C" => Suit::Club,
+            "D" => Suit::Diamond,
+            "H" => Suit::Heart,
+            "S" => Suit::Spade,
+            _ => return None,
+        })
+    }
+}
+
+impl Rank {
+    pub(crate) fn sym(self) -> &'static str {
+        match self {
+            Rank::Two => "2",
+            Rank::Three => "3",
+            Rank::Four => "4",
+            Rank::Five => "5",
+            Rank::Six => "6",
+            Rank::Seven => "7",
+            Rank::Eight => "8",
+            Rank::Nine => "9",
+            Rank::Ten => "T",
+            Rank::Jack => "J",
+            Rank::Queen => "Q",
+            Rank::King => "K",
+            Rank::Ace => "A",
+        }
+    }
+    pub(crate) fn from_sym(s: &str) -> Option<Rank> {
+        Some(match s {
+            "2" => Rank::Two,
+            "3" => Rank::Three,
+            "4" => Rank::Four,
+            "5" => Rank::Five,
+            "6" => Rank::Six,
+            "7" => Rank::Seven,
+            "8" => Rank::Eight,
+            "9" => Rank::Nine,
+            "T" => Rank::Ten,
+            "J" => Rank::Jack,
+            "Q" => Rank::Queen,
+            "K" => Rank::King,
+            "A" => Rank::Ace,
+            _ => return None,
+        })
+    }
+}
+
+/// Convert a spades card to its trick-notation representation.
+pub(crate) fn to_tn(c: Card) -> trick_notation::Card {
+    trick_notation::Card::Suited {
+        suit: c.suit.sym().to_string(),
+        rank: c.rank.sym().to_string(),
+    }
+}
+
+/// Convert a trick-notation card back to a spades card, or `None` for any
+/// token that is not a french-52 suited card (e.g. a `Special`).
+pub(crate) fn from_tn(c: &trick_notation::Card) -> Option<Card> {
+    match c {
+        trick_notation::Card::Suited { suit, rank } => Some(Card {
+            suit: Suit::from_sym(suit)?,
+            rank: Rank::from_sym(rank)?,
+        }),
+        trick_notation::Card::Special { .. } => None,
+    }
+}

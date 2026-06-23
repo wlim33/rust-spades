@@ -111,6 +111,51 @@ impl Scoring {
         }
     }
 
+    /// Finalize a completed round from the engine's per-seat tallies. Replaces
+    /// the old self-counted `trick()` round-end path; the bag/nil/penalty/
+    /// termination math is unchanged.
+    pub(crate) fn finalize_round(&mut self, tricks_won: &[i32], bids: &[i32]) {
+        self.team_a.current_round_tricks_won = tricks_won[0] + tricks_won[2];
+        self.team_b.current_round_tricks_won = tricks_won[1] + tricks_won[3];
+        let won_a_trick: [bool; 4] = std::array::from_fn(|i| tricks_won[i] > 0);
+        self.bets_placed[self.round] = [bids[0], bids[1], bids[2], bids[3]];
+
+        self.team_a.calculate_round_totals(
+            PartnerOutcome { bet: bids[0], took_trick: won_a_trick[0] },
+            PartnerOutcome { bet: bids[2], took_trick: won_a_trick[2] },
+        );
+        self.team_b.calculate_round_totals(
+            PartnerOutcome { bet: bids[1], took_trick: won_a_trick[1] },
+            PartnerOutcome { bet: bids[3], took_trick: won_a_trick[3] },
+        );
+
+        // Termination: copy the existing max_points / MIN_POINTS / MAX_ROUNDS
+        // block verbatim from the old `trick()` `self.trick == 12` arm.
+        let a_reached = self.team_a.cumulative_points >= self.config.max_points;
+        let b_reached = self.team_b.cumulative_points >= self.config.max_points;
+        if a_reached || b_reached {
+            if a_reached && b_reached {
+                if self.team_a.cumulative_points != self.team_b.cumulative_points {
+                    self.is_over = true;
+                }
+            } else {
+                self.is_over = true;
+            }
+        }
+        if self.team_a.cumulative_points <= MIN_POINTS || self.team_b.cumulative_points <= MIN_POINTS {
+            self.is_over = true;
+        }
+        if self.round + 1 >= MAX_ROUNDS {
+            self.is_over = true;
+        }
+
+        self.team_a.current_round_tricks_won = 0;
+        self.team_b.current_round_tricks_won = 0;
+        self.round += 1;
+        self.in_betting_stage = true;
+        self.bets_placed.push([0; 4]);
+    }
+
     pub fn add_bet(&mut self, current_player_index: usize, bet: i32) {
         self.bets_placed.last_mut().unwrap()[current_player_index] = bet;
     }

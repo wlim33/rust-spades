@@ -223,9 +223,12 @@ impl Game {
                         return Err(StepError::IllegalPlay);
                     }
                     // Remove from hand, place on table.
-                    let h = &mut self.players[self.current_seat].hand;
-                    let idx = h.iter().position(|c| c == &card).unwrap();
-                    h.remove(idx);
+                    {
+                        let h = &mut self.players[self.current_seat].hand;
+                        let idx = h.iter().position(|c| c == &card).unwrap();
+                        h.remove(idx);
+                    }
+                    self.rules.after_play(self.current_seat, &card);
                     self.trick[self.current_seat] = Some(card);
 
                     let n = self.rules.seat_count();
