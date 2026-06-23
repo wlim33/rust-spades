@@ -4,8 +4,10 @@
 
 mod ruleset;
 mod types;
+mod game;
 
 pub use ruleset::Ruleset;
+pub use game::{Action, Game, StepError, StepOutcome};
 pub use types::*;
 
 #[cfg(test)]
