@@ -25,13 +25,7 @@ export type SeatPlayer = {
 
 // Match outcome from the profile owner's perspective. `in_progress` = a live
 // game; `unknown` = finished before result tracking / pruned (no state to show).
-export type ProfileGameState =
-  | 'won'
-  | 'lost'
-  | 'tied'
-  | 'aborted'
-  | 'in_progress'
-  | 'unknown';
+export type ProfileGameState = 'won' | 'lost' | 'tied' | 'aborted' | 'in_progress' | 'unknown';
 
 export type ProfileGameEntry = {
   game_id: string;

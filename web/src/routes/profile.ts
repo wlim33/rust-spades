@@ -119,9 +119,7 @@ export const profile: RouteModule = {
           href="/replay/${entry.game_id}"
           data-link
           class="profile-games__link"
-          aria-label="View replay: ${teamText(teamA)} versus ${teamText(
-            teamB,
-          )}${stateAria(entry)}"
+          aria-label="View replay: ${teamText(teamA)} versus ${teamText(teamB)}${stateAria(entry)}"
         >
           ${renderState(entry)}
           <span class="profile-games__teams">
@@ -172,7 +170,8 @@ export const profile: RouteModule = {
                         : nothing}
                     </h2>
                     <p class="profile-head__meta">
-                      Member since ${formatMonthYear(p.created_at)}${p.last_seen_at
+                      Member since
+                      ${formatMonthYear(p.created_at)}${p.last_seen_at
                         ? html` · Active ${formatRelative(p.last_seen_at)}`
                         : nothing}
                     </p>
