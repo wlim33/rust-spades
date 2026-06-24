@@ -336,6 +336,16 @@ When started with `--db`, the server:
 - Saves game state on every transition
 - Removes game data on deletion
 
+> **v3.0.0 migration (trick-engine extraction):** the persisted `Game` JSON
+> shape changed (the engine is now nested under `inner`, the betting phase
+> serializes as `Bidding`, and the ruleset carries a typetag `"type"` field).
+> In-flight game rows written by ≤2.x will fail to deserialize on startup.
+> This is an accepted one-time reset — before deploying this version, clear
+> in-flight rows from the existing (old-shape) DB, where state still lives at
+> `$.state`: `DELETE FROM games WHERE json_extract(data,'$.state') NOT IN
+> ('Completed','Aborted');` (or wipe the dev DB with `make clean`).
+> Completed games are preserved as notation transcripts and are unaffected.
+
 Schema:
 ```sql
 CREATE TABLE games (
