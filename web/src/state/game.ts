@@ -2,7 +2,7 @@ import { signal, type Signal } from '@preact/signals-core';
 import type { Card, Phase, Suit } from './helpers';
 import { getLeadSuit } from './helpers';
 
-export type GameStateValue = string | { Betting?: number; Trick?: number; Completed?: unknown };
+export type GameStateValue = string | { Bidding?: number; Trick?: number; Completed?: unknown };
 
 export type PlayerNameEntry = { player_id: string; name: string | null };
 export type TimerConfig = { initial_time_secs: number; increment_secs: number } | null;
@@ -62,11 +62,11 @@ export type GameStore = {
 };
 
 function phaseFromState(g: GameStateValue): Phase {
-  if (typeof g === 'object' && g !== null && 'Betting' in g) return 'BETTING';
+  if (typeof g === 'object' && g !== null && 'Bidding' in g) return 'BETTING';
   if (typeof g === 'object' && g !== null && 'Trick' in g) return 'PLAYING';
   if (g === 'Completed') return 'GAME_OVER';
   if (typeof g === 'string') {
-    if (g.startsWith('Betting')) return 'BETTING';
+    if (g.startsWith('Bidding')) return 'BETTING';
     if (g.startsWith('Trick')) return 'PLAYING';
   }
   return 'LOBBY';

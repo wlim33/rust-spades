@@ -1,6 +1,6 @@
 {
   "game_id": "00000000-0000-0000-0000-000000000001",
-  "state": { "Betting": 0 },
+  "state": { "Bidding": 0 },
   "team_a_score": 0,
   "team_b_score": 0,
   "team_a_bags": 0,

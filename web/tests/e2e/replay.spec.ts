@@ -73,7 +73,7 @@ async function driveGameToCompletion(
     // Only act on our turn.
     if (state.current_player_id !== playerId) continue;
 
-    if (stateKey === 'Betting') {
+    if (stateKey === 'Bidding') {
       const betRes = await request.post(`/games/${gameId}/transition`, {
         data: { type: 'bet', amount: 3 },
       });
