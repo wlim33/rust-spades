@@ -48,15 +48,6 @@ Create a new game with random player IDs.
 {"game_id": "<uuid>", "player_ids": ["<uuid>", "<uuid>", "<uuid>", "<uuid>"]}
 ```
 
-#### GET /games
-
-List all active game IDs.
-
-```json
-// Response 200
-["<uuid>", "<uuid>"]
-```
-
 #### GET /games/:game_id
 
 Get current game state.
@@ -65,7 +56,7 @@ Get current game state.
 // Response 200
 {
   "game_id": "<uuid>",
-  "state": "Betting(0)",
+  "state": "Bidding(0)",
   "team_a_score": 0,
   "team_b_score": 0,
   "team_a_bags": 0,
