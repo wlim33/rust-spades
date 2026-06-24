@@ -340,13 +340,15 @@ impl SqliteStore {
     ///
     /// `state` is plain serde nested under the engine inner struct: unit
     /// variants serialize as the strings `"Completed"` / `"Aborted"` at
-    /// `$.inner.state`. The runaway cap uses `$.inner.rules.scoring.round`.
+    /// `$.inner.state`. The runaway cap uses `json_array_length` on the trick
+    /// history array at `$.inner.history` (one entry per completed trick, never
+    /// cleared across rounds; a real game ends well under 200 tricks).
     pub fn prune_stale_games(&self, max_hands: i64) -> Result<usize, String> {
         let conn = self.pool.get().map_err(|e| e.to_string())?;
         conn.execute(
             "DELETE FROM games \
              WHERE json_extract(data, '$.inner.state') IN ('Completed', 'Aborted') \
-                OR json_extract(data, '$.inner.rules.scoring.round') > ?1",
+                OR json_array_length(data, '$.inner.history') > ?1",
             rusqlite::params![max_hands],
         )
         .map_err(|e| e.to_string())
@@ -1308,11 +1310,12 @@ mod tests {
         dead.play(spades::GameTransition::Abort).unwrap();
         store.insert_game(&dead).unwrap();
 
-        // Live but runaway: round counter inflated past the cap. Crafting it
-        // via serde avoids playing 1000+ rounds; the round counter lives at
-        // $.inner.rules.scoring.round in the new engine-backed JSON layout.
+        // Live but runaway: trick-history array inflated past the cap. Crafting
+        // it via serde avoids playing 1000+ tricks; the history is a JSON array
+        // at $.inner.history (one entry per completed trick, never cleared).
         let mut v = serde_json::to_value(make_game()).unwrap();
-        v["inner"]["rules"]["scoring"]["round"] = serde_json::json!(1001);
+        let empty_trick = serde_json::json!([null, null, null, null]);
+        v["inner"]["history"] = serde_json::Value::Array(vec![empty_trick; 1001]);
         let runaway: Game = serde_json::from_value(v).unwrap();
         store.insert_game(&runaway).unwrap();
 

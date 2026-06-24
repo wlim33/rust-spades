@@ -214,11 +214,12 @@ pub(crate) fn epoch_ms_now() -> u64 {
         .as_millis() as u64
 }
 
-/// Upper bound on a persisted game's trick history (`hands_played` length)
-/// before it's treated as a never-terminating runaway and pruned at startup.
-/// A real game to any sane `max_points` ends in well under 200 tricks; 1000
-/// (~77 full hands) is reachable only by a stuck bot-vs-bot loop. Matches the
-/// manual `DELETE … hands_played > 1000` remediation this automates.
+/// Upper bound on a persisted game's trick-history array length
+/// (`$.inner.history` in the serialized JSON) before it's treated as a
+/// never-terminating runaway and pruned at startup. A real game to any sane
+/// `max_points` ends in well under 200 tricks; 1000 (~77 full hands) is
+/// reachable only by a stuck bot-vs-bot loop. Matches the manual
+/// `DELETE … hands_played > 1000` remediation this automates.
 const MAX_PERSISTED_HANDS: i64 = 1000;
 
 impl GameManager {
