@@ -31,6 +31,8 @@ export interface paths {
      * @description Return a JSON replay of a terminal game. Refused (403) for in-progress
      *     games — the model would expose hidden hands. Resolves `viewer_seat` from
      *     the auth `Identity` so clients can orient the replay to the viewer.
+     *     The response also includes a typed `termination` field (`"completed"` or
+     *     `"aborted"`) to distinguish normal finishes from timed-out games.
      *
      *     `identity` is `OptionalIdentity` (a newtype over `Option<Identity>`) so
      *     that a request with a present-but-unrecognized Bearer token (e.g. a
@@ -347,13 +349,13 @@ export interface components {
         game_id: string;
         short_id: string;
         state:
+          | ('NotStarted' | 'Completed' | 'Aborted')
           | {
-              Betting: number;
+              Bidding: number;
             }
           | {
               Trick: number;
-            }
-          | ('NotStarted' | 'Completed' | 'Aborted');
+            };
         team_a_score?: number | null;
         team_b_score?: number | null;
         team_a_bags?: number | null;
@@ -446,14 +448,6 @@ export interface components {
     SetNameRequest: {
       name?: string | null;
     };
-    State:
-      | {
-          Betting: number;
-        }
-      | {
-          Trick: number;
-        }
-      | ('NotStarted' | 'Completed' | 'Aborted');
     /** @enum {string} */
     Suit: 'Club' | 'Diamond' | 'Heart' | 'Spade';
     /** @description Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move). */
@@ -512,13 +506,13 @@ export interface operations {
             game_id: string;
             short_id: string;
             state:
+              | ('NotStarted' | 'Completed' | 'Aborted')
               | {
-                  Betting: number;
+                  Bidding: number;
                 }
               | {
                   Trick: number;
-                }
-              | ('NotStarted' | 'Completed' | 'Aborted');
+                };
             team_a_score?: number | null;
             team_b_score?: number | null;
             team_a_bags?: number | null;
@@ -647,13 +641,13 @@ export interface operations {
             game_id: string;
             short_id: string;
             state:
+              | ('NotStarted' | 'Completed' | 'Aborted')
               | {
-                  Betting: number;
+                  Bidding: number;
                 }
               | {
                   Trick: number;
-                }
-              | ('NotStarted' | 'Completed' | 'Aborted');
+                };
             team_a_score?: number | null;
             team_b_score?: number | null;
             team_a_bags?: number | null;

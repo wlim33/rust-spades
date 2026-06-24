@@ -38,13 +38,17 @@
                     "state": {
                       "oneOf": [
                         {
+                          "type": "string",
+                          "enum": ["NotStarted", "Completed", "Aborted"]
+                        },
+                        {
                           "type": "object",
                           "properties": {
-                            "Betting": {
+                            "Bidding": {
                               "type": "integer"
                             }
                           },
-                          "required": ["Betting"]
+                          "required": ["Bidding"]
                         },
                         {
                           "type": "object",
@@ -54,10 +58,6 @@
                             }
                           },
                           "required": ["Trick"]
-                        },
-                        {
-                          "type": "string",
-                          "enum": ["NotStarted", "Completed", "Aborted"]
                         }
                       ]
                     },
@@ -184,7 +184,7 @@
     },
     "/games/{game_id}/replay.json": {
       "get": {
-        "description": "Return a JSON replay of a terminal game. Refused (403) for in-progress\ngames \u2014 the model would expose hidden hands. Resolves `viewer_seat` from\nthe auth `Identity` so clients can orient the replay to the viewer.\n\n`identity` is `OptionalIdentity` (a newtype over `Option<Identity>`) so\nthat a request with a present-but-unrecognized Bearer token (e.g. a\nrevoked API token) still receives the replay with `viewer_seat: null`\nrather than a 401. No-credential and cookie-session paths still resolve\nto `Some(Anonymous)` or `Some(Registered)` as before; only the\ninvalid-Bearer case changes from 401 \u2192 200-with-null-seat.",
+        "description": "Return a JSON replay of a terminal game. Refused (403) for in-progress\ngames \u2014 the model would expose hidden hands. Resolves `viewer_seat` from\nthe auth `Identity` so clients can orient the replay to the viewer.\nThe response also includes a typed `termination` field (`\"completed\"` or\n`\"aborted\"`) to distinguish normal finishes from timed-out games.\n\n`identity` is `OptionalIdentity` (a newtype over `Option<Identity>`) so\nthat a request with a present-but-unrecognized Bearer token (e.g. a\nrevoked API token) still receives the replay with `viewer_seat: null`\nrather than a 401. No-credential and cookie-session paths still resolve\nto `Some(Anonymous)` or `Some(Registered)` as before; only the\ninvalid-Bearer case changes from 401 \u2192 200-with-null-seat.",
         "operationId": "handlers_games_get_replay_json",
         "parameters": [
           {
@@ -316,13 +316,17 @@
                     "state": {
                       "oneOf": [
                         {
+                          "type": "string",
+                          "enum": ["NotStarted", "Completed", "Aborted"]
+                        },
+                        {
                           "type": "object",
                           "properties": {
-                            "Betting": {
+                            "Bidding": {
                               "type": "integer"
                             }
                           },
-                          "required": ["Betting"]
+                          "required": ["Bidding"]
                         },
                         {
                           "type": "object",
@@ -332,10 +336,6 @@
                             }
                           },
                           "required": ["Trick"]
-                        },
-                        {
-                          "type": "string",
-                          "enum": ["NotStarted", "Completed", "Aborted"]
                         }
                       ]
                     },
@@ -1211,13 +1211,17 @@
               "state": {
                 "oneOf": [
                   {
+                    "type": "string",
+                    "enum": ["NotStarted", "Completed", "Aborted"]
+                  },
+                  {
                     "type": "object",
                     "properties": {
-                      "Betting": {
+                      "Bidding": {
                         "type": "integer"
                       }
                     },
-                    "required": ["Betting"]
+                    "required": ["Bidding"]
                   },
                   {
                     "type": "object",
@@ -1227,10 +1231,6 @@
                       }
                     },
                     "required": ["Trick"]
-                  },
-                  {
-                    "type": "string",
-                    "enum": ["NotStarted", "Completed", "Aborted"]
                   }
                 ]
               },
@@ -1494,32 +1494,6 @@
             "type": "string"
           }
         }
-      },
-      "State": {
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "Betting": {
-                "type": "integer"
-              }
-            },
-            "required": ["Betting"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "Trick": {
-                "type": "integer"
-              }
-            },
-            "required": ["Trick"]
-          },
-          {
-            "type": "string",
-            "enum": ["NotStarted", "Completed", "Aborted"]
-          }
-        ]
       },
       "Suit": {
         "type": "string",
