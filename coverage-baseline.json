@@ -1,14 +1,18 @@
 {
   "spades-core": {
-    "line_coverage_pct": 98.6,
-    "last_updated": "2026-06-22"
+    "line_coverage_pct": 97.8,
+    "last_updated": "2026-06-24"
   },
   "spades-server": {
-    "line_coverage_pct": 87.3,
-    "last_updated": "2026-06-22"
+    "line_coverage_pct": 87.4,
+    "last_updated": "2026-06-24"
+  },
+  "trick-engine": {
+    "line_coverage_pct": 91.1,
+    "last_updated": "2026-06-24"
   },
   "trick-notation": {
     "line_coverage_pct": 98.3,
-    "last_updated": "2026-06-22"
+    "last_updated": "2026-06-24"
   }
 }

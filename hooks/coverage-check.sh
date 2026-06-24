@@ -15,7 +15,7 @@ export PATH="$HOME/.cargo/bin:$PATH"
 BASELINE_FILE="$REPO_ROOT/coverage-baseline.json"
 REPORT_DIR="$REPO_ROOT/target/llvm-cov"
 REPORT_FILE="$REPORT_DIR/coverage.json"
-CRATES=(spades-core spades-server trick-notation)
+CRATES=(spades-core spades-server trick-engine trick-notation)
 
 # Shared by update-coverage-baseline.sh. Produces $REPORT_FILE (llvm-cov JSON
 # export format) and defines crate_pct/baseline_pct.
