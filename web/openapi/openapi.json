@@ -1451,9 +1451,12 @@
         "required": ["max_points", "timer_config"]
       },
       "SeekSummary": {
-        "description": "Summary of seeks waiting for a given max_points",
+        "description": "Summary of seeks waiting in a given rating band + max_points",
         "type": "object",
         "properties": {
+          "band": {
+            "type": "integer"
+          },
           "max_points": {
             "type": "integer"
           },
@@ -1461,7 +1464,7 @@
             "type": "integer"
           }
         },
-        "required": ["max_points", "waiting"]
+        "required": ["band", "max_points", "waiting"]
       },
       "SessionPlayerResponse": {
         "type": "object",
