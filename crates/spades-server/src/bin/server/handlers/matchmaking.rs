@@ -74,18 +74,25 @@ pub async fn seek(
 
     // Band the seeker by their Glicko rating; anonymous/unrated -> default (Mid).
     let rating = match identity_user {
-        Some(uid) => store
-            .get_user_rating(uid)
-            .ok()
-            .flatten()
-            .unwrap_or(spades_server::ratings::DEFAULT_RATING)
-            .rating,
+        Some(uid) => {
+            store
+                .get_user_rating(uid)
+                .ok()
+                .flatten()
+                .unwrap_or(spades_server::ratings::DEFAULT_RATING)
+                .rating
+        }
         None => spades_server::ratings::DEFAULT_RATING.rating,
     };
 
     let (player_id, mut rx) = state
         .matchmaker
-        .add_seek(request.max_points, request.timer_config, validated_name, rating)
+        .add_seek(
+            request.max_points,
+            request.timer_config,
+            validated_name,
+            rating,
+        )
         .await;
 
     let stream = async_stream::stream! {
