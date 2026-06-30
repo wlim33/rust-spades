@@ -46,6 +46,7 @@ struct PendingSeek {
     player_id: Uuid,
     max_points: i32,
     timer_config: TimerConfig,
+    rating: f64,
     name: Option<String>,
     sender: mpsc::UnboundedSender<SeekEvent>,
 }
@@ -72,6 +73,7 @@ impl Matchmaker {
         max_points: i32,
         timer_config: TimerConfig,
         name: Option<String>,
+        rating: f64,
     ) -> (Uuid, mpsc::UnboundedReceiver<SeekEvent>) {
         let player_id = Uuid::new_v4();
         let (tx, rx) = mpsc::unbounded_channel();
@@ -82,13 +84,15 @@ impl Matchmaker {
                 player_id,
                 max_points,
                 timer_config,
+                rating,
                 name,
                 sender: tx,
             });
         }
 
-        self.try_match(max_points, timer_config).await;
-        self.notify_seekers(max_points, timer_config);
+        let band = crate::bands::band_of(rating);
+        self.try_match(band, max_points, timer_config).await;
+        self.notify_seekers(band, max_points, timer_config);
         (player_id, rx)
     }
 
@@ -100,11 +104,11 @@ impl Matchmaker {
             seek_info = queue
                 .iter()
                 .find(|s| s.player_id == player_id)
-                .map(|s| (s.max_points, s.timer_config));
+                .map(|s| (s.rating, s.max_points, s.timer_config));
             queue.retain(|s| s.player_id != player_id);
         }
-        if let Some((mp, tc)) = seek_info {
-            self.notify_seekers(mp, tc);
+        if let Some((rating, mp, tc)) = seek_info {
+            self.notify_seekers(crate::bands::band_of(rating), mp, tc);
         }
     }
 
@@ -144,7 +148,7 @@ impl Matchmaker {
     }
 
     /// Check if there are 4 seeks with the same max_points and timer_config and create a game.
-    async fn try_match(&self, max_points: i32, timer_config: TimerConfig) {
+    async fn try_match(&self, band: u8, max_points: i32, timer_config: TimerConfig) {
         // Scope the std::sync::MutexGuard tightly so it cannot leak into the
         // generated future state across any later `.await` — std::sync guards
         // are `!Send` and the handler must produce a `Send` future for axum.
@@ -154,7 +158,11 @@ impl Matchmaker {
             let matching: Vec<usize> = queue
                 .iter()
                 .enumerate()
-                .filter(|(_, s)| s.max_points == max_points && s.timer_config == timer_config)
+                .filter(|(_, s)| {
+                    crate::bands::band_of(s.rating) == band
+                        && s.max_points == max_points
+                        && s.timer_config == timer_config
+                })
                 .map(|(i, _)| i)
                 .collect();
 
@@ -243,16 +251,16 @@ impl Matchmaker {
         }
     }
 
-    /// Notify all seekers for a given max_points and timer_config of the current queue count.
-    fn notify_seekers(&self, max_points: i32, timer_config: TimerConfig) {
+    /// Notify all seekers in a given band + max_points + timer_config of the current queue count.
+    fn notify_seekers(&self, band: u8, max_points: i32, timer_config: TimerConfig) {
         let queue = self.seek_queue.lock_or_recover();
-        let matches =
-            |s: &&PendingSeek| s.max_points == max_points && s.timer_config == timer_config;
+        let matches = |s: &&PendingSeek| {
+            crate::bands::band_of(s.rating) == band
+                && s.max_points == max_points
+                && s.timer_config == timer_config
+        };
         let waiting = queue.iter().filter(matches).count();
-        for seek in queue
-            .iter()
-            .filter(|s| s.max_points == max_points && s.timer_config == timer_config)
-        {
+        for seek in queue.iter().filter(matches) {
             let _ = seek.sender.send(SeekEvent::QueueUpdate { waiting });
         }
     }
@@ -279,7 +287,7 @@ mod tests {
         let mut receivers = Vec::new();
 
         for _ in 0..4 {
-            let (_pid, rx) = mm.add_seek(500, default_timer(), None).await;
+            let (_pid, rx) = mm.add_seek(500, default_timer(), None, 1500.0).await;
             receivers.push(rx);
         }
 
@@ -306,7 +314,7 @@ mod tests {
         let mm = make_matchmaker();
 
         for _ in 0..3 {
-            let _ = mm.add_seek(500, default_timer(), None).await;
+            let _ = mm.add_seek(500, default_timer(), None, 1500.0).await;
         }
 
         let summary = mm.list_seeks();
@@ -320,18 +328,52 @@ mod tests {
         let mm = make_matchmaker();
 
         for _ in 0..3 {
-            let _ = mm.add_seek(500, default_timer(), None).await;
+            let _ = mm.add_seek(500, default_timer(), None, 1500.0).await;
         }
-        let _ = mm.add_seek(300, default_timer(), None).await;
+        let _ = mm.add_seek(300, default_timer(), None, 1500.0).await;
 
         let summary = mm.list_seeks();
         assert_eq!(summary.len(), 2);
     }
 
     #[tokio::test]
+    async fn test_same_band_four_seekers_match() {
+        let mm = make_matchmaker();
+        let mut receivers = Vec::new();
+        // Four Mid-band ratings (1400..1600) -> one game.
+        for r in [1450.0, 1500.0, 1520.0, 1580.0] {
+            let (_pid, rx) = mm.add_seek(500, default_timer(), None, r).await;
+            receivers.push(rx);
+        }
+        let mut game_id = None;
+        for mut rx in receivers {
+            while let Some(event) = rx.recv().await {
+                if let SeekEvent::GameStart(result) = event {
+                    game_id = Some(result.game_id);
+                    break;
+                }
+            }
+        }
+        assert!(game_id.is_some(), "four same-band seekers should match");
+    }
+
+    #[tokio::test]
+    async fn test_cross_band_does_not_match() {
+        let mm = make_matchmaker();
+        // Three Mid + one High: different bands, so no game forms.
+        for r in [1500.0, 1510.0, 1520.0] {
+            let _ = mm.add_seek(500, default_timer(), None, r).await;
+        }
+        let _ = mm.add_seek(500, default_timer(), None, 1700.0).await; // High band
+        // 4 seekers total but split 3 (Mid) + 1 (High): no match.
+        let total: usize = mm.list_seeks().iter().map(|s| s.waiting).sum();
+        assert_eq!(total, 4, "cross-band seeks must not be matched into a game");
+    }
+
+    #[tokio::test]
     async fn test_cancel_seek() {
         let mm = make_matchmaker();
-        let (player_id, _rx) = mm.add_seek(500, default_timer(), None).await;
+        let (player_id, _rx) = mm.add_seek(500, default_timer(), None, 1500.0).await;
 
         mm.cancel_seek(player_id);
 
@@ -347,7 +389,7 @@ mod tests {
 
         for name in &names {
             let (_pid, rx) = mm
-                .add_seek(500, default_timer(), Some(name.to_string()))
+                .add_seek(500, default_timer(), Some(name.to_string()), 1500.0)
                 .await;
             receivers.push(rx);
         }
@@ -368,9 +410,9 @@ mod tests {
     #[tokio::test]
     async fn test_seek_list_after_partial_cancel() {
         let mm = make_matchmaker();
-        let (p1, _rx1) = mm.add_seek(500, default_timer(), None).await;
-        let (_p2, _rx2) = mm.add_seek(500, default_timer(), None).await;
-        let (_p3, _rx3) = mm.add_seek(500, default_timer(), None).await;
+        let (p1, _rx1) = mm.add_seek(500, default_timer(), None, 1500.0).await;
+        let (_p2, _rx2) = mm.add_seek(500, default_timer(), None, 1500.0).await;
+        let (_p3, _rx3) = mm.add_seek(500, default_timer(), None, 1500.0).await;
 
         mm.cancel_seek(p1);
 
@@ -392,12 +434,12 @@ mod tests {
         };
 
         // 2 seeks: 500 pts + fast timer
-        let (_p1, _rx1) = mm.add_seek(500, fast_timer, None).await;
-        let (_p2, _rx2) = mm.add_seek(500, fast_timer, None).await;
+        let (_p1, _rx1) = mm.add_seek(500, fast_timer, None, 1500.0).await;
+        let (_p2, _rx2) = mm.add_seek(500, fast_timer, None, 1500.0).await;
         // 1 seek: 500 pts + slow timer
-        let (_p3, _rx3) = mm.add_seek(500, slow_timer, None).await;
+        let (_p3, _rx3) = mm.add_seek(500, slow_timer, None, 1500.0).await;
         // 1 seek: 300 pts + fast timer
-        let (_p4, _rx4) = mm.add_seek(300, fast_timer, None).await;
+        let (_p4, _rx4) = mm.add_seek(300, fast_timer, None, 1500.0).await;
 
         let sizes = mm.queue_sizes();
         assert_eq!(sizes.len(), 3);
