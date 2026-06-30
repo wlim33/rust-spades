@@ -1,0 +1,5 @@
+# pnpm settings (pnpm 11 moved `overrides` here from package.json).
+# Force the patched js-yaml to clear GHSA-h67p-54hq-rp68 (DoS via merge-key
+# aliases), pulled transitively through openapi-typescript → @redocly/openapi-core.
+overrides:
+  js-yaml@>=4.0.0 <4.2.0: ^4.2.0
