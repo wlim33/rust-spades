@@ -27,9 +27,10 @@ pub enum SeekEvent {
     GameStart(MatchResult),
 }
 
-/// Summary of seeks waiting for a given max_points
+/// Summary of seeks waiting in a given rating band + max_points
 #[derive(Debug, Serialize, Deserialize, oasgen::OaSchema)]
 pub struct SeekSummary {
+    pub band: u8,
     pub max_points: i32,
     pub waiting: usize,
 }
@@ -115,13 +116,16 @@ impl Matchmaker {
     /// List a summary of active seeks grouped by max_points.
     pub fn list_seeks(&self) -> Vec<SeekSummary> {
         let queue = self.seek_queue.lock_or_recover();
-        let mut counts: HashMap<i32, usize> = HashMap::new();
+        let mut counts: HashMap<(u8, i32), usize> = HashMap::new();
         for seek in queue.iter() {
-            *counts.entry(seek.max_points).or_insert(0) += 1;
+            *counts
+                .entry((crate::bands::band_of(seek.rating), seek.max_points))
+                .or_insert(0) += 1;
         }
         counts
             .into_iter()
-            .map(|(max_points, waiting)| SeekSummary {
+            .map(|((band, max_points), waiting)| SeekSummary {
+                band,
                 max_points,
                 waiting,
             })
@@ -321,6 +325,24 @@ mod tests {
         assert_eq!(summary.len(), 1);
         assert_eq!(summary[0].waiting, 3);
         assert_eq!(summary[0].max_points, 500);
+        assert_eq!(summary[0].band, 1); // all default 1500 -> Mid
+    }
+
+    #[tokio::test]
+    async fn test_list_seeks_groups_by_band() {
+        let mm = make_matchmaker();
+        // 2 Mid + 1 Low waiting, none enough to match.
+        let _ = mm.add_seek(500, default_timer(), None, 1500.0).await;
+        let _ = mm.add_seek(500, default_timer(), None, 1550.0).await;
+        let _ = mm.add_seek(500, default_timer(), None, 1200.0).await;
+
+        let mut summary = mm.list_seeks();
+        summary.sort_by_key(|s| s.band);
+        assert_eq!(summary.len(), 2, "two bands occupied");
+        assert_eq!(summary[0].band, 0); // Low
+        assert_eq!(summary[0].waiting, 1);
+        assert_eq!(summary[1].band, 1); // Mid
+        assert_eq!(summary[1].waiting, 2);
     }
 
     #[tokio::test]

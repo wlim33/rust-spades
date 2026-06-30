@@ -432,8 +432,9 @@ export interface components {
       timer_config: components['schemas']['TimerConfig'];
       name?: string | null;
     };
-    /** @description Summary of seeks waiting for a given max_points */
+    /** @description Summary of seeks waiting in a given rating band + max_points */
     SeekSummary: {
+      band: number;
       max_points: number;
       waiting: number;
     };

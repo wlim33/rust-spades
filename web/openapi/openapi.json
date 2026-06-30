@@ -1,1572 +1,1808 @@
 {
-  "openapi": "3.0.3",
-  "info": {
-    "title": "Spades Game Server",
-    "description": "4-player Spades card game server with matchmaking, challenges, and real-time updates.",
-    "version": "3.0.0"
-  },
-  "paths": {
-    "/games/{game_id}": {
-      "get": {
-        "operationId": "handlers_games_get_game_state",
-        "parameters": [
-          {
-            "name": "game_id",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "in": "path",
-            "style": "simple"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "game_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "short_id": {
-                      "type": "string"
-                    },
-                    "state": {
-                      "oneOf": [
-                        {
-                          "type": "string",
-                          "enum": ["NotStarted", "Completed", "Aborted"]
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "Bidding": {
-                              "type": "integer"
-                            }
-                          },
-                          "required": ["Bidding"]
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "Trick": {
-                              "type": "integer"
-                            }
-                          },
-                          "required": ["Trick"]
-                        }
-                      ]
-                    },
-                    "team_a_score": {
-                      "nullable": true,
-                      "type": "integer"
-                    },
-                    "team_b_score": {
-                      "nullable": true,
-                      "type": "integer"
-                    },
-                    "team_a_bags": {
-                      "nullable": true,
-                      "type": "integer"
-                    },
-                    "team_b_bags": {
-                      "nullable": true,
-                      "type": "integer"
-                    },
-                    "current_player_id": {
-                      "nullable": true,
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "player_names": {
-                      "type": "array",
-                      "items": {
-                        "description": "A player's name entry",
-                        "type": "object",
-                        "properties": {
-                          "player_id": {
+    "openapi": "3.0.3",
+    "info": {
+        "title": "Spades Game Server",
+        "description": "4-player Spades card game server with matchmaking, challenges, and real-time updates.",
+        "version": "3.0.0"
+    },
+    "paths": {
+        "/games/{game_id}": {
+            "get": {
+                "operationId": "handlers_games_get_game_state",
+                "parameters": [
+                    {
+                        "name": "game_id",
+                        "schema": {
                             "type": "string",
                             "format": "uuid"
-                          },
-                          "name": {
-                            "nullable": true,
-                            "type": "string"
-                          }
                         },
-                        "required": ["player_id"]
-                      }
-                    },
-                    "timer_config": {
-                      "nullable": true,
-                      "description": "Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).",
-                      "type": "object",
-                      "properties": {
-                        "initial_time_secs": {
-                          "type": "integer"
-                        },
-                        "increment_secs": {
-                          "type": "integer"
-                        }
-                      },
-                      "required": ["initial_time_secs", "increment_secs"]
-                    },
-                    "player_clocks_ms": {
-                      "type": "array",
-                      "items": {
-                        "type": "integer"
-                      }
-                    },
-                    "active_player_clock_ms": {
-                      "nullable": true,
-                      "type": "integer"
-                    },
-                    "table_cards": {
-                      "type": "array",
-                      "items": {
-                        "description": "Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),\nthen rank ascending \u2014 the derived lexicographic order over the fields.",
-                        "type": "object",
-                        "properties": {
-                          "suit": {
-                            "$ref": "#/components/schemas/Suit"
-                          },
-                          "rank": {
-                            "$ref": "#/components/schemas/Rank"
-                          }
-                        },
-                        "required": ["suit", "rank"]
-                      }
-                    },
-                    "player_bets": {
-                      "type": "array",
-                      "items": {
-                        "type": "integer"
-                      }
-                    },
-                    "player_tricks_won": {
-                      "type": "array",
-                      "items": {
-                        "type": "integer"
-                      }
-                    },
-                    "last_trick_winner_id": {
-                      "nullable": true,
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "last_completed_trick": {
-                      "type": "array",
-                      "items": {
-                        "description": "Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),\nthen rank ascending \u2014 the derived lexicographic order over the fields.",
-                        "type": "object",
-                        "properties": {
-                          "suit": {
-                            "$ref": "#/components/schemas/Suit"
-                          },
-                          "rank": {
-                            "$ref": "#/components/schemas/Rank"
-                          }
-                        },
-                        "required": ["suit", "rank"]
-                      }
+                        "in": "path",
+                        "style": "simple"
                     }
-                  },
-                  "required": ["game_id", "short_id", "state", "player_names"]
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "game_id": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "short_id": {
+                                            "type": "string"
+                                        },
+                                        "state": {
+                                            "oneOf": [
+                                                {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "NotStarted",
+                                                        "Completed",
+                                                        "Aborted"
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "Bidding": {
+                                                            "type": "integer"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "Bidding"
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "Trick": {
+                                                            "type": "integer"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "Trick"
+                                                    ]
+                                                }
+                                            ]
+                                        },
+                                        "team_a_score": {
+                                            "nullable": true,
+                                            "type": "integer"
+                                        },
+                                        "team_b_score": {
+                                            "nullable": true,
+                                            "type": "integer"
+                                        },
+                                        "team_a_bags": {
+                                            "nullable": true,
+                                            "type": "integer"
+                                        },
+                                        "team_b_bags": {
+                                            "nullable": true,
+                                            "type": "integer"
+                                        },
+                                        "current_player_id": {
+                                            "nullable": true,
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "player_names": {
+                                            "type": "array",
+                                            "items": {
+                                                "description": "A player's name entry",
+                                                "type": "object",
+                                                "properties": {
+                                                    "player_id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "name": {
+                                                        "nullable": true,
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "player_id"
+                                                ]
+                                            }
+                                        },
+                                        "timer_config": {
+                                            "nullable": true,
+                                            "description": "Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).",
+                                            "type": "object",
+                                            "properties": {
+                                                "initial_time_secs": {
+                                                    "type": "integer"
+                                                },
+                                                "increment_secs": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "required": [
+                                                "initial_time_secs",
+                                                "increment_secs"
+                                            ]
+                                        },
+                                        "player_clocks_ms": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "active_player_clock_ms": {
+                                            "nullable": true,
+                                            "type": "integer"
+                                        },
+                                        "table_cards": {
+                                            "type": "array",
+                                            "items": {
+                                                "description": "Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),\nthen rank ascending \u2014 the derived lexicographic order over the fields.",
+                                                "type": "object",
+                                                "properties": {
+                                                    "suit": {
+                                                        "$ref": "#/components/schemas/Suit"
+                                                    },
+                                                    "rank": {
+                                                        "$ref": "#/components/schemas/Rank"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "suit",
+                                                    "rank"
+                                                ]
+                                            }
+                                        },
+                                        "player_bets": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "player_tricks_won": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "last_trick_winner_id": {
+                                            "nullable": true,
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "last_completed_trick": {
+                                            "type": "array",
+                                            "items": {
+                                                "description": "Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),\nthen rank ascending \u2014 the derived lexicographic order over the fields.",
+                                                "type": "object",
+                                                "properties": {
+                                                    "suit": {
+                                                        "$ref": "#/components/schemas/Suit"
+                                                    },
+                                                    "rank": {
+                                                        "$ref": "#/components/schemas/Rank"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "suit",
+                                                    "rank"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "game_id",
+                                        "short_id",
+                                        "state",
+                                        "player_names"
+                                    ]
+                                }
+                            }
+                        }
+                    }
                 }
-              }
             }
-          }
-        }
-      }
-    },
-    "/games/{game_id}/replay.json": {
-      "get": {
-        "description": "Return a JSON replay of a terminal game. Refused (403) for in-progress\ngames \u2014 the model would expose hidden hands. Resolves `viewer_seat` from\nthe auth `Identity` so clients can orient the replay to the viewer.\nThe response also includes a typed `termination` field (`\"completed\"` or\n`\"aborted\"`) to distinguish normal finishes from timed-out games.\n\n`identity` is `OptionalIdentity` (a newtype over `Option<Identity>`) so\nthat a request with a present-but-unrecognized Bearer token (e.g. a\nrevoked API token) still receives the replay with `viewer_seat: null`\nrather than a 401. No-credential and cookie-session paths still resolve\nto `Some(Anonymous)` or `Some(Registered)` as before; only the\ninvalid-Bearer case changes from 401 \u2192 200-with-null-seat.",
-        "operationId": "handlers_games_get_replay_json",
-        "parameters": [
-          {
-            "name": "game_id",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "in": "path",
-            "style": "simple"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameReplayResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/games/{game_id}/transition": {
-      "post": {
-        "operationId": "handlers_games_make_transition",
-        "parameters": [
-          {
-            "name": "game_id",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "in": "path",
-            "style": "simple"
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TransitionRequest"
-              }
-            }
-          },
-          "required": true
         },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TransitionResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/games/{game_id}/players/{player_id}/hand": {
-      "get": {
-        "operationId": "handlers_games_get_hand",
-        "parameters": [
-          {
-            "name": "game_id",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "in": "path",
-            "style": "simple"
-          },
-          {
-            "name": "player_id",
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "style": "simple"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HandResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/games/by-short-id/{short_id}": {
-      "get": {
-        "operationId": "handlers_games_get_game_by_short_id_handler",
-        "parameters": [
-          {
-            "name": "short_id",
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "style": "simple"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "game_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "short_id": {
-                      "type": "string"
-                    },
-                    "state": {
-                      "oneOf": [
-                        {
-                          "type": "string",
-                          "enum": ["NotStarted", "Completed", "Aborted"]
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "Bidding": {
-                              "type": "integer"
-                            }
-                          },
-                          "required": ["Bidding"]
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "Trick": {
-                              "type": "integer"
-                            }
-                          },
-                          "required": ["Trick"]
-                        }
-                      ]
-                    },
-                    "team_a_score": {
-                      "nullable": true,
-                      "type": "integer"
-                    },
-                    "team_b_score": {
-                      "nullable": true,
-                      "type": "integer"
-                    },
-                    "team_a_bags": {
-                      "nullable": true,
-                      "type": "integer"
-                    },
-                    "team_b_bags": {
-                      "nullable": true,
-                      "type": "integer"
-                    },
-                    "current_player_id": {
-                      "nullable": true,
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "player_names": {
-                      "type": "array",
-                      "items": {
-                        "description": "A player's name entry",
-                        "type": "object",
-                        "properties": {
-                          "player_id": {
+        "/games/{game_id}/replay.json": {
+            "get": {
+                "description": "Return a JSON replay of a terminal game. Refused (403) for in-progress\ngames \u2014 the model would expose hidden hands. Resolves `viewer_seat` from\nthe auth `Identity` so clients can orient the replay to the viewer.\nThe response also includes a typed `termination` field (`\"completed\"` or\n`\"aborted\"`) to distinguish normal finishes from timed-out games.\n\n`identity` is `OptionalIdentity` (a newtype over `Option<Identity>`) so\nthat a request with a present-but-unrecognized Bearer token (e.g. a\nrevoked API token) still receives the replay with `viewer_seat: null`\nrather than a 401. No-credential and cookie-session paths still resolve\nto `Some(Anonymous)` or `Some(Registered)` as before; only the\ninvalid-Bearer case changes from 401 \u2192 200-with-null-seat.",
+                "operationId": "handlers_games_get_replay_json",
+                "parameters": [
+                    {
+                        "name": "game_id",
+                        "schema": {
                             "type": "string",
                             "format": "uuid"
-                          },
-                          "name": {
-                            "nullable": true,
-                            "type": "string"
-                          }
                         },
-                        "required": ["player_id"]
-                      }
+                        "in": "path",
+                        "style": "simple"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/GameReplayResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/games/{game_id}/transition": {
+            "post": {
+                "operationId": "handlers_games_make_transition",
+                "parameters": [
+                    {
+                        "name": "game_id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "in": "path",
+                        "style": "simple"
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TransitionRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TransitionResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/games/{game_id}/players/{player_id}/hand": {
+            "get": {
+                "operationId": "handlers_games_get_hand",
+                "parameters": [
+                    {
+                        "name": "game_id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "in": "path",
+                        "style": "simple"
+                    },
+                    {
+                        "name": "player_id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "in": "path",
+                        "style": "simple"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HandResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/games/by-short-id/{short_id}": {
+            "get": {
+                "operationId": "handlers_games_get_game_by_short_id_handler",
+                "parameters": [
+                    {
+                        "name": "short_id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "in": "path",
+                        "style": "simple"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "game_id": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "short_id": {
+                                            "type": "string"
+                                        },
+                                        "state": {
+                                            "oneOf": [
+                                                {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "NotStarted",
+                                                        "Completed",
+                                                        "Aborted"
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "Bidding": {
+                                                            "type": "integer"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "Bidding"
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "Trick": {
+                                                            "type": "integer"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "Trick"
+                                                    ]
+                                                }
+                                            ]
+                                        },
+                                        "team_a_score": {
+                                            "nullable": true,
+                                            "type": "integer"
+                                        },
+                                        "team_b_score": {
+                                            "nullable": true,
+                                            "type": "integer"
+                                        },
+                                        "team_a_bags": {
+                                            "nullable": true,
+                                            "type": "integer"
+                                        },
+                                        "team_b_bags": {
+                                            "nullable": true,
+                                            "type": "integer"
+                                        },
+                                        "current_player_id": {
+                                            "nullable": true,
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "player_names": {
+                                            "type": "array",
+                                            "items": {
+                                                "description": "A player's name entry",
+                                                "type": "object",
+                                                "properties": {
+                                                    "player_id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "name": {
+                                                        "nullable": true,
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "player_id"
+                                                ]
+                                            }
+                                        },
+                                        "timer_config": {
+                                            "nullable": true,
+                                            "description": "Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).",
+                                            "type": "object",
+                                            "properties": {
+                                                "initial_time_secs": {
+                                                    "type": "integer"
+                                                },
+                                                "increment_secs": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "required": [
+                                                "initial_time_secs",
+                                                "increment_secs"
+                                            ]
+                                        },
+                                        "player_clocks_ms": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "active_player_clock_ms": {
+                                            "nullable": true,
+                                            "type": "integer"
+                                        },
+                                        "table_cards": {
+                                            "type": "array",
+                                            "items": {
+                                                "description": "Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),\nthen rank ascending \u2014 the derived lexicographic order over the fields.",
+                                                "type": "object",
+                                                "properties": {
+                                                    "suit": {
+                                                        "$ref": "#/components/schemas/Suit"
+                                                    },
+                                                    "rank": {
+                                                        "$ref": "#/components/schemas/Rank"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "suit",
+                                                    "rank"
+                                                ]
+                                            }
+                                        },
+                                        "player_bets": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "player_tricks_won": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "last_trick_winner_id": {
+                                            "nullable": true,
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "last_completed_trick": {
+                                            "type": "array",
+                                            "items": {
+                                                "description": "Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),\nthen rank ascending \u2014 the derived lexicographic order over the fields.",
+                                                "type": "object",
+                                                "properties": {
+                                                    "suit": {
+                                                        "$ref": "#/components/schemas/Suit"
+                                                    },
+                                                    "rank": {
+                                                        "$ref": "#/components/schemas/Rank"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "suit",
+                                                    "rank"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "game_id",
+                                        "short_id",
+                                        "state",
+                                        "player_names"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/games/by-player-url/{url_id}": {
+            "get": {
+                "operationId": "handlers_games_get_game_by_player_url",
+                "parameters": [
+                    {
+                        "name": "url_id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "in": "path",
+                        "style": "simple"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PlayerUrlResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/games/{game_id}/presence": {
+            "get": {
+                "operationId": "handlers_games_get_presence",
+                "parameters": [
+                    {
+                        "name": "game_id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "in": "path",
+                        "style": "simple"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PresenceSnapshot"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/matchmaking/seeks": {
+            "get": {
+                "operationId": "handlers_matchmaking_list_seeks_handler",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/SeekSummary"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/matchmaking/queue-sizes": {
+            "get": {
+                "operationId": "handlers_matchmaking_queue_sizes_handler",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/QueueSizeEntry"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/challenges": {
+            "get": {
+                "operationId": "handlers_challenges_list_challenges_handler",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "challenge_id": {
+                                                "type": "string",
+                                                "format": "uuid"
+                                            },
+                                            "short_id": {
+                                                "type": "string"
+                                            },
+                                            "max_points": {
+                                                "type": "integer"
+                                            },
+                                            "seats_filled": {
+                                                "type": "integer"
+                                            },
+                                            "seats": {
+                                                "type": "array",
+                                                "items": {
+                                                    "nullable": true,
+                                                    "description": "Per-seat snapshot sent in SSE events.",
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "seat": {
+                                                            "$ref": "#/components/schemas/Seat"
+                                                        },
+                                                        "player_id": {
+                                                            "type": "string",
+                                                            "format": "uuid"
+                                                        },
+                                                        "name": {
+                                                            "nullable": true,
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "seat",
+                                                        "player_id"
+                                                    ]
+                                                }
+                                            }
+                                        },
+                                        "required": [
+                                            "challenge_id",
+                                            "short_id",
+                                            "max_points",
+                                            "seats_filled",
+                                            "seats"
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/challenges/{challenge_id}": {
+            "get": {
+                "operationId": "handlers_challenges_get_challenge_handler",
+                "parameters": [
+                    {
+                        "name": "challenge_id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "in": "path",
+                        "style": "simple"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "challenge_id": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "short_id": {
+                                            "type": "string"
+                                        },
+                                        "max_points": {
+                                            "type": "integer"
+                                        },
+                                        "timer_config": {
+                                            "nullable": true,
+                                            "description": "Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).",
+                                            "type": "object",
+                                            "properties": {
+                                                "initial_time_secs": {
+                                                    "type": "integer"
+                                                },
+                                                "increment_secs": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "required": [
+                                                "initial_time_secs",
+                                                "increment_secs"
+                                            ]
+                                        },
+                                        "seats": {
+                                            "type": "array",
+                                            "items": {
+                                                "nullable": true,
+                                                "description": "Per-seat snapshot sent in SSE events.",
+                                                "type": "object",
+                                                "properties": {
+                                                    "seat": {
+                                                        "$ref": "#/components/schemas/Seat"
+                                                    },
+                                                    "player_id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "name": {
+                                                        "nullable": true,
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "seat",
+                                                    "player_id"
+                                                ]
+                                            }
+                                        },
+                                        "status": {
+                                            "type": "string"
+                                        },
+                                        "game_id": {
+                                            "nullable": true,
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "expires_at_epoch_secs": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": [
+                                        "challenge_id",
+                                        "short_id",
+                                        "max_points",
+                                        "seats",
+                                        "status",
+                                        "expires_at_epoch_secs"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/challenges/by-short-id/{short_id}": {
+            "get": {
+                "operationId": "handlers_challenges_get_challenge_by_short_id_handler",
+                "parameters": [
+                    {
+                        "name": "short_id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "in": "path",
+                        "style": "simple"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "challenge_id": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "short_id": {
+                                            "type": "string"
+                                        },
+                                        "max_points": {
+                                            "type": "integer"
+                                        },
+                                        "timer_config": {
+                                            "nullable": true,
+                                            "description": "Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).",
+                                            "type": "object",
+                                            "properties": {
+                                                "initial_time_secs": {
+                                                    "type": "integer"
+                                                },
+                                                "increment_secs": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "required": [
+                                                "initial_time_secs",
+                                                "increment_secs"
+                                            ]
+                                        },
+                                        "seats": {
+                                            "type": "array",
+                                            "items": {
+                                                "nullable": true,
+                                                "description": "Per-seat snapshot sent in SSE events.",
+                                                "type": "object",
+                                                "properties": {
+                                                    "seat": {
+                                                        "$ref": "#/components/schemas/Seat"
+                                                    },
+                                                    "player_id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "name": {
+                                                        "nullable": true,
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "seat",
+                                                    "player_id"
+                                                ]
+                                            }
+                                        },
+                                        "status": {
+                                            "type": "string"
+                                        },
+                                        "game_id": {
+                                            "nullable": true,
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "expires_at_epoch_secs": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": [
+                                        "challenge_id",
+                                        "short_id",
+                                        "max_points",
+                                        "seats",
+                                        "status",
+                                        "expires_at_epoch_secs"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Card": {
+                "description": "Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),\nthen rank ascending \u2014 the derived lexicographic order over the fields.",
+                "type": "object",
+                "properties": {
+                    "suit": {
+                        "$ref": "#/components/schemas/Suit"
+                    },
+                    "rank": {
+                        "$ref": "#/components/schemas/Rank"
+                    }
+                },
+                "required": [
+                    "suit",
+                    "rank"
+                ]
+            },
+            "ChallengeConfig": {
+                "description": "Configuration for creating a challenge.",
+                "type": "object",
+                "properties": {
+                    "max_points": {
+                        "type": "integer"
                     },
                     "timer_config": {
-                      "nullable": true,
-                      "description": "Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).",
-                      "type": "object",
-                      "properties": {
-                        "initial_time_secs": {
-                          "type": "integer"
-                        },
-                        "increment_secs": {
-                          "type": "integer"
-                        }
-                      },
-                      "required": ["initial_time_secs", "increment_secs"]
+                        "$ref": "#/components/schemas/TimerConfig"
                     },
-                    "player_clocks_ms": {
-                      "type": "array",
-                      "items": {
+                    "creator_seat": {
+                        "$ref": "#/components/schemas/Seat"
+                    },
+                    "creator_name": {
+                        "nullable": true,
+                        "type": "string"
+                    },
+                    "expiry_secs": {
                         "type": "integer"
-                      }
-                    },
-                    "active_player_clock_ms": {
-                      "nullable": true,
-                      "type": "integer"
-                    },
-                    "table_cards": {
-                      "type": "array",
-                      "items": {
-                        "description": "Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),\nthen rank ascending \u2014 the derived lexicographic order over the fields.",
-                        "type": "object",
-                        "properties": {
-                          "suit": {
-                            "$ref": "#/components/schemas/Suit"
-                          },
-                          "rank": {
-                            "$ref": "#/components/schemas/Rank"
-                          }
-                        },
-                        "required": ["suit", "rank"]
-                      }
-                    },
-                    "player_bets": {
-                      "type": "array",
-                      "items": {
-                        "type": "integer"
-                      }
-                    },
-                    "player_tricks_won": {
-                      "type": "array",
-                      "items": {
-                        "type": "integer"
-                      }
-                    },
-                    "last_trick_winner_id": {
-                      "nullable": true,
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "last_completed_trick": {
-                      "type": "array",
-                      "items": {
-                        "description": "Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),\nthen rank ascending \u2014 the derived lexicographic order over the fields.",
-                        "type": "object",
-                        "properties": {
-                          "suit": {
-                            "$ref": "#/components/schemas/Suit"
-                          },
-                          "rank": {
-                            "$ref": "#/components/schemas/Rank"
-                          }
-                        },
-                        "required": ["suit", "rank"]
-                      }
                     }
-                  },
-                  "required": ["game_id", "short_id", "state", "player_names"]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/games/by-player-url/{url_id}": {
-      "get": {
-        "operationId": "handlers_games_get_game_by_player_url",
-        "parameters": [
-          {
-            "name": "url_id",
-            "schema": {
-              "type": "string"
+                },
+                "required": [
+                    "max_points",
+                    "expiry_secs"
+                ]
             },
-            "in": "path",
-            "style": "simple"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayerUrlResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/games/{game_id}/presence": {
-      "get": {
-        "operationId": "handlers_games_get_presence",
-        "parameters": [
-          {
-            "name": "game_id",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
+            "ChallengeStatusKind": {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "game_id": {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            "status": {
+                                "type": "string",
+                                "enum": [
+                                    "started"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "game_id",
+                            "status"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "status": {
+                                "type": "string",
+                                "enum": [
+                                    "open",
+                                    "cancelled",
+                                    "expired"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "status"
+                        ]
+                    }
+                ]
             },
-            "in": "path",
-            "style": "simple"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PresenceSnapshot"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/matchmaking/seeks": {
-      "get": {
-        "operationId": "handlers_matchmaking_list_seeks_handler",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SeekSummary"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/matchmaking/queue-sizes": {
-      "get": {
-        "operationId": "handlers_matchmaking_queue_sizes_handler",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/QueueSizeEntry"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/challenges": {
-      "get": {
-        "operationId": "handlers_challenges_list_challenges_handler",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "challenge_id": {
+            "ChatRequest": {
+                "type": "object",
+                "properties": {
+                    "player_id": {
                         "type": "string",
                         "format": "uuid"
-                      },
-                      "short_id": {
+                    },
+                    "content": {
                         "type": "string"
-                      },
-                      "max_points": {
+                    }
+                },
+                "required": [
+                    "player_id",
+                    "content"
+                ]
+            },
+            "CreateGameRequest": {
+                "type": "object",
+                "properties": {
+                    "max_points": {
                         "type": "integer"
-                      },
-                      "seats_filled": {
+                    },
+                    "timer_config": {
+                        "$ref": "#/components/schemas/TimerConfig"
+                    },
+                    "num_humans": {
+                        "nullable": true,
                         "type": "integer"
-                      },
-                      "seats": {
+                    }
+                },
+                "required": [
+                    "max_points"
+                ]
+            },
+            "DealtHand": {
+                "description": "One hand in a `Deal` event: the target seat/pile and the cards dealt to it.",
+                "type": "object",
+                "properties": {
+                    "target": {
+                        "type": "string"
+                    },
+                    "cards": {
                         "type": "array",
                         "items": {
-                          "nullable": true,
-                          "description": "Per-seat snapshot sent in SSE events.",
-                          "type": "object",
-                          "properties": {
-                            "seat": {
-                              "$ref": "#/components/schemas/Seat"
-                            },
-                            "player_id": {
-                              "type": "string",
-                              "format": "uuid"
-                            },
-                            "name": {
-                              "nullable": true,
-                              "type": "string"
-                            }
-                          },
-                          "required": ["seat", "player_id"]
+                            "$ref": "#/components/schemas/Card"
                         }
-                      }
-                    },
-                    "required": ["challenge_id", "short_id", "max_points", "seats_filled", "seats"]
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/challenges/{challenge_id}": {
-      "get": {
-        "operationId": "handlers_challenges_get_challenge_handler",
-        "parameters": [
-          {
-            "name": "challenge_id",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "in": "path",
-            "style": "simple"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "challenge_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "short_id": {
-                      "type": "string"
-                    },
-                    "max_points": {
-                      "type": "integer"
-                    },
-                    "timer_config": {
-                      "nullable": true,
-                      "description": "Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).",
-                      "type": "object",
-                      "properties": {
-                        "initial_time_secs": {
-                          "type": "integer"
-                        },
-                        "increment_secs": {
-                          "type": "integer"
-                        }
-                      },
-                      "required": ["initial_time_secs", "increment_secs"]
-                    },
-                    "seats": {
-                      "type": "array",
-                      "items": {
-                        "nullable": true,
-                        "description": "Per-seat snapshot sent in SSE events.",
-                        "type": "object",
-                        "properties": {
-                          "seat": {
-                            "$ref": "#/components/schemas/Seat"
-                          },
-                          "player_id": {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          "name": {
-                            "nullable": true,
-                            "type": "string"
-                          }
-                        },
-                        "required": ["seat", "player_id"]
-                      }
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "game_id": {
-                      "nullable": true,
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "expires_at_epoch_secs": {
-                      "type": "integer"
                     }
-                  },
-                  "required": [
-                    "challenge_id",
-                    "short_id",
-                    "max_points",
-                    "seats",
-                    "status",
-                    "expires_at_epoch_secs"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/challenges/by-short-id/{short_id}": {
-      "get": {
-        "operationId": "handlers_challenges_get_challenge_by_short_id_handler",
-        "parameters": [
-          {
-            "name": "short_id",
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "style": "simple"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "challenge_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "short_id": {
-                      "type": "string"
-                    },
-                    "max_points": {
-                      "type": "integer"
-                    },
-                    "timer_config": {
-                      "nullable": true,
-                      "description": "Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).",
-                      "type": "object",
-                      "properties": {
-                        "initial_time_secs": {
-                          "type": "integer"
-                        },
-                        "increment_secs": {
-                          "type": "integer"
-                        }
-                      },
-                      "required": ["initial_time_secs", "increment_secs"]
-                    },
-                    "seats": {
-                      "type": "array",
-                      "items": {
-                        "nullable": true,
-                        "description": "Per-seat snapshot sent in SSE events.",
-                        "type": "object",
-                        "properties": {
-                          "seat": {
-                            "$ref": "#/components/schemas/Seat"
-                          },
-                          "player_id": {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          "name": {
-                            "nullable": true,
-                            "type": "string"
-                          }
-                        },
-                        "required": ["seat", "player_id"]
-                      }
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "game_id": {
-                      "nullable": true,
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "expires_at_epoch_secs": {
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "challenge_id",
-                    "short_id",
-                    "max_points",
-                    "seats",
-                    "status",
-                    "expires_at_epoch_secs"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  "components": {
-    "schemas": {
-      "Card": {
-        "description": "Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),\nthen rank ascending \u2014 the derived lexicographic order over the fields.",
-        "type": "object",
-        "properties": {
-          "suit": {
-            "$ref": "#/components/schemas/Suit"
-          },
-          "rank": {
-            "$ref": "#/components/schemas/Rank"
-          }
-        },
-        "required": ["suit", "rank"]
-      },
-      "ChallengeConfig": {
-        "description": "Configuration for creating a challenge.",
-        "type": "object",
-        "properties": {
-          "max_points": {
-            "type": "integer"
-          },
-          "timer_config": {
-            "$ref": "#/components/schemas/TimerConfig"
-          },
-          "creator_seat": {
-            "$ref": "#/components/schemas/Seat"
-          },
-          "creator_name": {
-            "nullable": true,
-            "type": "string"
-          },
-          "expiry_secs": {
-            "type": "integer"
-          }
-        },
-        "required": ["max_points", "expiry_secs"]
-      },
-      "ChallengeStatusKind": {
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "game_id": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "status": {
-                "type": "string",
-                "enum": ["started"]
-              }
-            },
-            "required": ["game_id", "status"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "status": {
-                "type": "string",
-                "enum": ["open", "cancelled", "expired"]
-              }
-            },
-            "required": ["status"]
-          }
-        ]
-      },
-      "ChatRequest": {
-        "type": "object",
-        "properties": {
-          "player_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "content": {
-            "type": "string"
-          }
-        },
-        "required": ["player_id", "content"]
-      },
-      "CreateGameRequest": {
-        "type": "object",
-        "properties": {
-          "max_points": {
-            "type": "integer"
-          },
-          "timer_config": {
-            "$ref": "#/components/schemas/TimerConfig"
-          },
-          "num_humans": {
-            "nullable": true,
-            "type": "integer"
-          }
-        },
-        "required": ["max_points"]
-      },
-      "DealtHand": {
-        "description": "One hand in a `Deal` event: the target seat/pile and the cards dealt to it.",
-        "type": "object",
-        "properties": {
-          "target": {
-            "type": "string"
-          },
-          "cards": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Card"
-            }
-          }
-        },
-        "required": ["target", "cards"]
-      },
-      "Deck": {
-        "type": "object",
-        "properties": {
-          "suits": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "ranks": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": ["suits", "ranks"]
-      },
-      "ErrorResponse": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "string"
-          }
-        },
-        "required": ["error"]
-      },
-      "Event": {
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "hands": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/DealtHand"
-                }
-              },
-              "type": {
-                "type": "string",
-                "enum": ["deal"]
-              }
-            },
-            "required": ["hands", "type"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "start": {
-                "type": "string"
-              },
-              "values": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "type": {
-                "type": "string",
-                "enum": ["call"]
-              }
-            },
-            "required": ["start", "values", "type"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "leader": {
-                "type": "string"
-              },
-              "cards": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Card"
-                }
-              },
-              "type": {
-                "type": "string",
-                "enum": ["play"]
-              }
-            },
-            "required": ["leader", "cards", "type"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "from": {
-                "type": "string"
-              },
-              "to": {
-                "type": "string"
-              },
-              "cards": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Card"
-                }
-              },
-              "type": {
-                "type": "string",
-                "enum": ["exchange"]
-              }
-            },
-            "required": ["from", "to", "cards", "type"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "target": {
-                "type": "string"
-              },
-              "cards": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Card"
-                }
-              },
-              "type": {
-                "type": "string",
-                "enum": ["reveal"]
-              }
-            },
-            "required": ["target", "cards", "type"]
-          }
-        ]
-      },
-      "GameReplayResponse": {
-        "description": "JSON replay response for a terminal game \u2014 available at\n`GET /games/{game_id}/replay.json`.",
-        "type": "object",
-        "properties": {
-          "model": {
-            "$ref": "#/components/schemas/Model"
-          },
-          "cumulative_by_round": {
-            "type": "array",
-            "items": {
-              "type": "array",
-              "items": {
-                "type": "integer"
-              }
-            }
-          },
-          "viewer_seat": {
-            "nullable": true,
-            "type": "integer"
-          },
-          "termination": {
-            "$ref": "#/components/schemas/ReplayTermination"
-          }
-        },
-        "required": ["model", "cumulative_by_round", "termination"]
-      },
-      "HandResponse": {
-        "description": "Response for getting a player's hand",
-        "type": "object",
-        "properties": {
-          "player_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "cards": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Card"
-            }
-          }
-        },
-        "required": ["player_id", "cards"]
-      },
-      "JoinChallengeRequest": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "nullable": true,
-            "type": "string"
-          }
-        }
-      },
-      "Meta": {
-        "type": "object",
-        "properties": {
-          "version": {
-            "type": "integer"
-          },
-          "game_hint": {
-            "nullable": true,
-            "type": "string"
-          },
-          "seats": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "dealer": {
-            "nullable": true,
-            "type": "string"
-          },
-          "players": {
-            "type": "array",
-            "items": {
-              "nullable": true,
-              "type": "string"
-            }
-          },
-          "partnerships": {
-            "nullable": true,
-            "type": "array",
-            "items": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          },
-          "caps": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": ["version", "seats", "players", "caps"]
-      },
-      "Model": {
-        "type": "object",
-        "properties": {
-          "meta": {
-            "$ref": "#/components/schemas/Meta"
-          },
-          "deck": {
-            "$ref": "#/components/schemas/Deck"
-          },
-          "events": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Event"
-            }
-          }
-        },
-        "required": ["meta", "deck", "events"]
-      },
-      "PlayerNameEntry": {
-        "description": "A player's name entry",
-        "type": "object",
-        "properties": {
-          "player_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
-            "nullable": true,
-            "type": "string"
-          }
-        },
-        "required": ["player_id"]
-      },
-      "PlayerPresenceEntry": {
-        "type": "object",
-        "properties": {
-          "player_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "connected": {
-            "type": "boolean"
-          }
-        },
-        "required": ["player_id", "connected"]
-      },
-      "PlayerUrlResponse": {
-        "type": "object",
-        "properties": {
-          "game_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "player_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "player_short_id": {
-            "type": "string"
-          },
-          "game": {
-            "type": "object",
-            "properties": {
-              "game_id": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "short_id": {
-                "type": "string"
-              },
-              "state": {
-                "oneOf": [
-                  {
-                    "type": "string",
-                    "enum": ["NotStarted", "Completed", "Aborted"]
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "Bidding": {
-                        "type": "integer"
-                      }
-                    },
-                    "required": ["Bidding"]
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "Trick": {
-                        "type": "integer"
-                      }
-                    },
-                    "required": ["Trick"]
-                  }
+                },
+                "required": [
+                    "target",
+                    "cards"
                 ]
-              },
-              "team_a_score": {
-                "nullable": true,
-                "type": "integer"
-              },
-              "team_b_score": {
-                "nullable": true,
-                "type": "integer"
-              },
-              "team_a_bags": {
-                "nullable": true,
-                "type": "integer"
-              },
-              "team_b_bags": {
-                "nullable": true,
-                "type": "integer"
-              },
-              "current_player_id": {
-                "nullable": true,
-                "type": "string",
-                "format": "uuid"
-              },
-              "player_names": {
-                "type": "array",
-                "items": {
-                  "description": "A player's name entry",
-                  "type": "object",
-                  "properties": {
+            },
+            "Deck": {
+                "type": "object",
+                "properties": {
+                    "suits": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "ranks": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "required": [
+                    "suits",
+                    "ranks"
+                ]
+            },
+            "ErrorResponse": {
+                "type": "object",
+                "properties": {
+                    "error": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "error"
+                ]
+            },
+            "Event": {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "hands": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/DealtHand"
+                                }
+                            },
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "deal"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "hands",
+                            "type"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "start": {
+                                "type": "string"
+                            },
+                            "values": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "call"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "start",
+                            "values",
+                            "type"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "leader": {
+                                "type": "string"
+                            },
+                            "cards": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/Card"
+                                }
+                            },
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "play"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "leader",
+                            "cards",
+                            "type"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "from": {
+                                "type": "string"
+                            },
+                            "to": {
+                                "type": "string"
+                            },
+                            "cards": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/Card"
+                                }
+                            },
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "exchange"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "from",
+                            "to",
+                            "cards",
+                            "type"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "target": {
+                                "type": "string"
+                            },
+                            "cards": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/Card"
+                                }
+                            },
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "reveal"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "target",
+                            "cards",
+                            "type"
+                        ]
+                    }
+                ]
+            },
+            "GameReplayResponse": {
+                "description": "JSON replay response for a terminal game \u2014 available at\n`GET /games/{game_id}/replay.json`.",
+                "type": "object",
+                "properties": {
+                    "model": {
+                        "$ref": "#/components/schemas/Model"
+                    },
+                    "cumulative_by_round": {
+                        "type": "array",
+                        "items": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    },
+                    "viewer_seat": {
+                        "nullable": true,
+                        "type": "integer"
+                    },
+                    "termination": {
+                        "$ref": "#/components/schemas/ReplayTermination"
+                    }
+                },
+                "required": [
+                    "model",
+                    "cumulative_by_round",
+                    "termination"
+                ]
+            },
+            "HandResponse": {
+                "description": "Response for getting a player's hand",
+                "type": "object",
+                "properties": {
                     "player_id": {
-                      "type": "string",
-                      "format": "uuid"
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "cards": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Card"
+                        }
+                    }
+                },
+                "required": [
+                    "player_id",
+                    "cards"
+                ]
+            },
+            "JoinChallengeRequest": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "nullable": true,
+                        "type": "string"
+                    }
+                }
+            },
+            "Meta": {
+                "type": "object",
+                "properties": {
+                    "version": {
+                        "type": "integer"
+                    },
+                    "game_hint": {
+                        "nullable": true,
+                        "type": "string"
+                    },
+                    "seats": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "dealer": {
+                        "nullable": true,
+                        "type": "string"
+                    },
+                    "players": {
+                        "type": "array",
+                        "items": {
+                            "nullable": true,
+                            "type": "string"
+                        }
+                    },
+                    "partnerships": {
+                        "nullable": true,
+                        "type": "array",
+                        "items": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "caps": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "required": [
+                    "version",
+                    "seats",
+                    "players",
+                    "caps"
+                ]
+            },
+            "Model": {
+                "type": "object",
+                "properties": {
+                    "meta": {
+                        "$ref": "#/components/schemas/Meta"
+                    },
+                    "deck": {
+                        "$ref": "#/components/schemas/Deck"
+                    },
+                    "events": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Event"
+                        }
+                    }
+                },
+                "required": [
+                    "meta",
+                    "deck",
+                    "events"
+                ]
+            },
+            "PlayerNameEntry": {
+                "description": "A player's name entry",
+                "type": "object",
+                "properties": {
+                    "player_id": {
+                        "type": "string",
+                        "format": "uuid"
                     },
                     "name": {
-                      "nullable": true,
-                      "type": "string"
+                        "nullable": true,
+                        "type": "string"
                     }
-                  },
-                  "required": ["player_id"]
+                },
+                "required": [
+                    "player_id"
+                ]
+            },
+            "PlayerPresenceEntry": {
+                "type": "object",
+                "properties": {
+                    "player_id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "connected": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "player_id",
+                    "connected"
+                ]
+            },
+            "PlayerUrlResponse": {
+                "type": "object",
+                "properties": {
+                    "game_id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "player_id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "player_short_id": {
+                        "type": "string"
+                    },
+                    "game": {
+                        "type": "object",
+                        "properties": {
+                            "game_id": {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            "short_id": {
+                                "type": "string"
+                            },
+                            "state": {
+                                "oneOf": [
+                                    {
+                                        "type": "string",
+                                        "enum": [
+                                            "NotStarted",
+                                            "Completed",
+                                            "Aborted"
+                                        ]
+                                    },
+                                    {
+                                        "type": "object",
+                                        "properties": {
+                                            "Bidding": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": [
+                                            "Bidding"
+                                        ]
+                                    },
+                                    {
+                                        "type": "object",
+                                        "properties": {
+                                            "Trick": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": [
+                                            "Trick"
+                                        ]
+                                    }
+                                ]
+                            },
+                            "team_a_score": {
+                                "nullable": true,
+                                "type": "integer"
+                            },
+                            "team_b_score": {
+                                "nullable": true,
+                                "type": "integer"
+                            },
+                            "team_a_bags": {
+                                "nullable": true,
+                                "type": "integer"
+                            },
+                            "team_b_bags": {
+                                "nullable": true,
+                                "type": "integer"
+                            },
+                            "current_player_id": {
+                                "nullable": true,
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            "player_names": {
+                                "type": "array",
+                                "items": {
+                                    "description": "A player's name entry",
+                                    "type": "object",
+                                    "properties": {
+                                        "player_id": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "name": {
+                                            "nullable": true,
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "player_id"
+                                    ]
+                                }
+                            },
+                            "timer_config": {
+                                "nullable": true,
+                                "description": "Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).",
+                                "type": "object",
+                                "properties": {
+                                    "initial_time_secs": {
+                                        "type": "integer"
+                                    },
+                                    "increment_secs": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": [
+                                    "initial_time_secs",
+                                    "increment_secs"
+                                ]
+                            },
+                            "player_clocks_ms": {
+                                "type": "array",
+                                "items": {
+                                    "type": "integer"
+                                }
+                            },
+                            "active_player_clock_ms": {
+                                "nullable": true,
+                                "type": "integer"
+                            },
+                            "table_cards": {
+                                "type": "array",
+                                "items": {
+                                    "description": "Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),\nthen rank ascending \u2014 the derived lexicographic order over the fields.",
+                                    "type": "object",
+                                    "properties": {
+                                        "suit": {
+                                            "$ref": "#/components/schemas/Suit"
+                                        },
+                                        "rank": {
+                                            "$ref": "#/components/schemas/Rank"
+                                        }
+                                    },
+                                    "required": [
+                                        "suit",
+                                        "rank"
+                                    ]
+                                }
+                            },
+                            "player_bets": {
+                                "type": "array",
+                                "items": {
+                                    "type": "integer"
+                                }
+                            },
+                            "player_tricks_won": {
+                                "type": "array",
+                                "items": {
+                                    "type": "integer"
+                                }
+                            },
+                            "last_trick_winner_id": {
+                                "nullable": true,
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            "last_completed_trick": {
+                                "type": "array",
+                                "items": {
+                                    "description": "Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),\nthen rank ascending \u2014 the derived lexicographic order over the fields.",
+                                    "type": "object",
+                                    "properties": {
+                                        "suit": {
+                                            "$ref": "#/components/schemas/Suit"
+                                        },
+                                        "rank": {
+                                            "$ref": "#/components/schemas/Rank"
+                                        }
+                                    },
+                                    "required": [
+                                        "suit",
+                                        "rank"
+                                    ]
+                                }
+                            }
+                        },
+                        "required": [
+                            "game_id",
+                            "short_id",
+                            "state",
+                            "player_names"
+                        ]
+                    },
+                    "hand": {
+                        "$ref": "#/components/schemas/HandResponse"
+                    }
+                },
+                "required": [
+                    "game_id",
+                    "player_id",
+                    "player_short_id",
+                    "game",
+                    "hand"
+                ]
+            },
+            "PresenceSnapshot": {
+                "type": "object",
+                "properties": {
+                    "game_id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "players": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PlayerPresenceEntry"
+                        }
+                    },
+                    "spectator_count": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "game_id",
+                    "players",
+                    "spectator_count"
+                ]
+            },
+            "QueueSizeEntry": {
+                "description": "Queue size for a specific game configuration (max_points + timer_config).",
+                "type": "object",
+                "properties": {
+                    "max_points": {
+                        "type": "integer"
+                    },
+                    "timer_config": {
+                        "$ref": "#/components/schemas/TimerConfig"
+                    },
+                    "waiting": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "max_points",
+                    "timer_config",
+                    "waiting"
+                ]
+            },
+            "Rank": {
+                "type": "string",
+                "enum": [
+                    "Two",
+                    "Three",
+                    "Four",
+                    "Five",
+                    "Six",
+                    "Seven",
+                    "Eight",
+                    "Nine",
+                    "Ten",
+                    "Jack",
+                    "Queen",
+                    "King",
+                    "Ace"
+                ]
+            },
+            "ReplayTermination": {
+                "type": "string",
+                "enum": [
+                    "completed",
+                    "aborted"
+                ]
+            },
+            "Seat": {
+                "type": "string",
+                "enum": [
+                    "A",
+                    "B",
+                    "C",
+                    "D"
+                ]
+            },
+            "SeatInfo": {
+                "description": "Per-seat snapshot sent in SSE events.",
+                "type": "object",
+                "properties": {
+                    "seat": {
+                        "$ref": "#/components/schemas/Seat"
+                    },
+                    "player_id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "nullable": true,
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "seat",
+                    "player_id"
+                ]
+            },
+            "SeekRequest": {
+                "type": "object",
+                "properties": {
+                    "max_points": {
+                        "type": "integer"
+                    },
+                    "timer_config": {
+                        "$ref": "#/components/schemas/TimerConfig"
+                    },
+                    "name": {
+                        "nullable": true,
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "max_points",
+                    "timer_config"
+                ]
+            },
+            "SeekSummary": {
+                "description": "Summary of seeks waiting in a given rating band + max_points",
+                "type": "object",
+                "properties": {
+                    "band": {
+                        "type": "integer"
+                    },
+                    "max_points": {
+                        "type": "integer"
+                    },
+                    "waiting": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "band",
+                    "max_points",
+                    "waiting"
+                ]
+            },
+            "SessionPlayerResponse": {
+                "type": "object",
+                "properties": {
+                    "user_id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "display_name": {
+                        "nullable": true,
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "user_id"
+                ]
+            },
+            "SetDisplayNameRequest": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "nullable": true,
+                        "type": "string"
+                    }
                 }
-              },
-              "timer_config": {
-                "nullable": true,
+            },
+            "SetNameRequest": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "nullable": true,
+                        "type": "string"
+                    }
+                }
+            },
+            "Suit": {
+                "type": "string",
+                "enum": [
+                    "Club",
+                    "Diamond",
+                    "Heart",
+                    "Spade"
+                ]
+            },
+            "TimerConfig": {
                 "description": "Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).",
                 "type": "object",
                 "properties": {
-                  "initial_time_secs": {
-                    "type": "integer"
-                  },
-                  "increment_secs": {
-                    "type": "integer"
-                  }
+                    "initial_time_secs": {
+                        "type": "integer"
+                    },
+                    "increment_secs": {
+                        "type": "integer"
+                    }
                 },
-                "required": ["initial_time_secs", "increment_secs"]
-              },
-              "player_clocks_ms": {
-                "type": "array",
-                "items": {
-                  "type": "integer"
-                }
-              },
-              "active_player_clock_ms": {
-                "nullable": true,
-                "type": "integer"
-              },
-              "table_cards": {
-                "type": "array",
-                "items": {
-                  "description": "Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),\nthen rank ascending \u2014 the derived lexicographic order over the fields.",
-                  "type": "object",
-                  "properties": {
-                    "suit": {
-                      "$ref": "#/components/schemas/Suit"
-                    },
-                    "rank": {
-                      "$ref": "#/components/schemas/Rank"
-                    }
-                  },
-                  "required": ["suit", "rank"]
-                }
-              },
-              "player_bets": {
-                "type": "array",
-                "items": {
-                  "type": "integer"
-                }
-              },
-              "player_tricks_won": {
-                "type": "array",
-                "items": {
-                  "type": "integer"
-                }
-              },
-              "last_trick_winner_id": {
-                "nullable": true,
-                "type": "string",
-                "format": "uuid"
-              },
-              "last_completed_trick": {
-                "type": "array",
-                "items": {
-                  "description": "Intuitive card struct. Ordered by suit (Club < Diamond < Heart < Spade),\nthen rank ascending \u2014 the derived lexicographic order over the fields.",
-                  "type": "object",
-                  "properties": {
-                    "suit": {
-                      "$ref": "#/components/schemas/Suit"
-                    },
-                    "rank": {
-                      "$ref": "#/components/schemas/Rank"
-                    }
-                  },
-                  "required": ["suit", "rank"]
-                }
-              }
+                "required": [
+                    "initial_time_secs",
+                    "increment_secs"
+                ]
             },
-            "required": ["game_id", "short_id", "state", "player_names"]
-          },
-          "hand": {
-            "$ref": "#/components/schemas/HandResponse"
-          }
-        },
-        "required": ["game_id", "player_id", "player_short_id", "game", "hand"]
-      },
-      "PresenceSnapshot": {
-        "type": "object",
-        "properties": {
-          "game_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "players": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PlayerPresenceEntry"
+            "TransitionRequest": {
+                "type": "object"
+            },
+            "TransitionResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "result": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "success",
+                    "result"
+                ]
+            },
+            "TransitionType": {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "amount": {
+                                "type": "integer"
+                            },
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "bet"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "amount",
+                            "type"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "card": {
+                                "$ref": "#/components/schemas/Card"
+                            },
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "card"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "card",
+                            "type"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "start"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type"
+                        ]
+                    }
+                ]
             }
-          },
-          "spectator_count": {
-            "type": "integer"
-          }
-        },
-        "required": ["game_id", "players", "spectator_count"]
-      },
-      "QueueSizeEntry": {
-        "description": "Queue size for a specific game configuration (max_points + timer_config).",
-        "type": "object",
-        "properties": {
-          "max_points": {
-            "type": "integer"
-          },
-          "timer_config": {
-            "$ref": "#/components/schemas/TimerConfig"
-          },
-          "waiting": {
-            "type": "integer"
-          }
-        },
-        "required": ["max_points", "timer_config", "waiting"]
-      },
-      "Rank": {
-        "type": "string",
-        "enum": [
-          "Two",
-          "Three",
-          "Four",
-          "Five",
-          "Six",
-          "Seven",
-          "Eight",
-          "Nine",
-          "Ten",
-          "Jack",
-          "Queen",
-          "King",
-          "Ace"
-        ]
-      },
-      "ReplayTermination": {
-        "type": "string",
-        "enum": ["completed", "aborted"]
-      },
-      "Seat": {
-        "type": "string",
-        "enum": ["A", "B", "C", "D"]
-      },
-      "SeatInfo": {
-        "description": "Per-seat snapshot sent in SSE events.",
-        "type": "object",
-        "properties": {
-          "seat": {
-            "$ref": "#/components/schemas/Seat"
-          },
-          "player_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
-            "nullable": true,
-            "type": "string"
-          }
-        },
-        "required": ["seat", "player_id"]
-      },
-      "SeekRequest": {
-        "type": "object",
-        "properties": {
-          "max_points": {
-            "type": "integer"
-          },
-          "timer_config": {
-            "$ref": "#/components/schemas/TimerConfig"
-          },
-          "name": {
-            "nullable": true,
-            "type": "string"
-          }
-        },
-        "required": ["max_points", "timer_config"]
-      },
-      "SeekSummary": {
-        "description": "Summary of seeks waiting for a given max_points",
-        "type": "object",
-        "properties": {
-          "max_points": {
-            "type": "integer"
-          },
-          "waiting": {
-            "type": "integer"
-          }
-        },
-        "required": ["max_points", "waiting"]
-      },
-      "SessionPlayerResponse": {
-        "type": "object",
-        "properties": {
-          "user_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "display_name": {
-            "nullable": true,
-            "type": "string"
-          }
-        },
-        "required": ["user_id"]
-      },
-      "SetDisplayNameRequest": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "nullable": true,
-            "type": "string"
-          }
         }
-      },
-      "SetNameRequest": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "nullable": true,
-            "type": "string"
-          }
-        }
-      },
-      "Suit": {
-        "type": "string",
-        "enum": ["Club", "Diamond", "Heart", "Spade"]
-      },
-      "TimerConfig": {
-        "description": "Fischer increment timer configuration (X+Y: X minutes initial, Y seconds increment per move).",
-        "type": "object",
-        "properties": {
-          "initial_time_secs": {
-            "type": "integer"
-          },
-          "increment_secs": {
-            "type": "integer"
-          }
-        },
-        "required": ["initial_time_secs", "increment_secs"]
-      },
-      "TransitionRequest": {
-        "type": "object"
-      },
-      "TransitionResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
-          },
-          "result": {
-            "type": "string"
-          }
-        },
-        "required": ["success", "result"]
-      },
-      "TransitionType": {
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "amount": {
-                "type": "integer"
-              },
-              "type": {
-                "type": "string",
-                "enum": ["bet"]
-              }
-            },
-            "required": ["amount", "type"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "card": {
-                "$ref": "#/components/schemas/Card"
-              },
-              "type": {
-                "type": "string",
-                "enum": ["card"]
-              }
-            },
-            "required": ["card", "type"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": ["start"]
-              }
-            },
-            "required": ["type"]
-          }
-        ]
-      }
     }
-  }
 }
