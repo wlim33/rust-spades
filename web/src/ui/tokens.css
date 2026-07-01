@@ -18,8 +18,7 @@
   /* Team keels: tuned by eye (range 30-40%); higher = louder team hue.
      DEPRECATED: border keels give way to --team-*-fill background cues
      (docs/superpowers/specs/2026-06-12-state-cue-tokens-design.md). Remove
-     once .spades-seat-chip and .spades-scoreboard__team in design.css
-     migrate. */
+     once .spades-scoreboard__team in design.css migrates. */
   --team-1: color-mix(in oklab, var(--accent) 30%, var(--fg-muted));
   --team-2: color-mix(in oklab, var(--accent-2) 30%, var(--fg-muted));
 
@@ -95,12 +94,20 @@
   --card-h: calc(var(--card-w) * 64 / 46);
   --table-max: 68.75rem;
 
+  /* structural border: every panel, control, and hairline divider shares one
+     width. State and focus cues are 2px outlines/shadow rings, never borders.
+     Fixed px on purpose: element size and type scale (--card-w, clamp()),
+     border geometry does not. */
+  --border-w: 1px;
+
   /* radius (square): controls and containers collapse to a single crisp 2px
-     corner. --radius-pill stays round for genuinely circular elements. */
-  --radius-sm: 2px;
-  --radius-md: 2px;
-  --radius-lg: 2px;
-  --radius-card: 2px;
+     corner via --radius-base, so button and panel corners cannot drift apart.
+     --radius-pill stays round for genuinely circular elements. */
+  --radius-base: 2px;
+  --radius-sm: var(--radius-base);
+  --radius-md: var(--radius-base);
+  --radius-lg: var(--radius-base);
+  --radius-card: var(--radius-base);
   --radius-pill: 999px;
 
   /* elevation: hard offset shadows, no blur — flat, boxy, print-like.

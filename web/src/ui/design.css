@@ -33,7 +33,7 @@ main#root {
   justify-content: space-between;
   padding: var(--space-1) var(--space-4);
   background: transparent;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--border-w) solid var(--border);
 }
 .site-title {
   font-weight: 600;
@@ -101,7 +101,7 @@ body:has(.page--fit) main#root {
   gap: var(--space-2);
   padding: 0.45rem 0.9rem;
   border-radius: var(--radius-md);
-  border: 1px solid transparent;
+  border: var(--border-w) solid transparent;
   cursor: pointer;
   transition:
     transform var(--dur) var(--ease),
@@ -168,7 +168,7 @@ body:has(.page--fit) main#root {
 .menu__label::after {
   content: '';
   flex: 1;
-  height: 1px;
+  height: var(--border-w);
   background: var(--border);
 }
 .menu__quickplay {
@@ -184,8 +184,7 @@ body:has(.page--fit) main#root {
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-left: 2px solid var(--border-strong);
+  border: var(--border-w) solid var(--border);
   border-radius: var(--radius-md);
   font: inherit;
   color: inherit;
@@ -236,7 +235,7 @@ body:has(.page--fit) main#root {
   font-size: calc(var(--card-w) * 0.348);
   border-radius: var(--radius-card);
   background: var(--card-face);
-  border: 1px solid var(--card-edge);
+  border: var(--border-w) solid var(--card-edge);
   box-shadow: var(--shadow-card);
   user-select: none;
   position: relative;
@@ -294,7 +293,7 @@ body:has(.page--fit) main#root {
 }
 .trick-placeholder {
   background: transparent;
-  border: 1px dashed var(--border-strong);
+  border: var(--border-w) dashed var(--border-strong);
   /* An empty slot is a void, not an object — it casts no shadow. */
   box-shadow: none;
 }
@@ -354,7 +353,7 @@ body:has(.page--fit) main#root {
   color: var(--felt-ink);
   /* Flat felt with a crisp rail — no radial sheen, no inset glow. */
   background: var(--felt);
-  border: 2px solid var(--felt-edge);
+  border: var(--border-w) solid var(--felt-edge);
   box-shadow: var(--shadow-3);
 }
 .seat-north {
@@ -460,8 +459,7 @@ body:has(.page--fit) main#root {
   padding: var(--space-2) var(--space-3);
   background: var(--surface-raised);
   color: var(--fg);
-  border: 1px solid var(--border);
-  border-bottom-width: 2px;
+  border: var(--border-w) solid var(--border);
   border-radius: var(--radius-md);
 }
 .spades-scoreboard__team {
@@ -509,7 +507,7 @@ body:has(.page--fit) main#root {
   cursor: pointer;
   padding: var(--space-2) 0;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-strong);
+  border: var(--border-w) solid var(--border-strong);
   background: var(--surface-raised);
   color: var(--fg);
   transition:
@@ -562,7 +560,7 @@ body:has(.page--fit) main#root {
   gap: var(--space-2);
   padding: var(--space-3);
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-strong);
+  border: var(--border-w) solid var(--border-strong);
   background: var(--surface-raised);
   color: var(--fg);
   cursor: pointer;
@@ -639,7 +637,7 @@ body:has(.page--fit) main#root {
   min-width: 0;
   padding: var(--space-2);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
+  border: var(--border-w) solid var(--border-strong);
   font: inherit;
 }
 .join-modal {
@@ -649,7 +647,7 @@ body:has(.page--fit) main#root {
   gap: var(--space-2);
   padding: var(--space-3);
   border-radius: var(--radius-md);
-  border: 1px solid var(--border);
+  border: var(--border-w) solid var(--border);
   background: var(--surface-raised);
   box-shadow: var(--shadow-1);
   width: 100%;
@@ -657,7 +655,7 @@ body:has(.page--fit) main#root {
 .join-modal input {
   padding: var(--space-2);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
+  border: var(--border-w) solid var(--border-strong);
   font: inherit;
 }
 .form-page {
@@ -671,7 +669,7 @@ body:has(.page--fit) main#root {
 .form-page input {
   padding: var(--space-2);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
+  border: var(--border-w) solid var(--border-strong);
   font: inherit;
 }
 /* Bare text-input labels stack like .form-field; .field-checkbox stays a row. */
@@ -686,7 +684,7 @@ body:has(.page--fit) main#root {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  border: 1px solid var(--border);
+  border: var(--border-w) solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--space-3);
 }
@@ -706,7 +704,7 @@ body:has(.page--fit) main#root {
 .seg {
   display: flex;
   flex-wrap: wrap;
-  border: 1px solid var(--border-strong);
+  border: var(--border-w) solid var(--border-strong);
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--surface-raised);
@@ -716,7 +714,7 @@ body:has(.page--fit) main#root {
   min-width: 3rem;
   padding: var(--space-2) var(--space-3);
   border: none;
-  border-left: 1px solid var(--border);
+  border-left: var(--border-w) solid var(--border);
   background: transparent;
   color: var(--fg-muted);
   font: inherit;
@@ -765,7 +763,7 @@ body:has(.page--fit) main#root {
 .form-field input {
   padding: var(--space-2);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
+  border: var(--border-w) solid var(--border-strong);
   font: inherit;
 }
 .form-field.invalid input {
@@ -799,7 +797,7 @@ body:has(.page--fit) main#root {
   right: 0;
   top: calc(100% + 4px);
   background: var(--surface-raised);
-  border: 1px solid var(--border);
+  border: var(--border-w) solid var(--border);
   border-radius: var(--radius-md);
   list-style: none;
   margin: 0;
@@ -830,7 +828,7 @@ body:has(.page--fit) main#root {
 
 .empty-state {
   padding: var(--space-6);
-  border: 1px dashed var(--border);
+  border: var(--border-w) dashed var(--border);
   border-radius: var(--radius-md);
   text-align: center;
   color: var(--fg-muted);
@@ -854,8 +852,7 @@ body:has(.page--fit) main#root {
   aspect-ratio: 1;
   padding: var(--space-2);
   background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-top: 2px solid var(--border-strong);
+  border: var(--border-w) solid var(--border);
   border-radius: var(--radius-md);
   color: var(--fg);
   font: inherit;
@@ -908,7 +905,7 @@ body:has(.page--fit) main#root {
   justify-content: space-between;
   gap: var(--space-2);
   padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--border-w) solid var(--border);
 }
 .profile-games li:last-child {
   border-bottom: none;
@@ -947,16 +944,16 @@ body:has(.page--fit) main#root {
 .toast--error {
   background: var(--danger-tint);
   color: var(--danger);
-  border: 1px solid color-mix(in oklab, var(--danger) 40%, var(--border));
+  border: var(--border-w) solid color-mix(in oklab, var(--danger) 40%, var(--border));
 }
 .toast--success {
   background: var(--success-tint);
   color: var(--success);
-  border: 1px solid color-mix(in oklab, var(--success) 40%, var(--border));
+  border: var(--border-w) solid color-mix(in oklab, var(--success) 40%, var(--border));
 }
 .toast--info {
   background: var(--surface-raised);
-  border: 1px solid var(--border);
+  border: var(--border-w) solid var(--border);
 }
 .toast__close {
   background: none;
@@ -1016,7 +1013,7 @@ body:has(.page--fit) main#root {
   gap: var(--space-3);
   padding: var(--space-3);
   background: var(--warning-tint);
-  border: 1px solid color-mix(in oklab, var(--warning) 45%, var(--border));
+  border: var(--border-w) solid color-mix(in oklab, var(--warning) 45%, var(--border));
   border-radius: var(--radius-md);
   width: 100%;
   max-width: 480px;
@@ -1058,7 +1055,7 @@ body:has(.page--fit) main#root {
   padding: var(--space-3);
   color: var(--fg-muted);
   font-size: var(--text-sm);
-  border-top: 1px solid var(--border);
+  border-top: var(--border-w) solid var(--border);
 }
 .footer-version {
   font-family: var(--font-mono);
@@ -1184,8 +1181,7 @@ body:has(.page--fit) main#root {
   padding: var(--space-2) var(--space-3);
   background: var(--surface-raised);
   color: var(--fg);
-  border: 1px solid var(--border);
-  border-bottom-width: 2px;
+  border: var(--border-w) solid var(--border);
   border-radius: var(--radius-md);
 }
 .spades-seat-label {
@@ -1205,7 +1201,7 @@ body:has(.page--fit) main#root {
 }
 .spades-seat-chip.is-disconnected .spades-seat-label::before {
   background: transparent;
-  border: 1.5px solid var(--fg-muted);
+  border: var(--border-w) solid var(--fg-muted);
 }
 .spades-seat-info {
   font-size: var(--text-sm);
@@ -1349,7 +1345,7 @@ h3 {
   width: 100%;
   height: 3px;
   margin-top: 2px;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: color-mix(in oklab, var(--fg) 14%, transparent);
   overflow: hidden;
 }
@@ -1368,7 +1364,7 @@ h3 {
   width: 100%;
   max-width: 360px;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: var(--border-w) solid var(--border);
   border-radius: var(--radius-lg);
 }
 .home-searching__dots {
@@ -1422,7 +1418,7 @@ h3 {
 .panel,
 .auth-card {
   background: var(--surface-raised);
-  border: 1px solid var(--border);
+  border: var(--border-w) solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-2);
 }
@@ -1463,7 +1459,7 @@ h3 {
 .auth-divider::after {
   content: '';
   flex: 1;
-  height: 1px;
+  height: var(--border-w);
   background: var(--border);
 }
 .btn--block {
@@ -1530,7 +1526,7 @@ h3 {
   letter-spacing: 0.08em;
   color: var(--fg-subtle);
   padding: var(--space-1) var(--space-2);
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--border-w) solid var(--border);
 }
 .leaderboard__list .leaderboard__rank {
   width: 2.5rem;
@@ -1590,7 +1586,7 @@ h3 {
 .leaderboard__you {
   margin-left: var(--space-2);
   padding: 0 var(--space-1);
-  border: 1px solid var(--border);
+  border: var(--border-w) solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--fg-muted);
   font-size: var(--text-xs);

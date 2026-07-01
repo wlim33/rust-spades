@@ -32,7 +32,7 @@
 }
 .profile-head__you {
   padding: 0 var(--space-1);
-  border: 1px solid var(--border);
+  border: var(--border-w) solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--fg-muted);
   font-size: var(--text-xs);
